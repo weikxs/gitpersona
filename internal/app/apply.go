@@ -24,9 +24,19 @@ type change struct {
 	perm    os.FileMode // 0 means fsutil.FilePerm
 }
 
+// backupsToKeep bounds how many snapshots accumulate in the backup directory.
+const backupsToKeep = 20
+
+// ApplyOptions controls how Apply makes its changes.
+type ApplyOptions struct {
+	DryRun bool // show the changes without writing anything
+	Yes    bool // allow removing files
+}
+
 // Apply regenerates every file from the configuration. Only files whose
 // content changes are backed up and written, so running it twice is a no-op.
-func Apply(ctx context.Context, e Env) error {
+// Removing files needs explicit consent.
+func Apply(ctx context.Context, e Env, opts ApplyOptions) error {
 	changes, err := planApply(ctx, e)
 	if err != nil {
 		return err
@@ -34,6 +44,17 @@ func Apply(ctx context.Context, e Env) error {
 	if len(changes) == 0 {
 		fmt.Fprintln(e.Stdout, "Everything is already up to date.")
 		return nil
+	}
+	if opts.DryRun {
+		for _, c := range changes {
+			fmt.Fprintf(e.Stdout, "would %s %s\n", c.verb(), e.display(c.path))
+		}
+		fmt.Fprintln(e.Stdout, "Nothing was written (dry run).")
+		return nil
+	}
+	if removals := e.removals(changes); len(removals) > 0 && !opts.Yes {
+		return fmt.Errorf("apply would remove %s; run `gitpersona apply --dry-run` to review, then `gitpersona apply --yes`",
+			strings.Join(removals, ", "))
 	}
 
 	targets := make([]string, len(changes))
@@ -48,10 +69,20 @@ func Apply(ctx context.Context, e Env) error {
 		if err := c.write(); err != nil {
 			return fmt.Errorf("%w (previous files are saved in %s)", err, snapshot)
 		}
-		fmt.Fprintf(e.Stdout, "%s %s\n", c.verb(), e.display(c.path))
+		fmt.Fprintf(e.Stdout, "%sd %s\n", c.verb(), e.display(c.path))
 	}
 	fmt.Fprintf(e.Stdout, "Backup saved in %s\n", e.display(snapshot))
-	return nil
+	return backup.Prune(e.backupDir(), backupsToKeep)
+}
+
+func (e Env) removals(changes []change) []string {
+	var names []string
+	for _, c := range changes {
+		if c.remove {
+			names = append(names, e.display(c.path))
+		}
+	}
+	return names
 }
 
 // planApply computes the changes without touching any file.
@@ -169,11 +200,12 @@ func (c change) write() error {
 	return fsutil.WriteAtomic(c.path, []byte(c.content), perm)
 }
 
+// verb is the change in the present tense; add "d" for the past tense.
 func (c change) verb() string {
 	if c.remove {
-		return "removed"
+		return "remove"
 	}
-	return "updated"
+	return "update"
 }
 
 // display shortens paths under the home directory to ~/..., also when the

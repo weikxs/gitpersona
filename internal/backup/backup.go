@@ -113,3 +113,29 @@ func ReadManifest(dir string) (Manifest, error) {
 	}
 	return m, nil
 }
+
+// Prune removes the oldest snapshots under root so that at most keep remain.
+// Snapshot names sort chronologically; entries that are not directories are
+// left alone.
+func Prune(root string, keep int) error {
+	entries, err := os.ReadDir(root)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("list backups: %w", err)
+	}
+	var snapshots []string
+	for _, e := range entries {
+		if e.IsDir() {
+			snapshots = append(snapshots, e.Name())
+		}
+	}
+	for len(snapshots) > keep {
+		if err := os.RemoveAll(filepath.Join(root, snapshots[0])); err != nil {
+			return fmt.Errorf("remove old backup: %w", err)
+		}
+		snapshots = snapshots[1:]
+	}
+	return nil
+}

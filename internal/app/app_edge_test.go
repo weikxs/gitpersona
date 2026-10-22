@@ -149,7 +149,7 @@ func TestNeverTouchesKeysOrTokensOutsideCredentialRequests(t *testing.T) {
 	t.Setenv("GH_LOG", ghLog)
 	env, out := w.env(t, w.repos["sdk"])
 
-	if err := Apply(context.Background(), env); err != nil {
+	if err := Apply(context.Background(), env, ApplyOptions{}); err != nil {
 		t.Fatalf("Apply() with unreadable keys: %v", err)
 	}
 	if err := Whoami(context.Background(), env, false); err != nil {
@@ -182,7 +182,7 @@ dirs = ["~/Projects/clients/globex"]
 `
 	mustWrite(t, filepath.Join(w.home, ".config", "gitpersona", "config.toml"), gitlabOnly, 0o600)
 	env, out := w.env(t, w.home)
-	if err := Apply(context.Background(), env); err != nil {
+	if err := Apply(context.Background(), env, ApplyOptions{}); err != nil {
 		t.Fatal(err)
 	}
 	out.Reset()
@@ -197,7 +197,7 @@ func TestApplyAndDoctorReportBrokenMarkers(t *testing.T) {
 	mustWrite(t, filepath.Join(w.home, ".gitconfig"), block.Begin+"\n[user]\n", 0o644)
 	env, out := w.env(t, w.home)
 
-	err := Apply(context.Background(), env)
+	err := Apply(context.Background(), env, ApplyOptions{})
 
 	if err == nil || !strings.Contains(err.Error(), ".gitconfig") {
 		t.Fatalf("Apply() error = %v, want it to name ~/.gitconfig", err)
@@ -214,7 +214,7 @@ func TestApplyWithoutConfigExplainsWhatIsMissing(t *testing.T) {
 	}
 	env, _ := w.env(t, w.home)
 
-	err := Apply(context.Background(), env)
+	err := Apply(context.Background(), env, ApplyOptions{})
 
 	if err == nil || !strings.Contains(err.Error(), "config.toml") {
 		t.Fatalf("Apply() error = %v, want it to name the missing config file", err)
@@ -228,7 +228,7 @@ func TestWhoamiOutsideARepositoryReportsWhatGitUsesAndWhatNewReposGet(t *testing
 		t.Fatal(err)
 	}
 	env, out := w.env(t, plain)
-	if err := Apply(context.Background(), env); err != nil {
+	if err := Apply(context.Background(), env, ApplyOptions{}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -265,7 +265,7 @@ func TestWhoamiAgreesWithGitInWorktrees(t *testing.T) {
 	runGit(t, w.repos["blog"], "worktree", "add", "-q", acmeWorktree)
 	runGit(t, w.repos["hotfix"], "worktree", "add", "-q", pinWorktree)
 	env, out := w.env(t, w.home)
-	if err := Apply(context.Background(), env); err != nil {
+	if err := Apply(context.Background(), env, ApplyOptions{}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -315,7 +315,7 @@ func TestApplyWritesThroughASymlinkedGitConfig(t *testing.T) {
 	}
 	env, _ := w.env(t, w.home)
 
-	if err := Apply(context.Background(), env); err != nil {
+	if err := Apply(context.Background(), env, ApplyOptions{}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -338,7 +338,7 @@ func TestApplyHonorsGitConfigGlobal(t *testing.T) {
 	env, _ := w.env(t, w.home)
 	env.GlobalGitConfig = alt
 
-	if err := Apply(context.Background(), env); err != nil {
+	if err := Apply(context.Background(), env, ApplyOptions{}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -356,7 +356,7 @@ func TestApplyRefusesReadOnlyGitConfig(t *testing.T) {
 	mustWrite(t, path, "[user]\n", 0o444)
 	env, _ := w.env(t, w.home)
 
-	err := Apply(context.Background(), env)
+	err := Apply(context.Background(), env, ApplyOptions{})
 
 	if err == nil || !strings.Contains(err.Error(), "read-only") {
 		t.Fatalf("Apply() error = %v, want a read-only refusal", err)
@@ -371,7 +371,7 @@ func TestBrokenMarkersErrorTellsHowToFix(t *testing.T) {
 	mustWrite(t, filepath.Join(w.home, ".gitconfig"), block.Begin+"\n[user]\n", 0o644)
 	env, _ := w.env(t, w.home)
 
-	err := Apply(context.Background(), env)
+	err := Apply(context.Background(), env, ApplyOptions{})
 
 	if err == nil || !strings.Contains(err.Error(), "keep exactly one pair") {
 		t.Fatalf("Apply() error = %v, want instructions to repair the markers", err)
@@ -405,7 +405,7 @@ func TestStableExecutablePrefersTheCommandOnPath(t *testing.T) {
 func TestDoctorListsOutOfDateFiles(t *testing.T) {
 	w := newWorld(t)
 	env, out := w.env(t, w.home)
-	if err := Apply(context.Background(), env); err != nil {
+	if err := Apply(context.Background(), env, ApplyOptions{}); err != nil {
 		t.Fatal(err)
 	}
 	env.Executable = "/tmp/home/upgraded/gitpersona"
@@ -416,5 +416,48 @@ func TestDoctorListsOutOfDateFiles(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "~/.config/gitpersona/profiles/acme.gitconfig") {
 		t.Fatalf("doctor should name the files that differ:\n%s", out.String())
+	}
+}
+
+func TestApplyDryRunWritesNothing(t *testing.T) {
+	w := newWorld(t)
+	env, out := w.env(t, w.home)
+
+	if err := Apply(context.Background(), env, ApplyOptions{DryRun: true}); err != nil {
+		t.Fatal(err)
+	}
+
+	if !strings.Contains(out.String(), "would update ~/.gitconfig") || !strings.Contains(out.String(), "dry run") {
+		t.Errorf("dry-run output:\n%s", out.String())
+	}
+	for _, p := range []string{filepath.Join(w.home, ".gitconfig"), filepath.Join(w.home, ".config", "gitpersona", "rules.gitconfig"), filepath.Join(w.home, ".config", "gitpersona", "backups")} {
+		if _, err := os.Stat(p); !os.IsNotExist(err) {
+			t.Errorf("dry run created %s", p)
+		}
+	}
+}
+
+func TestApplyRequiresYesBeforeRemovingFiles(t *testing.T) {
+	w := newWorld(t)
+	env, _ := w.env(t, w.home)
+	if err := Apply(context.Background(), env, ApplyOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	stale := filepath.Join(w.home, ".config", "gitpersona", "profiles", "retired.gitconfig")
+	mustWrite(t, stale, "# old\n", 0o600)
+
+	err := Apply(context.Background(), env, ApplyOptions{})
+
+	if err == nil || !strings.Contains(err.Error(), "--yes") || !strings.Contains(err.Error(), "retired.gitconfig") {
+		t.Fatalf("Apply() without --yes = %v, want a refusal naming the file", err)
+	}
+	if _, statErr := os.Stat(stale); statErr != nil {
+		t.Fatal("Apply() removed a file without --yes")
+	}
+	if err := Apply(context.Background(), env, ApplyOptions{Yes: true}); err != nil {
+		t.Fatal(err)
+	}
+	if _, statErr := os.Stat(stale); !os.IsNotExist(statErr) {
+		t.Fatal("Apply(--yes) did not remove the stale file")
 	}
 }

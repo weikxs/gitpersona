@@ -23,6 +23,11 @@ func TestRun(t *testing.T) {
 		{name: "unknown command fails with usage hint", args: []string{"bogus"}, wantCode: 2, wantStderr: `unknown command "bogus"`},
 		{name: "credential without target is a usage error", args: []string{"credential", "get"}, wantCode: 2, wantStderr: "--provider P --host H --account A"},
 		{name: "unknown flag is a usage error", args: []string{"whoami", "--bogus"}, wantCode: 2, wantStderr: "flag provided but not defined"},
+		{name: "subcommand help goes to stdout", args: []string{"apply", "--help"}, wantCode: 0, wantStdout: "Usage: gitpersona apply"},
+		{name: "help for a command", args: []string{"help", "whoami"}, wantCode: 0, wantStdout: "Usage: gitpersona whoami"},
+		{name: "help for an unknown command", args: []string{"help", "bogus"}, wantCode: 2, wantStderr: `unknown command "bogus"`},
+		{name: "json is only for whoami", args: []string{"doctor", "--json"}, wantCode: 2, wantStderr: "flag provided but not defined"},
+		{name: "extra arguments are rejected", args: []string{"apply", "extra"}, wantCode: 2, wantStderr: "unexpected argument"},
 	}
 
 	for _, tc := range tests {

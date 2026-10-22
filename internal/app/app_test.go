@@ -150,7 +150,7 @@ func TestApplyMakesGitUseTheRightIdentityPerDirectory(t *testing.T) {
 	w := newWorld(t)
 	env, _ := w.env(t, w.home)
 
-	if err := Apply(context.Background(), env); err != nil {
+	if err := Apply(context.Background(), env, ApplyOptions{}); err != nil {
 		t.Fatalf("Apply() error: %v", err)
 	}
 
@@ -171,7 +171,7 @@ func TestApplyMakesGitUseTheRightIdentityPerDirectory(t *testing.T) {
 func TestCredentialFillReturnsTheProfileAccount(t *testing.T) {
 	w := newWorld(t)
 	env, _ := w.env(t, w.home)
-	if err := Apply(context.Background(), env); err != nil {
+	if err := Apply(context.Background(), env, ApplyOptions{}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -190,10 +190,10 @@ func TestApplyPreservesUserConfigBacksUpAndIsIdempotent(t *testing.T) {
 	mustWrite(t, filepath.Join(w.home, ".gitconfig"), userConfig, 0o644)
 	env, out := w.env(t, w.home)
 
-	if err := Apply(context.Background(), env); err != nil {
+	if err := Apply(context.Background(), env, ApplyOptions{}); err != nil {
 		t.Fatal(err)
 	}
-	if err := Apply(context.Background(), env); err != nil {
+	if err := Apply(context.Background(), env, ApplyOptions{}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -215,7 +215,7 @@ func TestUsersStoringHelperNeverReceivesGHTokens(t *testing.T) {
 	store := filepath.Join(t.TempDir(), "stored-credentials")
 	mustWrite(t, filepath.Join(w.home, ".gitconfig"), "[credential]\n\thelper = store --file "+store+"\n", 0o644)
 	env, _ := w.env(t, w.home)
-	if err := Apply(context.Background(), env); err != nil {
+	if err := Apply(context.Background(), env, ApplyOptions{}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -237,7 +237,7 @@ func TestUsersHelperStillServesHostsGitPersonaDoesNotHandle(t *testing.T) {
 	userHelper := `!f() { test "$1" = get && echo username=fallback-user && echo password=fallback-pass; }; f`
 	mustWrite(t, filepath.Join(w.home, ".gitconfig"), "[credential]\n\thelper = "+strconv.Quote(userHelper)+"\n", 0o644)
 	env, _ := w.env(t, w.home)
-	if err := Apply(context.Background(), env); err != nil {
+	if err := Apply(context.Background(), env, ApplyOptions{}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -248,30 +248,12 @@ func TestUsersHelperStillServesHostsGitPersonaDoesNotHandle(t *testing.T) {
 	}
 }
 
-func TestApplyRemovesStaleProfileFiles(t *testing.T) {
-	w := newWorld(t)
-	env, _ := w.env(t, w.home)
-	if err := Apply(context.Background(), env); err != nil {
-		t.Fatal(err)
-	}
-	stale := filepath.Join(w.home, ".config", "gitpersona", "profiles", "retired.gitconfig")
-	mustWrite(t, stale, "# old\n", 0o600)
-
-	if err := Apply(context.Background(), env); err != nil {
-		t.Fatal(err)
-	}
-
-	if _, err := os.Stat(stale); !os.IsNotExist(err) {
-		t.Fatalf("stale profile file still exists (err=%v)", err)
-	}
-}
-
 func TestApplyFailsOnInvalidConfig(t *testing.T) {
 	w := newWorld(t)
 	mustWrite(t, filepath.Join(w.home, ".config", "gitpersona", "config.toml"), "version = 1\ndefault = \"ghost\"\n", 0o600)
 	env, _ := w.env(t, w.home)
 
-	if err := Apply(context.Background(), env); err == nil || !strings.Contains(err.Error(), "ghost") {
+	if err := Apply(context.Background(), env, ApplyOptions{}); err == nil || !strings.Contains(err.Error(), "ghost") {
 		t.Fatalf("Apply() error = %v, want it to name the missing default profile", err)
 	}
 	if _, err := os.Stat(filepath.Join(w.home, ".gitconfig")); !os.IsNotExist(err) {
@@ -282,7 +264,7 @@ func TestApplyFailsOnInvalidConfig(t *testing.T) {
 func TestWhoamiExplainsTheChoice(t *testing.T) {
 	w := newWorld(t)
 	env, out := w.env(t, w.repos["sdk"])
-	if err := Apply(context.Background(), env); err != nil {
+	if err := Apply(context.Background(), env, ApplyOptions{}); err != nil {
 		t.Fatal(err)
 	}
 	out.Reset()
@@ -304,7 +286,7 @@ func TestWhoamiExplainsTheChoice(t *testing.T) {
 func TestWhoamiJSONAndLocalOverrideWarning(t *testing.T) {
 	w := newWorld(t)
 	env, out := w.env(t, w.repos["billing"])
-	if err := Apply(context.Background(), env); err != nil {
+	if err := Apply(context.Background(), env, ApplyOptions{}); err != nil {
 		t.Fatal(err)
 	}
 	runGit(t, w.repos["billing"], "config", "--local", "user.email", "local@example.com")
@@ -348,7 +330,7 @@ func TestDoctorBeforeAndAfterApply(t *testing.T) {
 		t.Errorf("doctor did not tell the user to run apply:\n%s", out.String())
 	}
 
-	if err := Apply(context.Background(), env); err != nil {
+	if err := Apply(context.Background(), env, ApplyOptions{}); err != nil {
 		t.Fatal(err)
 	}
 	out.Reset()

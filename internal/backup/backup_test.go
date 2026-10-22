@@ -130,3 +130,39 @@ func TestReadManifestRejectsCorruptManifest(t *testing.T) {
 		t.Fatal("ReadManifest() of corrupt JSON succeeded, want an error")
 	}
 }
+
+func TestPruneKeepsOnlyTheNewestSnapshots(t *testing.T) {
+	root := t.TempDir()
+	for i := 0; i < 5; i++ {
+		if _, err := Snapshot(root, fixedTime.Add(time.Duration(i)*time.Second), nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(root, "not-a-snapshot.txt"), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := Prune(root, 2); err != nil {
+		t.Fatalf("Prune() error: %v", err)
+	}
+
+	entries, _ := os.ReadDir(root)
+	var dirs []string
+	for _, e := range entries {
+		if e.IsDir() {
+			dirs = append(dirs, e.Name())
+		}
+	}
+	if len(dirs) != 2 || dirs[0] != "20260102T030408.000000006Z" || dirs[1] != "20260102T030409.000000006Z" {
+		t.Fatalf("after Prune(2) snapshots = %v, want the two newest", dirs)
+	}
+	if _, err := os.Stat(filepath.Join(root, "not-a-snapshot.txt")); err != nil {
+		t.Fatal("Prune() removed a file that is not a snapshot")
+	}
+}
+
+func TestPruneMissingRootIsNoOp(t *testing.T) {
+	if err := Prune(filepath.Join(t.TempDir(), "absent"), 2); err != nil {
+		t.Fatalf("Prune() of a missing directory = %v", err)
+	}
+}

@@ -9,9 +9,9 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	"github.com/weikxs/gitpersona/internal/app"
-	"github.com/weikxs/gitpersona/internal/credential"
 	"github.com/weikxs/gitpersona/internal/version"
 )
 
@@ -28,16 +28,13 @@ Usage:
 
 Commands:
   apply       Generate Git configuration from the GitPersona configuration
-  whoami      Show which profile applies here and why (--json for scripts)
+  whoami      Show which profile applies here and why
   doctor      Check the setup and explain how to fix problems
   version     Print build information
-  help        Show this help
+  help        Show help for a command
 
+Run "gitpersona help <command>" for the flags of a command.
 Git runs "gitpersona credential" itself; you do not need to call it.
-
-Flags:
-  -h, --help     Show this help
-  -v, --version  Print build information
 `
 
 // errUsage marks command-line mistakes, which exit with status 2.
@@ -54,60 +51,70 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return exitOK
 	}
 
-	switch args[0] {
-	case "help", "-h", "--help":
+	name, rest := args[0], args[1:]
+	switch name {
+	case "-h", "--help":
 		fmt.Fprint(stdout, usage)
 		return exitOK
+	case "help":
+		return help(rest, stdout, stderr)
 	case "version", "-v", "--version":
 		fmt.Fprintln(stdout, version.Current())
 		return exitOK
-	case "apply", "whoami", "doctor", "credential":
-		env, err := app.FromOS(stdin, stdout, stderr)
-		if err != nil {
-			return fail(stderr, err)
-		}
-		return runCommand(context.Background(), env, args[0], args[1:])
-	default:
+	}
+
+	cmd, ok := commands[name]
+	if !ok {
+		fmt.Fprintf(stderr, "gitpersona: unknown command %q\nRun 'gitpersona help' for usage.\n", name)
+		return exitUsage
+	}
+	fs := flag.NewFlagSet(name, flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	runCmd := cmd.bind(fs)
+	switch err := fs.Parse(rest); {
+	case errors.Is(err, flag.ErrHelp):
+		printCommandHelp(stdout, cmd, fs)
+		return exitOK
+	case err != nil:
+		fmt.Fprintf(stderr, "gitpersona %s: %v\nRun 'gitpersona help %s' for usage.\n", name, err, name)
+		return exitUsage
+	}
+	if fs.NArg() > cmd.maxArgs {
+		fmt.Fprintf(stderr, "gitpersona %s: unexpected argument %q\nRun 'gitpersona help %s' for usage.\n", name, fs.Arg(cmd.maxArgs), name)
+		return exitUsage
+	}
+
+	env, err := app.FromOS(stdin, stdout, stderr)
+	if err != nil {
+		return fail(stderr, err)
+	}
+	return runCmd(context.Background(), env, fs.Args())
+}
+
+func help(args []string, stdout, stderr io.Writer) int {
+	if len(args) == 0 {
+		fmt.Fprint(stdout, usage)
+		return exitOK
+	}
+	cmd, ok := commands[args[0]]
+	if !ok {
 		fmt.Fprintf(stderr, "gitpersona: unknown command %q\nRun 'gitpersona help' for usage.\n", args[0])
 		return exitUsage
 	}
+	fs := flag.NewFlagSet(args[0], flag.ContinueOnError)
+	cmd.bind(fs)
+	printCommandHelp(stdout, cmd, fs)
+	return exitOK
 }
 
-func runCommand(ctx context.Context, env app.Env, name string, args []string) int {
-	fs := flag.NewFlagSet(name, flag.ContinueOnError)
-	fs.SetOutput(env.Stderr)
-	asJSON := fs.Bool("json", false, "print machine-readable JSON")
-	var target credential.Target
-	if name == "credential" {
-		fs.StringVar(&target.Provider, "provider", "", "hosting provider")
-		fs.StringVar(&target.Host, "host", "", "host name")
-		fs.StringVar(&target.Account, "account", "", "account name")
+func printCommandHelp(w io.Writer, cmd command, fs *flag.FlagSet) {
+	fmt.Fprintf(w, "Usage: gitpersona %s\n\n%s\n", cmd.synopsis, cmd.description)
+	var flags strings.Builder
+	fs.SetOutput(&flags)
+	fs.PrintDefaults()
+	if flags.Len() > 0 {
+		fmt.Fprintf(w, "\nFlags:\n%s", flags.String())
 	}
-	if err := fs.Parse(args); err != nil {
-		return exitUsage
-	}
-
-	var err error
-	switch name {
-	case "apply":
-		err = app.Apply(ctx, env)
-	case "whoami":
-		err = app.Whoami(ctx, env, *asJSON)
-	case "doctor":
-		if !app.Doctor(ctx, env) {
-			return exitFailure
-		}
-	case "credential":
-		err = credentialCommand(ctx, env, fs.Args(), target)
-	}
-	return fail(env.Stderr, err)
-}
-
-func credentialCommand(ctx context.Context, env app.Env, args []string, target credential.Target) error {
-	if len(args) != 1 || target.Provider == "" || target.Host == "" || target.Account == "" {
-		return fmt.Errorf("%w: gitpersona credential --provider P --host H --account A <get|store|erase>", errUsage)
-	}
-	return app.Credential(ctx, env, args[0], target)
 }
 
 // fail prints err and returns the matching exit status.
