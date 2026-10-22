@@ -223,3 +223,17 @@ func TestDoctorWarnsWhenTheCurrentShellLacksTheIntegration(t *testing.T) {
 		t.Fatalf("doctor should cover the default and the current shell:\n%s", out.String())
 	}
 }
+
+// TestPluginFilesMatchTheLoader keeps the plugin-manager files in the
+// repository identical in effect to what install-shell writes.
+func TestPluginFilesMatchTheLoader(t *testing.T) {
+	for file, kind := range map[string]shell.Kind{"../../conf.d/gitpersona.fish": shell.Fish, "../../gitpersona.plugin.zsh": shell.Zsh} {
+		data, err := os.ReadFile(file)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.HasSuffix(string(data), loader[kind]) {
+			t.Errorf("%s does not end with the loader install-shell writes:\n%s", file, data)
+		}
+	}
+}

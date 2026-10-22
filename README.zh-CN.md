@@ -34,7 +34,8 @@ Git、`gh`、`glab` 都假定只有一个全局的"当前账户"，于是很容�
 ## 快速开始
 
 1. 用 GitHub CLI 登录每一个 GitHub 账户：`gh auth login`（每个账户执行一次）。
-2. 在 `~/.config/gitpersona/config.toml` 里描述你的身份：
+2. 运行 `gitpersona setup`：它会为 `gh` 已登录的每个账户生成一个身份，写入 `~/.config/gitpersona/config.toml`。然后在属于某个账户的目录里运行 `gitpersona use <身份>`。
+   或者自己描述你的身份：
 
    ```toml
    version = 1
@@ -91,6 +92,8 @@ Git、`gh`、`glab` 都假定只有一个全局的"当前账户"，于是很容�
 | `gitpersona rollback [<名称>\|latest] [--yes]` | 列出备份，或恢复某个备份（恢复前会先备份当前状态） |
 | `gitpersona uninstall [--yes]` | 从 Git 配置中移除 GitPersona；保留 config.toml |
 | `gitpersona help <命令>` | 查看某个命令的参数 |
+
+提示符和插件管理器（tide、Powerlevel10k、Starship、fisher、oh-my-zsh）的配置方法：见 [docs/integrations.md](docs/integrations.md)。
 
 ## 行为说明
 

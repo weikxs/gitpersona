@@ -44,15 +44,19 @@ func (g GitHub) Token(ctx context.Context, host, account string) (string, error)
 // authStatus is the part of `gh auth status --json hosts` GitPersona reads.
 // It never contains tokens because --show-token is never passed.
 type authStatus struct {
-	Hosts map[string][]struct {
-		Login string `json:"login"`
-		State string `json:"state"`
-	} `json:"hosts"`
+	Hosts map[string][]Account `json:"hosts"`
 }
 
-// SignedInAccounts lists the accounts gh is signed in to on host, using a
-// status query that does not reveal tokens.
-func (g GitHub) SignedInAccounts(ctx context.Context, host string) ([]string, error) {
+// Account is one account gh knows on a host.
+type Account struct {
+	Login  string `json:"login"`
+	State  string `json:"state"`
+	Active bool   `json:"active"`
+}
+
+// Accounts lists the accounts gh knows on host, using a status query that
+// does not reveal tokens.
+func (g GitHub) Accounts(ctx context.Context, host string) ([]Account, error) {
 	out, err := g.Run(ctx, g.GH, "auth", "status", "--hostname", host, "--json", "hosts")
 	if err != nil {
 		return nil, fmt.Errorf("gh auth status on %s: %w", host, err)
@@ -61,11 +65,40 @@ func (g GitHub) SignedInAccounts(ctx context.Context, host string) ([]string, er
 	if err := json.Unmarshal(out, &status); err != nil {
 		return nil, fmt.Errorf("parse gh auth status: %w", err)
 	}
-	var accounts []string
-	for _, a := range status.Hosts[host] {
+	return status.Hosts[host], nil
+}
+
+// SignedInAccounts lists the logins gh is signed in to on host.
+func (g GitHub) SignedInAccounts(ctx context.Context, host string) ([]string, error) {
+	accounts, err := g.Accounts(ctx, host)
+	if err != nil {
+		return nil, err
+	}
+	var logins []string
+	for _, a := range accounts {
 		if a.State == "success" {
-			accounts = append(accounts, a.Login)
+			logins = append(logins, a.Login)
 		}
 	}
-	return accounts, nil
+	return logins, nil
+}
+
+// User is the public profile of a GitHub account.
+type User struct {
+	ID   int64  `json:"id"`
+	Name string `json:"name"`
+}
+
+// User reads the public profile of login through gh, which makes the request
+// with its own credentials; GitPersona never sees a token.
+func (g GitHub) User(ctx context.Context, host, login string) (User, error) {
+	out, err := g.Run(ctx, g.GH, "api", "--hostname", host, "users/"+login)
+	if err != nil {
+		return User{}, fmt.Errorf("gh api users/%s: %w", login, err)
+	}
+	var u User
+	if err := json.Unmarshal(out, &u); err != nil {
+		return User{}, fmt.Errorf("parse GitHub user %s: %w", login, err)
+	}
+	return u, nil
 }

@@ -26,6 +26,9 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
   profile; the token goes only to that one `gh` process.
 - `doctor --fix` repairs what it safely can (regenerates files, moves the block last, installs the login shell's
   integration; never removes files) and `doctor --json`; `whoami --check` fails when Git does not use the profile.
+- `setup` creates a first configuration from the GitHub accounts `gh` is signed in to.
+- Plugins for fisher (`conf.d/gitpersona.fish`) and oh-my-zsh / zinit / antidote (`gitpersona.plugin.zsh`), and
+  prompt recipes for tide, Powerlevel10k, Starship and bash in `docs/integrations.md`.
 - `apply --dry-run` and `apply --yes`; per-command help (`gitpersona help <command>`).
 - Quick start, configuration reference and behavior notes in the README.
 - `gitpersona apply`: generates per-profile Git configuration and a rules index of `includeIf` entries

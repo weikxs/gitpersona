@@ -37,7 +37,9 @@ everything else             → acme-alex    (default)
 ## Quick start
 
 1. Sign in to every GitHub account with the GitHub CLI: `gh auth login` (once per account).
-2. Describe your profiles in `~/.config/gitpersona/config.toml`:
+2. Run `gitpersona setup`: it creates `~/.config/gitpersona/config.toml` with a profile for each account `gh` is
+   signed in to. Then, in each directory that belongs to an account, run `gitpersona use <profile>`.
+   Or describe your profiles yourself:
 
    ```toml
    version = 1
@@ -94,6 +96,8 @@ Paths must be absolute or start with `~/`.
 | `gitpersona rollback [<name>\|latest] [--yes]` | List backups, or restore one (the current state is backed up first) |
 | `gitpersona uninstall [--yes]` | Remove GitPersona from your Git configuration; keeps config.toml |
 | `gitpersona help <command>` | Show the flags of a command |
+
+Prompt and plugin-manager setups (tide, Powerlevel10k, Starship, fisher, oh-my-zsh): see [docs/integrations.md](docs/integrations.md).
 
 ## How it behaves
 

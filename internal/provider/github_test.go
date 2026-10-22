@@ -115,3 +115,22 @@ func TestGitHubSignedInAccountsErrors(t *testing.T) {
 		t.Error("SignedInAccounts() accepted output that is not JSON")
 	}
 }
+
+func TestGitHubAccountsAndUser(t *testing.T) {
+	gh := GitHub{GH: "gh", Run: func(_ context.Context, _ string, args ...string) ([]byte, error) {
+		if args[0] == "api" {
+			return []byte(`{"login":"octo-alex","id":1000001,"name":"Alex Octo"}`), nil
+		}
+		return []byte(`{"hosts":{"github.com":[{"login":"acme-alex","state":"success","active":false},{"login":"octo-alex","state":"success","active":true}]}}`), nil
+	}}
+
+	accounts, err := gh.Accounts(context.Background(), "github.com")
+	user, uerr := gh.User(context.Background(), "github.com", "octo-alex")
+
+	if err != nil || len(accounts) != 2 || accounts[1].Login != "octo-alex" || !accounts[1].Active {
+		t.Fatalf("Accounts() = %+v, %v", accounts, err)
+	}
+	if uerr != nil || user.ID != 1000001 || user.Name != "Alex Octo" {
+		t.Fatalf("User() = %+v, %v", user, uerr)
+	}
+}

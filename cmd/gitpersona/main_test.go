@@ -113,6 +113,7 @@ func TestCommandsEndToEnd(t *testing.T) {
 		{args: []string{"rollback"}, wantCode: 0, wantStdout: "(latest)"},
 		{args: []string{"init", "fish"}, wantCode: 0, wantStdout: "gitpersona_prompt"},
 		{args: []string{"shells"}, wantCode: 0, wantStdout: "installed shells:"},
+		{args: []string{"setup"}, wantCode: 1},
 		{args: []string{"init", "tcsh"}, wantCode: 2},
 		{args: []string{"prompt"}, wantCode: 0, wantStdout: "acme-alex"},
 		{args: []string{"install-shell", "--shell", "bash", "--dry-run"}, wantCode: 0, wantStdout: "would create"},

@@ -32,6 +32,17 @@ func firstArg(args []string) string {
 }
 
 var commands = map[string]command{
+	"setup": {
+		synopsis:    "setup [--print]",
+		description: "Create a first configuration with one profile per GitHub account gh is signed in to, each\naccount's noreply email, and gh's active account as the default. It asks gh for account status\n(no tokens) and for each account's public profile. --print shows it without writing.",
+		bind: func(fs *flag.FlagSet) runFunc {
+			var opts app.SetupOptions
+			fs.BoolVar(&opts.Print, "print", false, "print the configuration instead of writing it")
+			return func(ctx context.Context, env app.Env, _ []string) int {
+				return fail(env.Stderr, app.Setup(ctx, env, opts))
+			}
+		},
+	},
 	"apply": {
 		synopsis: "apply [--dry-run] [--yes]",
 		description: "Generate the Git configuration for every profile from ~/.config/gitpersona/config.toml\n" +
