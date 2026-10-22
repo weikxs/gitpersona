@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/weikxs/gitpersona/internal/config"
@@ -69,8 +70,16 @@ func (e Env) checkGenerated(ctx context.Context) check {
 	case err != nil:
 		return check{label: "generated Git configuration: " + err.Error()}
 	case len(changes) > 0:
-		return check{label: fmt.Sprintf("generated Git configuration is out of date (%d files differ)", len(changes)),
-			advice: "run `gitpersona apply`"}
+		names := make([]string, len(changes))
+		for i, c := range changes {
+			names[i] = e.display(c.path)
+		}
+		return check{
+			label: fmt.Sprintf("generated Git configuration is out of date (%s differ: %s)",
+				plural(len(changes), "file"), strings.Join(names, ", ")),
+			advice: "run `gitpersona apply` (this also happens after gitpersona is moved or upgraded, " +
+				"or the configuration or your global Git settings change)",
+		}
 	default:
 		return check{ok: true, label: "generated Git configuration is up to date"}
 	}

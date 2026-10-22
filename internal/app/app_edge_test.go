@@ -256,3 +256,117 @@ func TestReadOptionalReportsUnreadableFiles(t *testing.T) {
 		t.Fatalf("readOptional() of a missing file = %q, %v; want empty and no error", got, err)
 	}
 }
+
+func TestApplyWritesThroughASymlinkedGitConfig(t *testing.T) {
+	w := newWorld(t)
+	target := filepath.Join(w.home, "dotfiles", "gitconfig")
+	mustWrite(t, target, "[alias]\n\tst = status\n", 0o644)
+	link := filepath.Join(w.home, ".gitconfig")
+	if err := os.Symlink(filepath.Join("dotfiles", "gitconfig"), link); err != nil {
+		t.Fatal(err)
+	}
+	env, _ := w.env(t, w.home)
+
+	if err := Apply(context.Background(), env); err != nil {
+		t.Fatal(err)
+	}
+
+	if info, err := os.Lstat(link); err != nil || info.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("~/.gitconfig is no longer a symlink (err=%v)", err)
+	}
+	content, _ := os.ReadFile(target)
+	if !strings.Contains(string(content), block.Begin) || !strings.HasPrefix(string(content), "[alias]") {
+		t.Fatalf("symlink target was not updated in place:\n%s", content)
+	}
+	if got := runGit(t, w.repos["billing"], "config", "user.email"); got != "1000002+acme-alex@users.noreply.github.com" {
+		t.Fatalf("identity through a symlinked ~/.gitconfig = %q", got)
+	}
+}
+
+func TestApplyHonorsGitConfigGlobal(t *testing.T) {
+	w := newWorld(t)
+	alt := filepath.Join(w.home, "alt", "gitconfig")
+	t.Setenv("GIT_CONFIG_GLOBAL", alt)
+	env, _ := w.env(t, w.home)
+	env.GlobalGitConfig = alt
+
+	if err := Apply(context.Background(), env); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := os.Stat(filepath.Join(w.home, ".gitconfig")); !os.IsNotExist(err) {
+		t.Errorf("apply wrote ~/.gitconfig although GIT_CONFIG_GLOBAL points elsewhere")
+	}
+	if got := runGit(t, w.repos["blog"], "config", "user.email"); got != "1000001+octo-alex@users.noreply.github.com" {
+		t.Fatalf("identity with GIT_CONFIG_GLOBAL = %q", got)
+	}
+}
+
+func TestApplyRefusesReadOnlyGitConfig(t *testing.T) {
+	w := newWorld(t)
+	path := filepath.Join(w.home, ".gitconfig")
+	mustWrite(t, path, "[user]\n", 0o444)
+	env, _ := w.env(t, w.home)
+
+	err := Apply(context.Background(), env)
+
+	if err == nil || !strings.Contains(err.Error(), "read-only") {
+		t.Fatalf("Apply() error = %v, want a read-only refusal", err)
+	}
+	if content, _ := os.ReadFile(path); string(content) != "[user]\n" {
+		t.Fatalf("read-only ~/.gitconfig was modified:\n%s", content)
+	}
+}
+
+func TestBrokenMarkersErrorTellsHowToFix(t *testing.T) {
+	w := newWorld(t)
+	mustWrite(t, filepath.Join(w.home, ".gitconfig"), block.Begin+"\n[user]\n", 0o644)
+	env, _ := w.env(t, w.home)
+
+	err := Apply(context.Background(), env)
+
+	if err == nil || !strings.Contains(err.Error(), "keep exactly one pair") {
+		t.Fatalf("Apply() error = %v, want instructions to repair the markers", err)
+	}
+}
+
+func TestStableExecutablePrefersTheCommandOnPath(t *testing.T) {
+	cellar := filepath.Join(t.TempDir(), "Cellar", "gitpersona", "0.1.0", "bin")
+	real := filepath.Join(cellar, "gitpersona")
+	mustWrite(t, real, "#!/bin/sh\n", 0o700)
+	brewBin := t.TempDir()
+	link := filepath.Join(brewBin, "gitpersona")
+	if err := os.Symlink(real, link); err != nil {
+		t.Fatal(err)
+	}
+	onPath := func(string) (string, error) { return link, nil }
+	notOnPath := func(string) (string, error) { return "", errors.New("not found") }
+	otherOnPath := func(string) (string, error) { return filepath.Join(brewBin, "missing"), nil }
+
+	if got := stableExecutable(real, onPath); got != link {
+		t.Errorf("stableExecutable() = %s, want the PATH entry %s that survives upgrades", got, link)
+	}
+	if got := stableExecutable(real, notOnPath); got != real {
+		t.Errorf("stableExecutable() without a PATH entry = %s, want %s", got, real)
+	}
+	if got := stableExecutable(real, otherOnPath); got != real {
+		t.Errorf("stableExecutable() with a different gitpersona on PATH = %s, want %s", got, real)
+	}
+}
+
+func TestDoctorListsOutOfDateFiles(t *testing.T) {
+	w := newWorld(t)
+	env, out := w.env(t, w.home)
+	if err := Apply(context.Background(), env); err != nil {
+		t.Fatal(err)
+	}
+	env.Executable = "/tmp/home/upgraded/gitpersona"
+	out.Reset()
+
+	if Doctor(context.Background(), env) {
+		t.Fatal("Doctor() passed although the helper path changed")
+	}
+	if !strings.Contains(out.String(), "~/.config/gitpersona/profiles/acme.gitconfig") {
+		t.Fatalf("doctor should name the files that differ:\n%s", out.String())
+	}
+}

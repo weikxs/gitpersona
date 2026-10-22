@@ -110,19 +110,34 @@ func (e Env) generateOptions(ctx context.Context) (generate.Options, error) {
 	return opts, nil
 }
 
+// userWritablePerm is the owner-write bit; without it the user has marked the
+// file read-only and GitPersona must not change it.
+const userWritablePerm os.FileMode = 0o200
+
 func (e Env) gitConfigWithBlock() (change, error) {
-	path := e.userGitConfig()
+	link := e.userGitConfig()
+	// Write through symbolic links so dotfiles managers keep working.
+	path := link
+	if real, err := filepath.EvalSymlinks(link); err == nil {
+		path = real
+	}
 	current, err := readOptional(path)
 	if err != nil {
 		return change{}, err
 	}
 	updated, err := block.Upsert(current, generate.IncludeBody(filepath.Join(e.ConfigDir, generate.RulesFile)))
 	if err != nil {
-		return change{}, fmt.Errorf("%s: %w", path, err)
+		return change{}, fmt.Errorf("%s: %w. Open the file and keep exactly one pair of the lines %q and %q "+
+			"(or delete both), then run `gitpersona apply` again", e.display(link), err, block.Begin, block.End)
 	}
+
 	perm := fsutil.FilePerm
 	if info, err := os.Stat(path); err == nil {
 		perm = info.Mode().Perm() // the file belongs to the user; keep its mode
+		if perm&userWritablePerm == 0 && updated != current {
+			return change{}, fmt.Errorf("%s is read-only; make it writable (chmod u+w) or add the include yourself:\n%s",
+				e.display(link), generate.IncludeBody(filepath.Join(e.ConfigDir, generate.RulesFile)))
+		}
 	}
 	return change{path: path, content: updated, perm: perm}, nil
 }

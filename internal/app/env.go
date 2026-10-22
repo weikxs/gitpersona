@@ -26,6 +26,8 @@ type Env struct {
 	WorkDir         string
 	Executable      string
 	CaseInsensitive bool
+	// GlobalGitConfig is GIT_CONFIG_GLOBAL when set; empty means ~/.gitconfig.
+	GlobalGitConfig string
 
 	Stdin  io.Reader
 	Stdout io.Writer
@@ -50,15 +52,14 @@ func FromOS(stdin io.Reader, stdout, stderr io.Writer) (Env, error) {
 	if err != nil {
 		return Env{}, fmt.Errorf("find gitpersona executable: %w", err)
 	}
-	if resolved, err := filepath.EvalSymlinks(exe); err == nil {
-		exe = resolved
-	}
+	exe = stableExecutable(exe, exec.LookPath)
 	return Env{
 		Home:            home,
 		ConfigDir:       configDir(home),
 		WorkDir:         wd,
 		Executable:      exe,
 		CaseInsensitive: paths.CaseInsensitiveFS(),
+		GlobalGitConfig: os.Getenv("GIT_CONFIG_GLOBAL"),
 		Stdin:           stdin,
 		Stdout:          stdout,
 		Stderr:          stderr,
@@ -66,6 +67,27 @@ func FromOS(stdin io.Reader, stdout, stderr io.Writer) (Env, error) {
 		LookPath:        exec.LookPath,
 		Run:             provider.ExecRunner,
 	}, nil
+}
+
+// stableExecutable returns the path Git should use to run gitpersona as a
+// credential helper. Package managers install the real binary in a versioned
+// directory and put a symbolic link on PATH; the link survives upgrades while
+// the versioned path does not, so the PATH entry wins when it is this binary.
+func stableExecutable(exe string, lookPath func(string) (string, error)) string {
+	onPath, err := lookPath("gitpersona")
+	if err != nil {
+		return exe
+	}
+	abs, err := filepath.Abs(onPath)
+	if err != nil {
+		return exe
+	}
+	a, errA := os.Stat(abs)
+	b, errB := os.Stat(exe)
+	if errA != nil || errB != nil || !os.SameFile(a, b) {
+		return exe
+	}
+	return abs
 }
 
 // configDir follows the XDG base directory convention.
@@ -77,9 +99,17 @@ func configDir(home string) string {
 }
 
 // Locations derived from the environment.
-func (e Env) configFile() string    { return filepath.Join(e.ConfigDir, "config.toml") }
-func (e Env) backupDir() string     { return filepath.Join(e.ConfigDir, "backups") }
-func (e Env) userGitConfig() string { return filepath.Join(e.Home, ".gitconfig") }
+func (e Env) configFile() string { return filepath.Join(e.ConfigDir, "config.toml") }
+func (e Env) backupDir() string  { return filepath.Join(e.ConfigDir, "backups") }
+
+// userGitConfig is the global Git configuration file Git reads, which may be
+// a symbolic link managed by a dotfiles tool.
+func (e Env) userGitConfig() string {
+	if e.GlobalGitConfig != "" {
+		return e.GlobalGitConfig
+	}
+	return filepath.Join(e.Home, ".gitconfig")
+}
 
 // git runs git in dir and returns its trimmed standard output.
 func (e Env) git(ctx context.Context, dir string, args ...string) (string, error) {
