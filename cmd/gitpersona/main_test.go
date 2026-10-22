@@ -19,13 +19,15 @@ func TestRun(t *testing.T) {
 		{name: "help flag prints usage", args: []string{"--help"}, wantCode: 0, wantStdout: "Usage:"},
 		{name: "no arguments prints usage", args: nil, wantCode: 0, wantStdout: "Usage:"},
 		{name: "unknown command fails with usage hint", args: []string{"bogus"}, wantCode: 2, wantStderr: `unknown command "bogus"`},
+		{name: "credential without target is a usage error", args: []string{"credential", "get"}, wantCode: 2, wantStderr: "--provider P --host H --account A"},
+		{name: "unknown flag is a usage error", args: []string{"whoami", "--bogus"}, wantCode: 2, wantStderr: "flag provided but not defined"},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			var stdout, stderr bytes.Buffer
 
-			code := run(tc.args, &stdout, &stderr)
+			code := run(tc.args, strings.NewReader(""), &stdout, &stderr)
 
 			if code != tc.wantCode {
 				t.Fatalf("exit code = %d, want %d (stderr: %q)", code, tc.wantCode, stderr.String())

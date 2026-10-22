@@ -7,7 +7,7 @@ English | [简体中文](README.zh-CN.md)
 Work in `~/Projects/acme` and you commit, push and open pull requests as your work account.
 Switch to `~/Projects/personal` and you are your personal account again. No commands to run, nothing to remember.
 
-> **Status: early development (M0 — project scaffold).** The features below are the planned design and are not usable yet.
+> **Status: early development.** The core engine (`apply`, `whoami`, `doctor`, GitHub credentials) works; shell integration, the web UI and other providers are in progress. Not released yet.
 
 ## Why
 

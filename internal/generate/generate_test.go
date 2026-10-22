@@ -155,3 +155,32 @@ func compareGolden(t *testing.T, name, got string) {
 		t.Errorf("%s differs from %s\n--- got ---\n%s\n--- want ---\n%s", name, path, got, want)
 	}
 }
+
+func TestIncludeBody(t *testing.T) {
+	got := IncludeBody("/tmp/home/.config/gitpersona/rules.gitconfig")
+
+	if !strings.HasSuffix(got, "[include]\n\tpath = /tmp/home/.config/gitpersona/rules.gitconfig\n") {
+		t.Fatalf("IncludeBody() = %q", got)
+	}
+}
+
+func TestGenerateAddsRealPathWhenRuleGoesThroughSymlink(t *testing.T) {
+	opts := demoOptions()
+	opts.Canonicalize = func(p string) string { return strings.Replace(p, "/tmp/", "/private/tmp/", 1) }
+
+	files, err := Generate(demoConfig(), opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rules := files[len(files)-1].Content
+
+	for _, want := range []string{
+		`[includeIf "gitdir/i:/tmp/home/Projects/acme/"]`,
+		`[includeIf "gitdir/i:/private/tmp/home/Projects/acme/"]`,
+		`[includeIf "gitdir/i:/private/tmp/home/Downloads/globex-hotfix/.git"]`,
+	} {
+		if !strings.Contains(rules, want) {
+			t.Errorf("rules are missing %s\n%s", want, rules)
+		}
+	}
+}

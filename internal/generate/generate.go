@@ -37,6 +37,10 @@ type Options struct {
 	// FallbackSSHCommand restores the user's core.sshCommand for profiles
 	// without an SSH key. Empty means plain "ssh".
 	FallbackSSHCommand string
+	// Canonicalize, if set, resolves symbolic links in a path. Git matches
+	// includeIf against the real path of the repository, so when a rule's
+	// directory goes through a symlink an entry for the real path is added.
+	Canonicalize func(string) string
 }
 
 // File is one generated file.
@@ -177,15 +181,34 @@ func rulesIndex(cfg config.Config, opts Options) string {
 		gitdir = "gitdir/i:"
 	}
 	for _, r := range sortedRules(cfg, opts.Home) {
-		fmt.Fprintf(&b, "\n# Rule: %s -> %s\n[includeIf %s]\n", r.written, r.profile, quoteSubsection(gitdir+r.norm+"/"))
-		writeKV(&b, "path", opts.profilePath(r.profile))
+		fmt.Fprintf(&b, "\n# Rule: %s -> %s\n", r.written, r.profile)
+		opts.writeIncludeIf(&b, gitdir, r.norm, "/", r.profile)
 	}
 	for _, pin := range cfg.Pins {
 		norm, _ := paths.Normalize(pin.Repo, opts.Home) // validated in Generate
-		fmt.Fprintf(&b, "\n# Pin: %s -> %s\n[includeIf %s]\n", pin.Repo, pin.Profile, quoteSubsection(gitdir+norm+"/.git"))
-		writeKV(&b, "path", opts.profilePath(pin.Profile))
+		fmt.Fprintf(&b, "\n# Pin: %s -> %s\n", pin.Repo, pin.Profile)
+		opts.writeIncludeIf(&b, gitdir, norm, "/.git", pin.Profile)
 	}
 	return b.String()
+}
+
+// writeIncludeIf writes the entry for dir, plus one for its real path when a
+// symbolic link makes the two differ.
+func (o Options) writeIncludeIf(b *strings.Builder, gitdir, dir, suffix, profile string) {
+	for _, d := range o.pathForms(dir) {
+		fmt.Fprintf(b, "[includeIf %s]\n", quoteSubsection(gitdir+d+suffix))
+		writeKV(b, "path", o.profilePath(profile))
+	}
+}
+
+func (o Options) pathForms(dir string) []string {
+	if o.Canonicalize == nil {
+		return []string{dir}
+	}
+	if real := o.Canonicalize(dir); real != dir {
+		return []string{dir, real}
+	}
+	return []string{dir}
 }
 
 type rule struct {
@@ -212,4 +235,13 @@ func (o Options) profilePath(id string) string {
 
 func writeKV(b *strings.Builder, key, value string) {
 	fmt.Fprintf(b, "\t%s = %s\n", key, quoteValue(value))
+}
+
+// IncludeBody is the content GitPersona manages inside the user's Git
+// configuration: a single include of the rules index.
+func IncludeBody(rulesPath string) string {
+	var b strings.Builder
+	b.WriteString("# Managed by GitPersona: run `gitpersona apply` to change it. Do not edit inside this block.\n[include]\n")
+	writeKV(&b, "path", rulesPath)
+	return b.String()
 }
