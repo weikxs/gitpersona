@@ -29,6 +29,11 @@ Usage:
 Commands:
   apply       Generate Git configuration from the GitPersona configuration
   whoami      Show which profile applies here and why
+  use         Make the current directory use a profile
+  remove      Stop assigning a directory to a profile
+  pin         Bind the current repository to a profile
+  unpin       Remove the pin of the current repository
+  list        List profiles, directories and pins
   doctor      Check the setup and explain how to fix problems
   version     Print build information
   help        Show help for a command

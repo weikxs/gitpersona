@@ -3,20 +3,25 @@ package app
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"time"
 
 	"github.com/weikxs/gitpersona/internal/block"
 	"github.com/weikxs/gitpersona/internal/config"
+	"github.com/weikxs/gitpersona/internal/paths"
 	"github.com/weikxs/gitpersona/internal/provider"
 )
 
 const statusCheckTimeout = 15 * time.Second
 
-// check is the outcome of one doctor check.
+// check is the outcome of one doctor check. A warning is shown but does not
+// make doctor fail.
 type check struct {
 	ok     bool
+	warn   bool
 	label  string
 	advice string
 }
@@ -31,17 +36,21 @@ func Doctor(ctx context.Context, e Env) bool {
 		checks = append(checks, e.checkGenerated(ctx))
 		checks = append(checks, e.checkBlockIsLast())
 		checks = append(checks, e.checkCurrentRepository(ctx, cfg)...)
+		checks = append(checks, e.checkPins(cfg)...)
 		checks = append(checks, e.checkGitHubAccounts(ctx, cfg)...)
 	}
 
 	allOK := true
 	for _, c := range checks {
 		mark := "✓"
-		if !c.ok {
+		switch {
+		case c.warn:
+			mark = "!"
+		case !c.ok:
 			mark, allOK = "✗", false
 		}
 		fmt.Fprintf(e.Stdout, "%s %s\n", mark, c.label)
-		if !c.ok && c.advice != "" {
+		if (c.warn || !c.ok) && c.advice != "" {
 			fmt.Fprintf(e.Stdout, "    → %s\n", c.advice)
 		}
 	}
@@ -93,6 +102,24 @@ func (e Env) checkGenerated(ctx context.Context) check {
 	default:
 		return check{ok: true, label: "generated Git configuration is up to date"}
 	}
+}
+
+// checkPins warns about pins whose repository does not exist (yet): they are
+// harmless, but often a typo or a repository that moved.
+func (e Env) checkPins(cfg config.Config) []check {
+	var checks []check
+	for _, pin := range cfg.Pins {
+		norm, err := paths.Normalize(pin.Repo, e.Home)
+		if err != nil {
+			continue
+		}
+		if _, err := os.Stat(filepath.Join(norm, ".git")); err != nil {
+			checks = append(checks, check{warn: true,
+				label:  fmt.Sprintf("pin %s: no Git repository there yet", pin.Repo),
+				advice: "clone it there, or remove the pin with `gitpersona unpin` inside the repository"})
+		}
+	}
+	return checks
 }
 
 // checkCurrentRepository explains, when doctor runs inside a repository, why

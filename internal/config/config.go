@@ -99,17 +99,27 @@ func Load(path string) (Config, error) {
 		return Config{}, fmt.Errorf("read %s: %w", path, err)
 	}
 
+	cfg, err := Parse(data)
+	if err != nil {
+		return Config{}, fmt.Errorf("parse %s: %w", path, err)
+	}
+	return cfg, nil
+}
+
+// Parse decodes configuration text and fills in defaults. It rejects unknown
+// keys so that typos are not silently ignored.
+func Parse(data []byte) (Config, error) {
 	var cfg Config
 	meta, err := toml.Decode(string(data), &cfg)
 	if err != nil {
-		return Config{}, fmt.Errorf("parse %s: %w", path, err)
+		return Config{}, err
 	}
 	if undecoded := meta.Undecoded(); len(undecoded) > 0 {
 		keys := make([]string, len(undecoded))
 		for i, k := range undecoded {
 			keys[i] = k.String()
 		}
-		return Config{}, fmt.Errorf("parse %s: unknown keys: %s", path, strings.Join(keys, ", "))
+		return Config{}, fmt.Errorf("unknown keys: %s", strings.Join(keys, ", "))
 	}
 	return withDefaults(cfg), nil
 }

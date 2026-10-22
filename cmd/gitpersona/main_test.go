@@ -9,6 +9,7 @@ import (
 )
 
 func TestRun(t *testing.T) {
+	t.Chdir(t.TempDir())
 	tests := []struct {
 		name       string
 		args       []string
@@ -87,6 +88,8 @@ dirs = ["~/Projects/acme"]
 	t.Setenv("GIT_CONFIG_GLOBAL", filepath.Join(home, ".gitconfig"))
 	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	// Commands act on the current directory; never let them see the real one.
+	t.Chdir(home)
 	return home
 }
 
@@ -102,6 +105,11 @@ func TestCommandsEndToEnd(t *testing.T) {
 		{args: []string{"apply"}, wantCode: 0, wantStdout: "Backup saved in"},
 		{args: []string{"doctor"}, wantCode: 0, wantStdout: "is up to date"},
 		{args: []string{"whoami", "--json"}, wantCode: 0, wantStdout: `"profile": "acme"`},
+		{args: []string{"list"}, wantCode: 0, wantStdout: "acme (default)"},
+		{args: []string{"use", "ghost"}, wantCode: 1},
+		{args: []string{"remove", "~/nowhere"}, wantCode: 1},
+		{args: []string{"pin", "acme"}, wantCode: 1},
+		{args: []string{"unpin"}, wantCode: 1},
 		{args: []string{"credential", "--provider", "github", "--host", "github.com", "--account", "acme-alex", "get"},
 			stdin: "protocol=https\nhost=github.com\n\n", wantCode: 0, wantStdout: "password=token"},
 		{args: []string{"credential", "--provider", "github", "--host", "github.com", "--account", "acme-alex", "bogus"},

@@ -111,6 +111,8 @@ func newWorld(t *testing.T) world {
 	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
 	originalPath := os.Getenv("PATH")
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+originalPath)
+	// Commands act on the current directory; never let them see the real one.
+	t.Chdir(home)
 
 	w := world{home: home, repos: map[string]string{}, pathWithoutGH: originalPath}
 	for name, rel := range map[string]string{

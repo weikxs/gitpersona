@@ -36,7 +36,9 @@ GitPersona is about identities, so this rule has no exceptions.
   - a literal demo home directory is `/tmp/home` (for example `/tmp/home/Projects/acme`);
   - tests that touch the file system use `t.TempDir()`, and `make test` / `make cover` set
     `TMPDIR=/tmp/gitpersona-test`, so those directories are created under `/tmp` too;
-  - tests that run Git or GitPersona end to end set `HOME` (and `XDG_CONFIG_HOME`) to a directory under `/tmp`.
+  - tests that run Git or GitPersona end to end set `HOME`, `XDG_CONFIG_HOME` and `GIT_CONFIG_GLOBAL` to files
+    under `/tmp` **and change the working directory there (`t.Chdir`)**, because commands act on the current
+    directory and must never see the repository the tests run from.
 - Real home directories (`/Users/<name>/`, `/home/<name>/`) are rejected by the privacy check without exception.
 - Use reserved example domains only: `example.com`, `example.org`, `*.example` ([RFC 2606](https://www.rfc-editor.org/rfc/rfc2606)).
 - `make privacy` (pre-commit hook and CI) blocks local paths, private keys and tokens. Each contributor may

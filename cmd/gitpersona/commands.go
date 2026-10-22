@@ -22,6 +22,13 @@ type command struct {
 	bind        func(fs *flag.FlagSet) runFunc
 }
 
+func firstArg(args []string) string {
+	if len(args) == 0 {
+		return ""
+	}
+	return args[0]
+}
+
 var commands = map[string]command{
 	"apply": {
 		synopsis: "apply [--dry-run] [--yes]",
@@ -43,6 +50,55 @@ var commands = map[string]command{
 			asJSON := fs.Bool("json", false, "print machine-readable JSON")
 			return func(ctx context.Context, env app.Env, _ []string) int {
 				return fail(env.Stderr, app.Whoami(ctx, env, *asJSON))
+			}
+		},
+	},
+	"use": {
+		synopsis:    "use <profile>",
+		description: "Make repositories in the current directory use a profile (moving the directory from\nanother profile if needed), keep your comments in config.toml, and apply the change.",
+		maxArgs:     1,
+		bind: func(*flag.FlagSet) runFunc {
+			return func(ctx context.Context, env app.Env, args []string) int {
+				return fail(env.Stderr, app.Use(ctx, env, firstArg(args)))
+			}
+		},
+	},
+	"remove": {
+		synopsis:    "remove [directory]",
+		description: "Stop assigning a directory (the current one by default) to a profile, and apply the change.",
+		maxArgs:     1,
+		bind: func(*flag.FlagSet) runFunc {
+			return func(ctx context.Context, env app.Env, args []string) int {
+				return fail(env.Stderr, app.Remove(ctx, env, firstArg(args)))
+			}
+		},
+	},
+	"list": {
+		synopsis:    "list [--json]",
+		description: "List every profile with its directories and pinned repositories.",
+		bind: func(fs *flag.FlagSet) runFunc {
+			asJSON := fs.Bool("json", false, "print machine-readable JSON")
+			return func(ctx context.Context, env app.Env, _ []string) int {
+				return fail(env.Stderr, app.List(ctx, env, *asJSON))
+			}
+		},
+	},
+	"pin": {
+		synopsis:    "pin <profile>",
+		description: "Bind the current repository to a profile, overriding directory rules, and apply the change.\nWorktrees follow their main repository; pin that instead.",
+		maxArgs:     1,
+		bind: func(*flag.FlagSet) runFunc {
+			return func(ctx context.Context, env app.Env, args []string) int {
+				return fail(env.Stderr, app.Pin(ctx, env, firstArg(args)))
+			}
+		},
+	},
+	"unpin": {
+		synopsis:    "unpin",
+		description: "Remove the pin of the current repository and apply the change.",
+		bind: func(*flag.FlagSet) runFunc {
+			return func(ctx context.Context, env app.Env, _ []string) int {
+				return fail(env.Stderr, app.Unpin(ctx, env))
 			}
 		},
 	},

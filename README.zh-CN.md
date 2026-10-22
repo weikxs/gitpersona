@@ -80,6 +80,10 @@ Git、`gh`、`glab` 都假定只有一个全局的"当前账户"，于是很容�
 |---|---|
 | `gitpersona apply [--dry-run] [--yes]` | 生成 Git 配置；`--dry-run` 只预览，`--yes` 允许删除已移除身份的文件 |
 | `gitpersona whoami [--json]` | 显示这里 Git 使用哪个身份以及原因 |
+| `gitpersona use <身份>` | 让当前目录使用某个身份（保留 config.toml 里的注释） |
+| `gitpersona remove [目录]` | 取消某个目录的身份分配 |
+| `gitpersona pin <身份>` / `unpin` | 把当前仓库绑定到某个身份，或取消绑定 |
+| `gitpersona list [--json]` | 列出身份、目录和 Pin |
 | `gitpersona doctor` | 检查配置并说明如何修复问题 |
 | `gitpersona help <命令>` | 查看某个命令的参数 |
 
