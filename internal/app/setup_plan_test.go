@@ -164,3 +164,32 @@ func TestSetupPlanIsCheckedBeforeAnythingIsWritten(t *testing.T) {
 		})
 	}
 }
+
+func TestProposeSetupUsesThePublicEmailAndMatchesByIt(t *testing.T) {
+	w := newWorld(t)
+	withoutConfig(t, w)
+	// The hand-made identity uses octo-alex's public email but names no account.
+	mustWrite(t, filepath.Join(w.home, ".gitconfig-personal"), "[user]\n\tname = Alex\n\temail = Alex@Octo.example\n", 0o600)
+	mustWrite(t, filepath.Join(w.home, ".gitconfig-clients"), "[user]\n\tname = Other\n\temail = other@clients.example\n", 0o600)
+	env, _ := w.env(t, w.home)
+
+	got, err := ProposeSetup(context.Background(), env)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if octo := got.Profiles[0]; octo.Source != "existing" || octo.Dirs[0] != "~/Projects/personal" {
+		t.Errorf("an identity with the account's public email belongs to it, got %+v", octo)
+	}
+	if acme := got.Profiles[1]; acme.EmailSource != "noreply" || acme.Email != "1000002+acme-alex@users.noreply.github.com" {
+		t.Errorf("an account without a public email gets its noreply address, got %+v", acme)
+	}
+
+	mustWrite(t, filepath.Join(w.home, ".gitconfig"), "", 0o600)
+	got, err = ProposeSetup(context.Background(), env)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if octo := got.Profiles[0]; octo.Source != "gh" || octo.EmailSource != "public" || octo.Email != "alex@octo.example" {
+		t.Errorf("without an existing setup the public email is proposed, got %+v", octo)
+	}
+}

@@ -34,11 +34,14 @@ func TestSetupCreatesAConfigFromSignedInAccounts(t *testing.T) {
 	}
 	personal, _ := cfg.ProfileByID("octo-alex")
 	acme, _ := cfg.ProfileByID("acme-alex")
-	if personal.Email != "1000001+octo-alex@users.noreply.github.com" || personal.Name != "Alex Octo" {
-		t.Errorf("profile from GitHub = %+v", personal)
+	if personal.Email != "alex@octo.example" || personal.Name != "Alex Octo" {
+		t.Errorf("a profile should use the account's public name and email, got %+v", personal)
 	}
-	if acme.Name != "acme-alex" {
-		t.Errorf("a profile without a display name should fall back to the login, got %q", acme.Name)
+	if acme.Name != "acme-alex" || acme.Email != "1000002+acme-alex@users.noreply.github.com" {
+		t.Errorf("without a public name or email a profile falls back to the login and noreply address, got %+v", acme)
+	}
+	if text := readConfigFile(t, w); !strings.Contains(text, "# public email on GitHub") || !strings.Contains(text, "shows no public email") {
+		t.Errorf("config.toml should say where each email came from:\n%s", text)
 	}
 	if !strings.Contains(out.String(), "gitpersona use") {
 		t.Errorf("setup should explain the next steps:\n%s", out.String())

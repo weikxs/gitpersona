@@ -22,6 +22,9 @@ type SetupProfile struct {
 	// Source is "existing" when name, email and directories come from the
 	// user's own includeIf setup, and "gh" when they come from GitHub.
 	Source string `json:"source,omitempty"`
+	// EmailSource is "public" for the email on the GitHub profile, "noreply"
+	// when the account shows none, or "existing".
+	EmailSource string `json:"email_source,omitempty"`
 }
 
 // SetupProposal is what the setup page starts from.
@@ -59,10 +62,11 @@ func ProposeSetup(ctx context.Context, e Env) (SetupProposal, error) {
 			continue
 		}
 		p := SetupProfile{ID: profileID(a.Login), Account: a.Login, Dirs: []string{}, Source: "gh"}
-		p.Name, p.Email = ghIdentity(ctx, source, a.Login)
-		if i := matchIdentity(existing, a.Login); i >= 0 {
+		gh := ghIdentity(ctx, source, a.Login)
+		p.Name, p.Email, p.EmailSource = gh.name, gh.email, gh.emailSource
+		if i := matchIdentity(existing, a.Login, gh.publicEmail); i >= 0 {
 			used[i] = true
-			p.Name, p.Email, p.Source = existing[i].Name, existing[i].Email, "existing"
+			p.Name, p.Email, p.Source, p.EmailSource = existing[i].Name, existing[i].Email, "existing", "existing"
 			p.Dirs = append(p.Dirs, existing[i].Dirs...)
 		}
 		if a.Active {
@@ -92,28 +96,41 @@ func (e Env) signedInAccounts(ctx context.Context) (provider.GitHub, []provider.
 	return source, accounts, nil
 }
 
-// ghIdentity returns the account's public name (or its login) and its
-// GitHub noreply email.
-func ghIdentity(ctx context.Context, source provider.GitHub, login string) (name, email string) {
-	name, email = login, login+"@users.noreply.github.com"
-	if u, err := source.User(ctx, config.DefaultGitHubHost, login); err == nil {
-		if u.Name != "" {
-			name = u.Name
-		}
-		if u.ID > 0 {
-			email = fmt.Sprintf("%d+%s@users.noreply.github.com", u.ID, login)
-		}
+// accountIdentity is the identity GitHub shows for an account.
+type accountIdentity struct {
+	name, email string
+	emailSource string // "public" or "noreply"
+	publicEmail string // the profile's public email, or ""
+}
+
+// ghIdentity returns the account's public name (or its login) and its public
+// email; an account that shows no email gets its GitHub noreply address.
+func ghIdentity(ctx context.Context, source provider.GitHub, login string) accountIdentity {
+	id := accountIdentity{name: login, email: login + "@users.noreply.github.com", emailSource: "noreply"}
+	u, err := source.User(ctx, config.DefaultGitHubHost, login)
+	if err != nil {
+		return id
 	}
-	return name, email
+	if u.Name != "" {
+		id.name = u.Name
+	}
+	if u.ID > 0 {
+		id.email = fmt.Sprintf("%d+%s@users.noreply.github.com", u.ID, login)
+	}
+	if u.Email != "" {
+		id.email, id.emailSource, id.publicEmail = u.Email, "public", u.Email
+	}
+	return id
 }
 
 // matchIdentity finds the existing identity that belongs to login: by its
-// credential username, or by the login's noreply email.
-func matchIdentity(identities []discover.Identity, login string) int {
+// credential username, the account's public email, or its noreply email.
+func matchIdentity(identities []discover.Identity, login, publicEmail string) int {
 	noreply := "+" + strings.ToLower(login) + "@users.noreply.github.com"
 	for i, id := range identities {
 		email := strings.ToLower(id.Email)
 		if strings.EqualFold(id.Account, login) || strings.HasSuffix(email, noreply) ||
+			(publicEmail != "" && strings.EqualFold(id.Email, publicEmail)) ||
 			email == strings.ToLower(login)+"@users.noreply.github.com" {
 			return i
 		}

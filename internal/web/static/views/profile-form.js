@@ -40,7 +40,7 @@ export function profileForm({ profile, accounts, onSubmit, onCancel }) {
     field("GitHub account", inputs.account, "The login used for pushes and gh in this profile's directories"),
     accountList(listId, accounts),
     field("Author name", inputs.name),
-    field("Author email", inputs.email, "Use the account's noreply address to keep your email private"),
+    field("Author email", inputs.email, "The email recorded in your commits, usually the one on the account's GitHub profile"),
     isNew ? null : h("fieldset", {},
       h("legend", {}, "Optional"),
       h("div", { class: "stack" },

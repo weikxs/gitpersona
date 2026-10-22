@@ -82,7 +82,7 @@ case "$1 $2" in
   sep=""; active=true
   for a in $accounts; do printf '%s{"login":"%s","state":"success","active":%s}' "$sep" "$a" "$active"; sep=","; active=false; done
   printf ']}}\n' ;;
-"api --hostname") case "$4" in users/octo-alex) echo '{"login":"octo-alex","id":1000001,"name":"Alex Octo"}' ;; users/acme-alex) echo '{"login":"acme-alex","id":1000002,"name":null}' ;; *) exit 1 ;; esac ;;
+"api --hostname") case "$4" in users/octo-alex) echo '{"login":"octo-alex","id":1000001,"name":"Alex Octo","email":"alex@octo.example"}' ;; users/acme-alex) echo '{"login":"acme-alex","id":1000002,"name":null,"email":null}' ;; *) exit 1 ;; esac ;;
 *)
   # Any other gh command: report which account's token it received, without printing the token.
   if [ -n "$GH_TOKEN" ]; then echo "gh ran as ${GH_TOKEN#token-for-}"; else echo "gh ran with its active account"; fi ;;

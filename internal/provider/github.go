@@ -85,8 +85,9 @@ func (g GitHub) SignedInAccounts(ctx context.Context, host string) ([]string, er
 
 // User is the public profile of a GitHub account.
 type User struct {
-	ID   int64  `json:"id"`
-	Name string `json:"name"`
+	ID    int64  `json:"id"`
+	Name  string `json:"name"`
+	Email string `json:"email"` // the public email, empty when the account hides it
 }
 
 // User reads the public profile of login through gh, which makes the request

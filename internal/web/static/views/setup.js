@@ -9,6 +9,12 @@ import { diffBlock } from "./apply.js";
 
 const STEPS = ["Identities", "Directories", "Review & apply"];
 
+const EMAIL_HINTS = {
+  public: "The public email on this account's GitHub profile",
+  noreply: "This account shows no public email, so this is its GitHub noreply address",
+  existing: "The email your Git configuration already uses for this account",
+};
+
 // wizard holds the user's choices; every change replaces it with a new object.
 let wizard = null;
 let shownStep = null;
@@ -72,8 +78,8 @@ function nav(body, run, { back = true, nextLabel = "Next" }) {
 function identities(body, run) {
   const form = h("form", { class: "stack" },
     h("h3", { tabindex: "-1" }, "1. Confirm your identities"),
-    h("p", { class: "muted" }, "One profile for each account signed in to gh. The email is the account's private noreply address " +
-      "unless your existing setup already used another one."),
+    h("p", { class: "muted" }, "One profile for each account signed in to gh, with the name and email shown on its GitHub profile. " +
+      "Change them here if your commits should use something else."),
     wizard.profiles.map((p, i) => identityFields(p, i)),
     wizard.unmatched.length > 0 ? unmatchedNote() : null,
     nav(body, run, { back: false }));
@@ -101,7 +107,7 @@ function identityFields(p, i) {
   const fields = h("div", { class: "stack", hidden: !p.include },
     field("Profile name", input("id", { pattern: "[a-z0-9][a-z0-9-]{0,31}", maxlength: 32 }), "Lowercase letters, digits and -"),
     field("Author name", input("name")),
-    field("Author email", input("email", { type: "email" })),
+    field("Author email", input("email", { type: "email" }), EMAIL_HINTS[p.email_source]),
     h("label", { class: "check" }, isDefault, "Use this profile where no directory rule matches (default)"));
   include.addEventListener("change", () => {
     wizard = { ...wizard, profiles: setProfile(i, { include: include.checked }) };

@@ -45,7 +45,7 @@ var commands = map[string]command{
 	},
 	"setup": {
 		synopsis:    "setup [--print | --web [--no-open]]",
-		description: "Create a first configuration with one profile per GitHub account gh is signed in to, each\naccount's noreply email, and gh's active account as the default. It asks gh for account status\n(no tokens) and for each account's public profile. --print shows it without writing. --web opens\nthe setup steps in your browser, where you also choose directories and review every file first.",
+		description: "Create a first configuration with one profile per GitHub account gh is signed in to, each\naccount's public email (its noreply address when it shows none), and gh's active account as the default. It asks gh for account status\n(no tokens) and for each account's public profile. --print shows it without writing. --web opens\nthe setup steps in your browser, where you also choose directories and review every file first.",
 		bind: func(fs *flag.FlagSet) runFunc {
 			var opts app.SetupOptions
 			fs.BoolVar(&opts.Print, "print", false, "print the configuration instead of writing it")

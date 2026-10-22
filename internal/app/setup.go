@@ -22,9 +22,9 @@ type SetupOptions struct {
 var invalidIDChars = regexp.MustCompile(`[^a-z0-9-]+`)
 
 // Setup writes a first configuration with one profile per GitHub account gh
-// is signed in to, the noreply email of each account, and gh's active account
-// as the default. It asks gh for account status (no tokens) and for each
-// account's public profile.
+// is signed in to, the public email of each account (or its noreply address
+// when it shows none), and gh's active account as the default. It asks gh
+// for account status (no tokens) and for each account's public profile.
 func Setup(ctx context.Context, e Env, opts SetupOptions) error {
 	if _, err := os.Stat(e.configFile()); err == nil && !opts.Print {
 		return fmt.Errorf("%s already exists; change it with `gitpersona use` and `gitpersona pin`, or edit it", e.display(e.configFile()))
@@ -74,9 +74,13 @@ func renderSetup(ctx context.Context, source provider.GitHub, accounts []provide
 		if a.State != "success" {
 			continue
 		}
-		name, email := ghIdentity(ctx, source, a.Login)
-		fmt.Fprintf(&b, "\n[[profile]]\nid      = %q\naccount = %q\nname    = %q\nemail   = %q # GitHub noreply address\n",
-			profileID(a.Login), a.Login, name, email)
+		id := ghIdentity(ctx, source, a.Login)
+		note := "public email on GitHub"
+		if id.emailSource == "noreply" {
+			note = "GitHub noreply address; the account shows no public email"
+		}
+		fmt.Fprintf(&b, "\n[[profile]]\nid      = %q\naccount = %q\nname    = %q\nemail   = %q # %s\n",
+			profileID(a.Login), a.Login, id.name, id.email, note)
 	}
 	return b.String()
 }
