@@ -82,7 +82,9 @@ case "$1 $2" in
   sep=""
   for a in $accounts; do printf '%s{"login":"%s","state":"success"}' "$sep" "$a"; sep=","; done
   printf ']}}\n' ;;
-*) exit 2 ;;
+*)
+  # Any other gh command: report which account's token it received, without printing the token.
+  if [ -n "$GH_TOKEN" ]; then echo "gh ran as ${GH_TOKEN#token-for-}"; else echo "gh ran with its active account"; fi ;;
 esac
 `
 

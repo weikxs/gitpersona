@@ -103,6 +103,10 @@ Paths must be absolute or start with `~/`.
 - **Credentials:** for GitHub profiles, GitPersona is the only credential helper for that host and borrows the
   token `gh` already holds, so no other helper stores a copy. If an account is not signed in to `gh`, Git asks
   for a password; `gitpersona doctor` tells you which account to sign in.
+- **gh follows your directories too:** with the shell integration, running `gh` in a profile's directory uses that
+  profile's account. GitPersona puts the account's token only into the environment of that one `gh` process; it is
+  not printed or stored. It leaves `gh` alone when you set `GH_TOKEN`/`GITHUB_TOKEN`, use `GH_HOST` for another host,
+  or no GitHub profile applies.
 - **Shells:** your default shell is read from the system user record (not `$SHELL`, which terminals, IDEs and
   tools often change), the shell you use right now from the process tree, and installed shells from `/etc/shells`.
   fish gets its own file in `conf.d`; zsh uses `~/.zshenv`; bash uses `~/.bashrc`. In tide add the

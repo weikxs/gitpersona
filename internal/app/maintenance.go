@@ -98,6 +98,7 @@ func Uninstall(_ context.Context, e Env, yes bool) error {
 		return err
 	}
 	_ = os.Remove(filepath.Join(e.ConfigDir, "profiles")) // only succeeds when empty
+	_ = os.Remove(e.shimDir())
 	fmt.Fprintf(e.Stdout, "GitPersona is uninstalled. Your configuration stays in %s.\n", e.display(e.configFile()))
 	return nil
 }
@@ -123,6 +124,9 @@ func (e Env) planUninstall() ([]change, error) {
 		}
 		// A file that only held the GitPersona block was created by it.
 		changes = append(changes, change{path: gitconfig, content: without, perm: perm, remove: strings.TrimSpace(without) == ""})
+	}
+	if _, err := os.Lstat(e.ghEntry()); err == nil {
+		changes = append(changes, change{path: e.ghEntry(), remove: true})
 	}
 	generated, _ := filepath.Glob(filepath.Join(e.ConfigDir, "profiles", "*.gitconfig"))
 	generated = append(generated, filepath.Join(e.ConfigDir, generate.RulesFile))

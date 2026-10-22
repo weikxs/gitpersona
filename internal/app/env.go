@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/weikxs/gitpersona/internal/paths"
@@ -45,6 +46,8 @@ type Env struct {
 	CurrentShell func(context.Context) shell.Detected
 	// InstalledShells lists the supported shells on the system; nil means none known.
 	InstalledShells func() []shell.Installed
+	// Exec replaces the process with another program (the real gh).
+	Exec func(path string, argv, env []string) error
 }
 
 // FromOS builds the Env of the running process.
@@ -85,6 +88,7 @@ func FromOS(stdin io.Reader, stdout, stderr io.Writer) (Env, error) {
 		CurrentShell: func(ctx context.Context) shell.Detected {
 			return shell.CurrentShell(ctx, os.Getpid(), shell.Runner(provider.ExecRunner))
 		},
+		Exec: syscall.Exec,
 		InstalledShells: func() []shell.Installed {
 			etc, _ := os.ReadFile("/etc/shells")
 			return shell.InstalledShells(string(etc), func(p string) bool { _, err := os.Stat(p); return err == nil })

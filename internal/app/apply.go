@@ -24,6 +24,7 @@ type change struct {
 	remove  bool
 	create  bool        // the file does not exist yet
 	perm    os.FileMode // 0 means fsutil.FilePerm
+	linkTo  string      // make path a symbolic link to this target instead
 }
 
 // backupsToKeep bounds how many snapshots accumulate in the backup directory.
@@ -124,6 +125,9 @@ func (e Env) planWith(ctx context.Context, cfg config.Config) ([]change, error) 
 	desired = append(desired, gitconfig)
 
 	var changes []change
+	if link, ok := e.ghEntryChange(cfg); ok {
+		changes = append(changes, link)
+	}
 	for _, c := range desired {
 		current, err := readOptional(c.path)
 		if err != nil {
@@ -247,9 +251,20 @@ func (e Env) staleProfiles(desired []change) []change {
 }
 
 func (c change) write() error {
-	if c.remove {
+	if c.remove || c.linkTo != "" {
 		if err := os.Remove(c.path); err != nil && !os.IsNotExist(err) {
 			return fmt.Errorf("remove %s: %w", c.path, err)
+		}
+	}
+	if c.remove {
+		return nil
+	}
+	if c.linkTo != "" {
+		if err := os.MkdirAll(filepath.Dir(c.path), fsutil.DirPerm); err != nil {
+			return err
+		}
+		if err := os.Symlink(c.linkTo, c.path); err != nil {
+			return fmt.Errorf("link %s: %w", c.path, err)
 		}
 		return nil
 	}

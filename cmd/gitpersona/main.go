@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/weikxs/gitpersona/internal/app"
@@ -52,7 +53,20 @@ Git runs "gitpersona credential" itself; you do not need to call it.
 var errUsage = errors.New("usage error")
 
 func main() {
+	// Installed as `gh` in the shim directory, gitpersona runs the real gh
+	// with the account of the current directory.
+	if filepath.Base(os.Args[0]) == "gh" {
+		os.Exit(runGHShim(os.Args[1:]))
+	}
 	os.Exit(run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr))
+}
+
+func runGHShim(args []string) int {
+	env, err := app.FromOS(os.Stdin, os.Stdout, os.Stderr)
+	if err != nil {
+		return fail(os.Stderr, err)
+	}
+	return app.GHShim(context.Background(), env, args)
 }
 
 // run is main without process side effects, so it can be tested directly.

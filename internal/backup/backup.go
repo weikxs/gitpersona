@@ -33,6 +33,7 @@ type Entry struct {
 	Existed bool   `json:"existed"`          // false: the change created the file
 	Stored  string `json:"stored,omitempty"` // copy inside the snapshot, if Existed
 	Mode    uint32 `json:"mode,omitempty"`   // permission bits, if Existed
+	Link    string `json:"link,omitempty"`   // symlink target, if the path was a symlink
 }
 
 // maxSnapshotsPerInstant bounds the suffixes tried when timestamps collide.
@@ -88,6 +89,13 @@ func newSnapshotDir(root, name string) (string, error) {
 }
 
 func saveOne(dir string, index int, path string) (Entry, error) {
+	if info, err := os.Lstat(path); err == nil && info.Mode()&os.ModeSymlink != 0 {
+		target, err := os.Readlink(path)
+		if err != nil {
+			return Entry{}, fmt.Errorf("back up %s: %w", path, err)
+		}
+		return Entry{Path: path, Existed: true, Link: target}, nil
+	}
 	data, err := os.ReadFile(path)
 	if errors.Is(err, fs.ErrNotExist) {
 		return Entry{Path: path}, nil
@@ -182,9 +190,17 @@ func Restore(dir string) error {
 		return err
 	}
 	for _, e := range m.Entries {
-		if !e.Existed {
+		if !e.Existed || e.Link != "" {
 			if err := os.Remove(e.Path); err != nil && !errors.Is(err, fs.ErrNotExist) {
 				return fmt.Errorf("remove %s: %w", e.Path, err)
+			}
+		}
+		if !e.Existed {
+			continue
+		}
+		if e.Link != "" {
+			if err := os.Symlink(e.Link, e.Path); err != nil {
+				return fmt.Errorf("restore link %s: %w", e.Path, err)
 			}
 			continue
 		}

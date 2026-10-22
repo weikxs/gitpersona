@@ -96,6 +96,7 @@ Git、`gh`、`glab` 都假定只有一个全局的"当前账户"，于是很容�
 
 - **优先级：** Pin → 最具体的目录规则 → `default`。Git 按仓库 `.git` 目录的位置应用规则，所以 **worktree 跟随它的主仓库**。在任何仓库之外只有 `default` 生效；`whoami` 还会告诉你在这里新克隆的仓库会用哪个身份。
 - **凭据：** 对 GitHub 身份，GitPersona 是该主机唯一的凭据助手，借用 `gh` 已保存的令牌，因此不会有其他助手另存一份。如果某个账户没有在 `gh` 登录，Git 会要求输入密码；`gitpersona doctor` 会告诉你该登录哪个账户。
+- **gh 也跟着目录走：** 装上 shell 集成后，在某个身份的目录里运行 `gh`，就会使用该身份的账户。GitPersona 只把该账户的令牌放进那一次 `gh` 进程的环境变量，不输出、不保存。当你自己设置了 `GH_TOKEN`/`GITHUB_TOKEN`、用 `GH_HOST` 指向其他主机，或没有 GitHub 身份适用时，不做任何改动。
 - **Shell：** 默认 shell 从系统用户记录读取（而不是 `$SHELL`，终端、IDE 和各种工具经常会改它），当前正在用的 shell 从进程关系识别，已安装的 shell 从 `/etc/shells` 读取。fish 使用 `conf.d` 下的独立文件；zsh 使用 `~/.zshenv`；bash 使用 `~/.bashrc`。tide 中添加 `gitpersona` 显示项；Powerlevel10k 中添加 `gitpersona` 段；其他提示符调用 `gitpersona_prompt`。
 - **隐私：** GitPersona 从不打开、读取、列出或使用你的私钥，也从不输出或保存令牌。
 - **你的文件：** 只在全局 Git 配置里加一个带标记的块（会跟随符号链接形式的 `~/.gitconfig` 和 `GIT_CONFIG_GLOBAL`），改动前备份，并在 `~/.config/gitpersona/backups/` 保留最近 20 份备份。
