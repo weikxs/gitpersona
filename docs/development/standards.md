@@ -74,7 +74,7 @@ GitPersona is about identities, so this rule has no exceptions.
 - **No magic values:** name constants for exit codes, file modes, limits and timeouts.
 - **Naming:** standard Go naming (`MixedCaps`, short receivers, no `Get` prefix, acronyms in one case: `URL`, `ID`).
 - **Comments:** doc comments on every exported identifier. Inline comments explain *why*, not *what*.
-- **Logging:** `log/slog`, off by default, enabled with `--verbose`. Never log secrets.
+- **Logging:** when logging is added, use `log/slog`, off by default and enabled with a `--verbose` flag. Never log secrets.
 - **Dependencies:** standard library first. A new dependency needs a reason in the pull request
   (maintenance, license compatible with MIT, size). Run `go mod tidy`.
 

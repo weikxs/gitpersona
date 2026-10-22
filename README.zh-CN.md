@@ -31,6 +31,65 @@ Git、`gh`、`glab` 都假定只有一个全局的"当前账户"，于是很容�
 其他所有目录                   → acme-alex    （默认）
 ```
 
+## 快速开始
+
+1. 用 GitHub CLI 登录每一个 GitHub 账户：`gh auth login`（每个账户执行一次）。
+2. 在 `~/.config/gitpersona/config.toml` 里描述你的身份：
+
+   ```toml
+   version = 1
+   default = "acme"            # 所有规则都不匹配时使用（可选）
+
+   [[profile]]
+   id      = "personal"
+   account = "octo-alex"       # 平台上的账户名
+   name    = "Alex Octo"       # 提交作者名
+   email   = "1000001+octo-alex@users.noreply.github.com"
+   dirs    = ["~/Projects/personal"]
+
+   [[profile]]
+   id      = "acme"
+   account = "acme-alex"
+   name    = "Alex (Acme)"
+   email   = "1000002+acme-alex@users.noreply.github.com"
+   dirs    = ["~/Projects/acme"]
+   ```
+
+3. 运行 `gitpersona apply`，再运行 `gitpersona doctor`。在任意仓库里运行 `gitpersona whoami` 查看当前身份。
+
+## 配置说明
+
+| 字段 | 必填 | 含义 |
+|---|---|---|
+| `version` | 是 | 固定为 `1` |
+| `default` | 否 | 没有任何规则或 Pin 匹配时使用的身份 |
+| `[[profile]] id` | 是 | 短名：小写字母、数字、`-` |
+| `provider` | 否 | 默认 `github`；`gitlab`、`bitbucket`、`generic` 目前只设置提交身份和 SSH 密钥 |
+| `host` | 否 | GitHub 默认为 `github.com` |
+| `account`、`name`、`email` | 是 | 平台账户名、提交作者名、提交邮箱 |
+| `dirs` | 否 | 这些目录里的仓库使用此身份；最具体的目录优先 |
+| `ssh_key` | 否 | 此身份使用的 SSH 私钥路径 |
+| `signing` | 否 | `{ method = "ssh", key = "~/.ssh/key.pub" }` 或 `{ method = "gpg", key = "<密钥 ID>" }` |
+| `[[pin]] repo`、`profile` | — | 把单个仓库绑定到某个身份，优先于目录规则 |
+
+路径必须是绝对路径，或以 `~/` 开头。
+
+## 命令
+
+| 命令 | 作用 |
+|---|---|
+| `gitpersona apply [--dry-run] [--yes]` | 生成 Git 配置；`--dry-run` 只预览，`--yes` 允许删除已移除身份的文件 |
+| `gitpersona whoami [--json]` | 显示这里 Git 使用哪个身份以及原因 |
+| `gitpersona doctor` | 检查配置并说明如何修复问题 |
+| `gitpersona help <命令>` | 查看某个命令的参数 |
+
+## 行为说明
+
+- **优先级：** Pin → 最具体的目录规则 → `default`。Git 按仓库 `.git` 目录的位置应用规则，所以 **worktree 跟随它的主仓库**。在任何仓库之外只有 `default` 生效；`whoami` 还会告诉你在这里新克隆的仓库会用哪个身份。
+- **凭据：** 对 GitHub 身份，GitPersona 是该主机唯一的凭据助手，借用 `gh` 已保存的令牌，因此不会有其他助手另存一份。如果某个账户没有在 `gh` 登录，Git 会要求输入密码；`gitpersona doctor` 会告诉你该登录哪个账户。
+- **隐私：** GitPersona 从不打开、读取、列出或使用你的私钥，也从不输出或保存令牌。
+- **你的文件：** 只在全局 Git 配置里加一个带标记的块（会跟随符号链接形式的 `~/.gitconfig` 和 `GIT_CONFIG_GLOBAL`），改动前备份，并在 `~/.config/gitpersona/backups/` 保留最近 20 份备份。
+
 ## 安装
 
 尚未发布。正式版将通过 Homebrew 发布：

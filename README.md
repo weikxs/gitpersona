@@ -34,6 +34,71 @@ push with the wrong token, or open a pull request as the wrong user.
 everything else             → acme-alex    (default)
 ```
 
+## Quick start
+
+1. Sign in to every GitHub account with the GitHub CLI: `gh auth login` (once per account).
+2. Describe your profiles in `~/.config/gitpersona/config.toml`:
+
+   ```toml
+   version = 1
+   default = "acme"            # used everywhere no rule matches (optional)
+
+   [[profile]]
+   id      = "personal"
+   account = "octo-alex"       # your account on the host
+   name    = "Alex Octo"       # commit author name
+   email   = "1000001+octo-alex@users.noreply.github.com"
+   dirs    = ["~/Projects/personal"]
+
+   [[profile]]
+   id      = "acme"
+   account = "acme-alex"
+   name    = "Alex (Acme)"
+   email   = "1000002+acme-alex@users.noreply.github.com"
+   dirs    = ["~/Projects/acme"]
+   ```
+
+3. Run `gitpersona apply`, then `gitpersona doctor`. In any repository, `gitpersona whoami` shows who you are.
+
+## Configuration reference
+
+| Key | Required | Meaning |
+|---|---|---|
+| `version` | yes | Always `1` |
+| `default` | no | Profile id used where no rule or pin matches |
+| `[[profile]] id` | yes | Short name: lowercase letters, digits, `-` |
+| `provider` | no | `github` (default); `gitlab`, `bitbucket`, `generic` set the commit identity and SSH key only, for now |
+| `host` | no | Defaults to `github.com` for GitHub |
+| `account`, `name`, `email` | yes | Account on the host, commit author name and email |
+| `dirs` | no | Directories whose repositories use this profile; the most specific directory wins |
+| `ssh_key` | no | Path of the SSH private key Git should use for this profile |
+| `signing` | no | `{ method = "ssh", key = "~/.ssh/key.pub" }` or `{ method = "gpg", key = "<key id>" }` |
+| `[[pin]] repo`, `profile` | — | Bind one repository to a profile, overriding directory rules |
+
+Paths must be absolute or start with `~/`.
+
+## Commands
+
+| Command | What it does |
+|---|---|
+| `gitpersona apply [--dry-run] [--yes]` | Generate the Git configuration; `--dry-run` previews, `--yes` allows removing files of deleted profiles |
+| `gitpersona whoami [--json]` | Show which profile Git uses here and why |
+| `gitpersona doctor` | Check the setup and explain how to fix problems |
+| `gitpersona help <command>` | Show the flags of a command |
+
+## How it behaves
+
+- **Precedence:** a pin, then the most specific directory rule, then `default`. Git applies the rules by the
+  location of the repository's `.git` directory, so a **worktree follows its main repository**. Outside any
+  repository only `default` applies; `whoami` also tells you which profile new clones will get.
+- **Credentials:** for GitHub profiles, GitPersona is the only credential helper for that host and borrows the
+  token `gh` already holds, so no other helper stores a copy. If an account is not signed in to `gh`, Git asks
+  for a password; `gitpersona doctor` tells you which account to sign in.
+- **Privacy:** GitPersona never opens, reads, lists or uses your private keys, and never prints or stores tokens.
+- **Your files:** it adds one marked block to your global Git configuration (following a symlinked
+  `~/.gitconfig` and `GIT_CONFIG_GLOBAL`), backs up everything it changes, and keeps the newest 20 backups in
+  `~/.config/gitpersona/backups/`.
+
 ## Install
 
 Not released yet. Releases will be published through Homebrew:
