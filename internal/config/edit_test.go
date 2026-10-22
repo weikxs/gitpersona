@@ -264,3 +264,72 @@ func TestEditsKeepCRLFLineEndings(t *testing.T) {
 	}
 	assertParses(t, withPin)
 }
+
+func TestAddProfileAppendsABlockAfterTheLastProfile(t *testing.T) {
+	p := Profile{ID: "client", Provider: ProviderGitHub, Host: DefaultGitHubHost, Account: "client-alex",
+		Name: "Alex", Email: "alex@client.example", Dirs: []string{"~/Projects/client"}}
+
+	got, err := AddProfile(commented, p)
+
+	assertEdit(t, got, err, "[[profile]]\nid      = \"client\"\naccount = \"client-alex\"\nname    = \"Alex\"\nemail   = \"alex@client.example\"\ndirs    = [\"~/Projects/client\"]\n")
+	if !strings.Contains(got, "# My GitPersona setup") {
+		t.Fatal("comments lost")
+	}
+	if _, err := AddProfile(commented, Profile{ID: "acme"}); err == nil {
+		t.Fatal("adding a duplicate profile id succeeded")
+	}
+}
+
+func TestSetProfileFieldReplacesOrAddsTheKey(t *testing.T) {
+	renamed, err := SetProfileField(commented, "acme", "name", "Alex A.")
+	assertEdit(t, renamed, err, `name    = "Alex A."`)
+
+	withHost, err := SetProfileField(commented, "globex", "host", "gitlab.globex.example")
+	assertEdit(t, withHost, err, "id      = \"globex\"\nhost = \"gitlab.globex.example\"")
+
+	cleared, err := SetProfileField(commented, "acme", "name", "")
+	if err != nil || strings.Contains(cleared, `name    = "Alex (Acme)"`) {
+		t.Fatalf("an empty value should remove the key: %v\n%s", err, cleared)
+	}
+	if _, err := SetProfileField(commented, "acme", "dirs", "x"); err == nil {
+		t.Fatal("dirs must be edited with AddDir/RemoveDir")
+	}
+}
+
+func TestRemoveProfileDropsItsBlockAndComments(t *testing.T) {
+	got, err := RemoveProfile(commented, "personal")
+
+	if err != nil || strings.Contains(got, "octo-alex") || strings.Contains(got, "# main") || !strings.Contains(got, "# work by default") {
+		t.Fatalf("RemoveProfile() = %v\n%s", err, got)
+	}
+	assertParses(t, got)
+}
+
+func TestSetDefault(t *testing.T) {
+	changed, err := SetDefault(commented, "personal")
+	assertEdit(t, changed, err, `default = "personal" # work by default`)
+
+	cleared, err := SetDefault(commented, "")
+	if err != nil || strings.Contains(cleared, "default =") {
+		t.Fatalf("SetDefault(\"\") should remove the key: %v\n%s", err, cleared)
+	}
+	added, err := SetDefault(cleared, "acme")
+	assertEdit(t, added, err, "version = 1\ndefault = \"acme\"\n")
+}
+
+func TestSetProfileSigning(t *testing.T) {
+	signed, err := SetProfileSigning(commented, "acme", Signing{Method: SigningSSH, Key: "~/.ssh/acme.pub"})
+	assertEdit(t, signed, err, `signing = { method = "ssh", key = "~/.ssh/acme.pub" }`)
+
+	changed, err := SetProfileSigning(signed, "acme", Signing{Method: SigningGPG, Key: "ABC123"})
+	assertEdit(t, changed, err, `signing = { method = "gpg", key = "ABC123" }`)
+
+	off, err := SetProfileSigning(changed, "acme", Signing{})
+	if err != nil || strings.Contains(off, "signing") {
+		t.Fatalf("removing signing: %v\n%s", err, off)
+	}
+	table := commented + "\n[profile.signing]\nmethod = \"ssh\"\n"
+	if _, err := SetProfileSigning(strings.Replace(table, "", "", 1), "ghost", Signing{}); err == nil {
+		t.Fatal("unknown profile accepted")
+	}
+}
