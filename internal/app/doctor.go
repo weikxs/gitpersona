@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -24,11 +25,89 @@ type check struct {
 	warn   bool
 	label  string
 	advice string
+	// fix, when set, repairs the problem; fixes with the same key run once.
+	fix    func(context.Context) error
+	fixKey string
+}
+
+// DoctorOptions controls Doctor.
+type DoctorOptions struct {
+	Fix  bool // repair what can be repaired, then check again
+	JSON bool // print a DoctorReport instead of text
+}
+
+// DoctorReport is the stable --json output of `gitpersona doctor`.
+type DoctorReport struct {
+	OK     bool          `json:"ok"`
+	Checks []DoctorCheck `json:"checks"`
+}
+
+// DoctorCheck is one check in DoctorReport; Status is ok, warn or fail.
+type DoctorCheck struct {
+	Status string `json:"status"`
+	Label  string `json:"label"`
+	Advice string `json:"advice,omitempty"`
 }
 
 // Doctor runs every check, prints the results and reports whether all passed.
 // It never fetches tokens: sign-in is checked with a token-free status query.
 func Doctor(ctx context.Context, e Env) bool {
+	return DoctorWith(ctx, e, DoctorOptions{})
+}
+
+// DoctorWith runs Doctor with options.
+func DoctorWith(ctx context.Context, e Env, opts DoctorOptions) bool {
+	checks := e.runChecks(ctx)
+	if opts.Fix {
+		if e.fixAll(ctx, checks) {
+			checks = e.runChecks(ctx)
+		}
+	}
+	if opts.JSON {
+		return e.printDoctorJSON(checks)
+	}
+	return e.printDoctor(checks)
+}
+
+// fixAll runs each distinct fix of a failing or warning check and reports
+// whether it attempted any.
+func (e Env) fixAll(ctx context.Context, checks []check) bool {
+	done := map[string]bool{}
+	for _, c := range checks {
+		if (c.ok && !c.warn) || c.fix == nil || done[c.fixKey] {
+			continue
+		}
+		done[c.fixKey] = true
+		fmt.Fprintf(e.Stdout, "Fixing: %s\n", c.label)
+		if err := c.fix(ctx); err != nil {
+			fmt.Fprintf(e.Stdout, "    could not fix it: %v\n", err)
+		}
+	}
+	if len(done) > 0 {
+		fmt.Fprintln(e.Stdout)
+	}
+	return len(done) > 0
+}
+
+func (e Env) printDoctorJSON(checks []check) bool {
+	report := DoctorReport{OK: true, Checks: make([]DoctorCheck, len(checks))}
+	for i, c := range checks {
+		status := "ok"
+		switch {
+		case c.warn:
+			status = "warn"
+		case !c.ok:
+			status, report.OK = "fail", false
+		}
+		report.Checks[i] = DoctorCheck{Status: status, Label: c.label, Advice: c.advice}
+	}
+	enc := json.NewEncoder(e.Stdout)
+	enc.SetIndent("", "  ")
+	_ = enc.Encode(report)
+	return report.OK
+}
+
+func (e Env) runChecks(ctx context.Context) []check {
 	var checks []check
 	cfg, cfgCheck := e.checkConfig()
 	checks = append(checks, cfgCheck)
@@ -41,6 +120,10 @@ func Doctor(ctx context.Context, e Env) bool {
 		checks = append(checks, e.checkGitHubAccounts(ctx, cfg)...)
 	}
 
+	return checks
+}
+
+func (e Env) printDoctor(checks []check) bool {
 	allOK := true
 	for _, c := range checks {
 		mark := "✓"
@@ -95,6 +178,7 @@ func (e Env) checkGenerated(ctx context.Context) check {
 			names[i] = e.display(c.path)
 		}
 		return check{
+			fix: e.applyFix, fixKey: "apply",
 			label: fmt.Sprintf("generated Git configuration is out of date (%s: %s)",
 				differ(len(changes)), strings.Join(names, ", ")),
 			advice: "run `gitpersona apply` (this also happens after gitpersona is moved or upgraded, " +
@@ -103,6 +187,12 @@ func (e Env) checkGenerated(ctx context.Context) check {
 	default:
 		return check{ok: true, label: "generated Git configuration is up to date"}
 	}
+}
+
+// applyFix regenerates the files; it never removes files, which needs
+// `gitpersona apply --yes`.
+func (e Env) applyFix(ctx context.Context) error {
+	return Apply(ctx, e, ApplyOptions{})
 }
 
 // checkPins warns about pins whose repository does not exist (yet): they are
@@ -148,6 +238,7 @@ func (e Env) checkBlockIsLast() check {
 	}
 	if block.ContentAfter(content) {
 		return check{
+			fix: e.applyFix, fixKey: "apply",
 			label:  fmt.Sprintf("%s has settings after the GitPersona block, which override every profile", e.display(e.userGitConfig())),
 			advice: "run `gitpersona apply` to move the block to the end (your settings are kept)",
 		}

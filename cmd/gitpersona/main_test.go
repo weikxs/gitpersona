@@ -27,7 +27,7 @@ func TestRun(t *testing.T) {
 		{name: "subcommand help goes to stdout", args: []string{"apply", "--help"}, wantCode: 0, wantStdout: "Usage: gitpersona apply"},
 		{name: "help for a command", args: []string{"help", "whoami"}, wantCode: 0, wantStdout: "Usage: gitpersona whoami"},
 		{name: "help for an unknown command", args: []string{"help", "bogus"}, wantCode: 2, wantStderr: `unknown command "bogus"`},
-		{name: "json is only for whoami", args: []string{"doctor", "--json"}, wantCode: 2, wantStderr: "flag provided but not defined"},
+		{name: "json is not on apply", args: []string{"apply", "--json"}, wantCode: 2, wantStderr: "flag provided but not defined"},
 		{name: "extra arguments are rejected", args: []string{"apply", "extra"}, wantCode: 2, wantStderr: "unexpected argument"},
 		{name: "version rejects extra arguments", args: []string{"version", "extra"}, wantCode: 2, wantStderr: "unexpected argument"},
 		{name: "help rejects extra arguments", args: []string{"help", "apply", "extra"}, wantCode: 2, wantStderr: "unexpected argument"},

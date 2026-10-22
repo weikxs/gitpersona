@@ -79,12 +79,12 @@ Git、`gh`、`glab` 都假定只有一个全局的"当前账户"，于是很容�
 | 命令 | 作用 |
 |---|---|
 | `gitpersona apply [--dry-run] [--yes]` | 生成 Git 配置；`--dry-run` 只预览，`--yes` 允许删除已移除身份的文件 |
-| `gitpersona whoami [--json]` | 显示这里 Git 使用哪个身份以及原因 |
+| `gitpersona whoami [--json] [--check]` | 显示这里 Git 使用哪个身份以及原因；`--check` 在 Git 不一致时返回失败 |
 | `gitpersona use <身份>` | 让当前目录使用某个身份（保留 config.toml 里的注释） |
 | `gitpersona remove [目录]` | 取消某个目录的身份分配 |
 | `gitpersona pin <身份>` / `unpin` | 把当前仓库绑定到某个身份，或取消绑定 |
 | `gitpersona list [--json]` | 列出身份、目录和 Pin |
-| `gitpersona doctor` | 检查配置并说明如何修复问题 |
+| `gitpersona doctor [--fix] [--json]` | 检查配置并说明如何修复问题；`--fix` 自动修复能安全修复的问题 |
 | `gitpersona shells [--json]` | 显示默认 shell、当前正在用的 shell 和已安装的 shell |
 | `gitpersona install-shell [--shell fish,zsh,bash]` | 为 shell 加上提示符显示（以及 gh 切换）；默认只装你的登录 shell |
 | `gitpersona prompt [--format]` | 输出这里 Git 使用的账户，供提示符使用（`{account}`、`{profile}`、`{host}`） |

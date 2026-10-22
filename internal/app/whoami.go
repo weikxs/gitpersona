@@ -44,20 +44,37 @@ type NewRepositories struct {
 	Match   string `json:"match,omitempty"`
 }
 
+// WhoamiOptions controls Whoami.
+type WhoamiOptions struct {
+	JSON  bool // print a WhoamiReport
+	Check bool // fail when Git does not use the profile
+}
+
 // Whoami reports which profile applies to the current directory and whether
 // Git currently agrees.
 func Whoami(ctx context.Context, e Env, asJSON bool) error {
+	return WhoamiWith(ctx, e, WhoamiOptions{JSON: asJSON})
+}
+
+// WhoamiWith runs Whoami with options.
+func WhoamiWith(ctx context.Context, e Env, opts WhoamiOptions) error {
 	cfg, err := e.loadConfig()
 	if err != nil {
 		return err
 	}
 	report := e.whoami(ctx, cfg)
-	if asJSON {
+	if opts.JSON {
 		enc := json.NewEncoder(e.Stdout)
 		enc.SetIndent("", "  ")
-		return enc.Encode(report)
+		if err := enc.Encode(report); err != nil {
+			return err
+		}
+	} else {
+		printWhoami(e, report)
 	}
-	printWhoami(e, report)
+	if opts.Check && !report.Consistent {
+		return fmt.Errorf("Git does not use profile %s here: %s", report.Profile, mismatchAdvice(report))
+	}
 	return nil
 }
 

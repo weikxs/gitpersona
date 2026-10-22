@@ -153,7 +153,8 @@ func (e Env) checkShellIntegration(ctx context.Context) []check {
 		} else {
 			checks = append(checks, check{warn: true,
 				label:  fmt.Sprintf("%s integration is not installed (prompt display and gh switching need it)", login.Kind),
-				advice: "run `gitpersona install-shell`"})
+				advice: "run `gitpersona install-shell`",
+				fix:    func(ctx context.Context) error { return InstallShell(ctx, e, nil, false) }, fixKey: "shell"})
 		}
 	}
 	current := e.currentShell(ctx)

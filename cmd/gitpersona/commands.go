@@ -46,12 +46,14 @@ var commands = map[string]command{
 		},
 	},
 	"whoami": {
-		synopsis:    "whoami [--json]",
+		synopsis:    "whoami [--json] [--check]",
 		description: "Show which profile Git uses in the current directory, why, and whether Git agrees.",
 		bind: func(fs *flag.FlagSet) runFunc {
-			asJSON := fs.Bool("json", false, "print machine-readable JSON")
+			var opts app.WhoamiOptions
+			fs.BoolVar(&opts.JSON, "json", false, "print machine-readable JSON")
+			fs.BoolVar(&opts.Check, "check", false, "exit with status 1 when Git does not use the profile")
 			return func(ctx context.Context, env app.Env, _ []string) int {
-				return fail(env.Stderr, app.Whoami(ctx, env, *asJSON))
+				return fail(env.Stderr, app.WhoamiWith(ctx, env, opts))
 			}
 		},
 	},
@@ -181,11 +183,14 @@ var commands = map[string]command{
 		},
 	},
 	"doctor": {
-		synopsis:    "doctor",
-		description: "Check the configuration, the generated files and the signed-in accounts, and explain how to fix problems.",
-		bind: func(*flag.FlagSet) runFunc {
+		synopsis:    "doctor [--fix] [--json]",
+		description: "Check the configuration, the generated files, the signed-in accounts and the shell integration,\nand explain how to fix problems. --fix repairs what it safely can (it never removes files).",
+		bind: func(fs *flag.FlagSet) runFunc {
+			var opts app.DoctorOptions
+			fs.BoolVar(&opts.Fix, "fix", false, "repair what can be repaired, then check again")
+			fs.BoolVar(&opts.JSON, "json", false, "print machine-readable JSON")
 			return func(ctx context.Context, env app.Env, _ []string) int {
-				if !app.Doctor(ctx, env) {
+				if !app.DoctorWith(ctx, env, opts) {
 					return exitFailure
 				}
 				return exitOK

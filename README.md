@@ -82,12 +82,12 @@ Paths must be absolute or start with `~/`.
 | Command | What it does |
 |---|---|
 | `gitpersona apply [--dry-run] [--yes]` | Generate the Git configuration; `--dry-run` previews, `--yes` allows removing files of deleted profiles |
-| `gitpersona whoami [--json]` | Show which profile Git uses here and why |
+| `gitpersona whoami [--json] [--check]` | Show which profile Git uses here and why; `--check` fails when Git disagrees |
 | `gitpersona use <profile>` | Make the current directory use a profile (keeps your comments in config.toml) |
 | `gitpersona remove [dir]` | Stop assigning a directory to a profile |
 | `gitpersona pin <profile>` / `unpin` | Bind the current repository to a profile, or remove the pin |
 | `gitpersona list [--json]` | List profiles, directories and pins |
-| `gitpersona doctor` | Check the setup and explain how to fix problems |
+| `gitpersona doctor [--fix] [--json]` | Check the setup and explain how to fix problems; `--fix` repairs what it safely can |
 | `gitpersona shells [--json]` | Show your default shell, the shell you use right now, and installed shells |
 | `gitpersona install-shell [--shell fish,zsh,bash]` | Add prompt display (and gh switching) to your shells; defaults to your login shell |
 | `gitpersona prompt [--format]` | Print the account Git uses here, for prompts (`{account}`, `{profile}`, `{host}`) |
