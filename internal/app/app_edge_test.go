@@ -3,6 +3,7 @@ package app
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -220,20 +221,67 @@ func TestApplyWithoutConfigExplainsWhatIsMissing(t *testing.T) {
 	}
 }
 
-func TestWhoamiOutsideARepositoryUsesTheDirectory(t *testing.T) {
+func TestWhoamiOutsideARepositoryReportsWhatGitUsesAndWhatNewReposGet(t *testing.T) {
 	w := newWorld(t)
 	plain := filepath.Join(w.home, "Projects", "personal", "notes")
 	if err := os.MkdirAll(plain, 0o700); err != nil {
 		t.Fatal(err)
 	}
 	env, out := w.env(t, plain)
-
-	if err := Whoami(context.Background(), env, true); err != nil {
+	if err := Apply(context.Background(), env); err != nil {
 		t.Fatal(err)
 	}
 
-	if !strings.Contains(out.String(), `"in_repository": false`) || !strings.Contains(out.String(), `"profile": "personal"`) {
-		t.Fatalf("whoami --json outside a repository:\n%s", out.String())
+	out.Reset()
+	if err := Whoami(context.Background(), env, true); err != nil {
+		t.Fatal(err)
+	}
+	var got WhoamiReport
+	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.InRepository || got.Profile != "acme" || got.NewRepositories == nil || got.NewRepositories.Profile != "personal" {
+		t.Fatalf("whoami --json outside a repository = %+v, want git using acme and new repositories using personal", got)
+	}
+	if email := runGit(t, plain, "config", "user.email"); email != got.Email {
+		t.Fatalf("Git uses %q outside a repository, whoami says %q", email, got.Email)
+	}
+
+	out.Reset()
+	if err := Whoami(context.Background(), env, false); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "Not inside a Git repository") || !strings.Contains(out.String(), "will use octo-alex") {
+		t.Fatalf("whoami text outside a repository:\n%s", out.String())
+	}
+}
+
+func TestWhoamiAgreesWithGitInWorktrees(t *testing.T) {
+	w := newWorld(t)
+	runGit(t, w.repos["blog"], "-c", "user.email=x@example.com", "-c", "user.name=x", "commit", "-q", "--allow-empty", "-m", "init")
+	runGit(t, w.repos["hotfix"], "-c", "user.email=x@example.com", "-c", "user.name=x", "commit", "-q", "--allow-empty", "-m", "init")
+	acmeWorktree := filepath.Join(w.home, "Projects", "acme", "blog-wt")
+	pinWorktree := filepath.Join(w.home, "Projects", "acme", "hotfix-wt")
+	runGit(t, w.repos["blog"], "worktree", "add", "-q", acmeWorktree)
+	runGit(t, w.repos["hotfix"], "worktree", "add", "-q", pinWorktree)
+	env, out := w.env(t, w.home)
+	if err := Apply(context.Background(), env); err != nil {
+		t.Fatal(err)
+	}
+
+	for wt, want := range map[string]string{acmeWorktree: "personal", pinWorktree: "globex"} {
+		env.WorkDir = wt
+		out.Reset()
+		if err := Whoami(context.Background(), env, true); err != nil {
+			t.Fatal(err)
+		}
+		var got WhoamiReport
+		if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+			t.Fatal(err)
+		}
+		if got.Profile != want || !got.Consistent || runGit(t, wt, "config", "user.email") != got.Email {
+			t.Errorf("%s: whoami = %+v, want %s and agreement with git", filepath.Base(wt), got, want)
+		}
 	}
 }
 

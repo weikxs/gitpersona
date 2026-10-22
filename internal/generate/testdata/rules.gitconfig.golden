@@ -21,6 +21,8 @@
 [includeIf "gitdir/i:/tmp/home/Projects/clients/globex/"]
 	path = /tmp/home/.config/gitpersona/profiles/globex.gitconfig
 
-# Pin: ~/Downloads/globex-hotfix -> globex
+# Pin: ~/Downloads/globex-hotfix -> globex (the repository and its worktrees)
 [includeIf "gitdir/i:/tmp/home/Downloads/globex-hotfix/.git"]
+	path = /tmp/home/.config/gitpersona/profiles/globex.gitconfig
+[includeIf "gitdir/i:/tmp/home/Downloads/globex-hotfix/.git/worktrees/"]
 	path = /tmp/home/.config/gitpersona/profiles/globex.gitconfig

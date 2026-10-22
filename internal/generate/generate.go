@@ -188,8 +188,9 @@ func rulesIndex(cfg config.Config, opts Options) string {
 	}
 	for _, pin := range cfg.Pins {
 		norm, _ := paths.Normalize(pin.Repo, opts.Home) // validated in Generate
-		fmt.Fprintf(&b, "\n# Pin: %s -> %s\n", pin.Repo, pin.Profile)
+		fmt.Fprintf(&b, "\n# Pin: %s -> %s (the repository and its worktrees)\n", pin.Repo, pin.Profile)
 		opts.writeIncludeIf(&b, gitdir, norm, "/.git", pin.Profile)
+		opts.writeIncludeIf(&b, gitdir, norm, "/.git/worktrees/", pin.Profile)
 	}
 	return b.String()
 }

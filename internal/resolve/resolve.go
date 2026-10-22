@@ -117,3 +117,43 @@ func (o Options) canonical(p string) string {
 	}
 	return o.Canonicalize(p)
 }
+
+// Git directory layout used by includeIf "gitdir:" matching.
+const (
+	dotGit       = "/.git"
+	worktreesDir = "/.git/worktrees"
+)
+
+// ResolveGitDir returns the profile Git itself applies to the repository
+// whose Git directory is gitDir, mirroring the generated includeIf rules:
+// directory rules match when the Git directory lies inside the rule
+// directory, so a worktree follows its main repository; pins match the
+// pinned repository's .git directory and its worktrees.
+func ResolveGitDir(cfg config.Config, gitDir string, opts Options) Result {
+	dir := opts.canonical(gitDir)
+
+	for _, pin := range cfg.Pins {
+		norm, ok := opts.normalize(pin.Repo)
+		if !ok {
+			continue
+		}
+		if paths.Same(dir, norm+dotGit, opts.CaseInsensitive) || paths.Within(dir, norm+worktreesDir, opts.CaseInsensitive) {
+			if p, found := cfg.ProfileByID(pin.Profile); found {
+				return Result{Found: true, Profile: p, Reason: ReasonPin, Match: pin.Repo}
+			}
+		}
+	}
+	if r, ok := matchRule(cfg, dir, opts); ok {
+		return r
+	}
+	return ResolveOutsideRepository(cfg)
+}
+
+// ResolveOutsideRepository returns what Git uses outside any repository,
+// where includeIf "gitdir:" never applies: only the default profile.
+func ResolveOutsideRepository(cfg config.Config) Result {
+	if p, ok := cfg.ProfileByID(cfg.Default); ok {
+		return Result{Found: true, Profile: p, Reason: ReasonDefault}
+	}
+	return Result{Reason: ReasonNone}
+}

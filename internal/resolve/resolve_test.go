@@ -123,3 +123,43 @@ func TestReasonDescribe(t *testing.T) {
 func expand(p string) string {
 	return strings.Replace(p, "~", home, 1)
 }
+
+func TestResolveGitDirFollowsGitIncludeIfSemantics(t *testing.T) {
+	tests := []struct {
+		name        string
+		gitDir      string
+		wantProfile string
+		wantReason  Reason
+	}{
+		{name: "normal repository", gitDir: "~/Projects/acme/billing/.git", wantProfile: "acme", wantReason: ReasonRule},
+		{name: "worktree follows its main repository", gitDir: "~/Projects/personal/blog/.git/worktrees/feature", wantProfile: "personal", wantReason: ReasonRule},
+		{name: "pinned repository", gitDir: "~/Downloads/globex-hotfix/.git", wantProfile: "globex", wantReason: ReasonPin},
+		{name: "worktree of a pinned repository", gitDir: "~/Downloads/globex-hotfix/.git/worktrees/wt", wantProfile: "globex", wantReason: ReasonPin},
+		{name: "repository nested in a pinned one is not pinned", gitDir: "~/Downloads/globex-hotfix/vendor/lib/.git", wantProfile: "acme", wantReason: ReasonDefault},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := ResolveGitDir(demoConfig(), expand(tc.gitDir), Options{Home: home})
+
+			if got.Profile.ID != tc.wantProfile || got.Reason != tc.wantReason {
+				t.Fatalf("ResolveGitDir(%s) = %q/%q, want %q/%q", tc.gitDir, got.Profile.ID, got.Reason, tc.wantProfile, tc.wantReason)
+			}
+		})
+	}
+}
+
+func TestResolveOutsideRepositoryUsesOnlyTheDefault(t *testing.T) {
+	cfg := demoConfig()
+
+	got := ResolveOutsideRepository(cfg)
+	cfg.Default = ""
+	none := ResolveOutsideRepository(cfg)
+
+	if got.Profile.ID != "acme" || got.Reason != ReasonDefault {
+		t.Errorf("outside a repository = %+v, want the default profile", got)
+	}
+	if none.Found || none.Reason != ReasonNone {
+		t.Errorf("outside a repository without default = %+v, want nothing", none)
+	}
+}
