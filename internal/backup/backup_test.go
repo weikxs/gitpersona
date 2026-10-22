@@ -166,3 +166,46 @@ func TestPruneMissingRootIsNoOp(t *testing.T) {
 		t.Fatalf("Prune() of a missing directory = %v", err)
 	}
 }
+
+func TestRestoreRecreatesFilesWithTheirModesAndRemovesNewOnes(t *testing.T) {
+	work := t.TempDir()
+	kept := filepath.Join(work, "gitconfig")
+	created := filepath.Join(work, "rules.gitconfig")
+	if err := os.WriteFile(kept, []byte("original\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := Snapshot(filepath.Join(work, "backups"), fixedTime, []string{kept, created})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(kept, []byte("changed\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(created, []byte("generated\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := Restore(snapshot); err != nil {
+		t.Fatalf("Restore() error: %v", err)
+	}
+
+	if got, _ := os.ReadFile(kept); string(got) != "original\n" {
+		t.Errorf("restored content = %q", got)
+	}
+	assertPerm(t, kept, 0o644)
+	if _, err := os.Stat(created); !os.IsNotExist(err) {
+		t.Errorf("file that did not exist before was not removed (err=%v)", err)
+	}
+}
+
+func TestListNewestFirst(t *testing.T) {
+	root := t.TempDir()
+	older, _ := Snapshot(root, fixedTime, nil)
+	newer, _ := Snapshot(root, fixedTime.Add(time.Hour), nil)
+
+	got, err := List(root)
+
+	if err != nil || len(got) != 2 || got[0].Dir != newer || got[1].Dir != older {
+		t.Fatalf("List() = %+v, %v; want newest first", got, err)
+	}
+}

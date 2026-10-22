@@ -16,6 +16,8 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 - `use`, `remove`, `pin`, `unpin` and `list [--json]`: edit the configuration from the command line while keeping
   your comments and layout; every edit is verified, backed up and applied. `doctor` warns about pins to missing repositories.
+- `rollback` lists backups and restores one (each command's changes are one backup, so a rollback undoes the whole
+  operation); `uninstall` removes GitPersona from your Git configuration and keeps `config.toml`.
 - `apply --dry-run` and `apply --yes`; per-command help (`gitpersona help <command>`).
 - Quick start, configuration reference and behavior notes in the README.
 - `gitpersona apply`: generates per-profile Git configuration and a rules index of `includeIf` entries

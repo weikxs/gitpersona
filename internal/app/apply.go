@@ -43,6 +43,12 @@ func Apply(ctx context.Context, e Env, opts ApplyOptions) error {
 	if err != nil {
 		return err
 	}
+	return e.applyChanges(changes, opts)
+}
+
+// applyChanges backs up every target in one snapshot, so a later rollback
+// undoes the whole operation, and then writes the changes.
+func (e Env) applyChanges(changes []change, opts ApplyOptions) error {
 	if len(changes) == 0 {
 		fmt.Fprintln(e.Stdout, "Everything is already up to date.")
 		return nil
@@ -93,6 +99,11 @@ func planApply(ctx context.Context, e Env) ([]change, error) {
 	if err != nil {
 		return nil, err
 	}
+	return e.planWith(ctx, cfg)
+}
+
+// planWith computes the changes that generate the files for cfg.
+func (e Env) planWith(ctx context.Context, cfg config.Config) ([]change, error) {
 	opts, err := e.generateOptions(ctx)
 	if err != nil {
 		return nil, err

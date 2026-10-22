@@ -32,6 +32,7 @@ type Entry struct {
 	Path    string `json:"path"`             // absolute path of the original file
 	Existed bool   `json:"existed"`          // false: the change created the file
 	Stored  string `json:"stored,omitempty"` // copy inside the snapshot, if Existed
+	Mode    uint32 `json:"mode,omitempty"`   // permission bits, if Existed
 }
 
 // maxSnapshotsPerInstant bounds the suffixes tried when timestamps collide.
@@ -94,11 +95,15 @@ func saveOne(dir string, index int, path string) (Entry, error) {
 	if err != nil {
 		return Entry{}, fmt.Errorf("back up %s: %w", path, err)
 	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return Entry{}, fmt.Errorf("back up %s: %w", path, err)
+	}
 	stored := fmt.Sprintf("%04d-%s", index+1, filepath.Base(path))
 	if err := fsutil.WriteAtomic(filepath.Join(dir, stored), data, fsutil.FilePerm); err != nil {
 		return Entry{}, err
 	}
-	return Entry{Path: path, Existed: true, Stored: stored}, nil
+	return Entry{Path: path, Existed: true, Stored: stored, Mode: uint32(info.Mode().Perm())}, nil
 }
 
 // ReadManifest loads the manifest of the snapshot in dir.
@@ -136,6 +141,64 @@ func Prune(root string, keep int) error {
 			return fmt.Errorf("remove old backup: %w", err)
 		}
 		snapshots = snapshots[1:]
+	}
+	return nil
+}
+
+// Info describes one snapshot for listing.
+type Info struct {
+	Dir      string
+	Manifest Manifest
+}
+
+// List returns the snapshots under root, newest first. Directories without a
+// readable manifest are skipped.
+func List(root string) ([]Info, error) {
+	entries, err := os.ReadDir(root)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("list backups: %w", err)
+	}
+	var infos []Info
+	for i := len(entries) - 1; i >= 0; i-- {
+		if !entries[i].IsDir() {
+			continue
+		}
+		dir := filepath.Join(root, entries[i].Name())
+		if m, err := ReadManifest(dir); err == nil {
+			infos = append(infos, Info{Dir: dir, Manifest: m})
+		}
+	}
+	return infos, nil
+}
+
+// Restore puts every file of the snapshot back: files that existed get their
+// content and mode back, and files that did not exist are removed.
+func Restore(dir string) error {
+	m, err := ReadManifest(dir)
+	if err != nil {
+		return err
+	}
+	for _, e := range m.Entries {
+		if !e.Existed {
+			if err := os.Remove(e.Path); err != nil && !errors.Is(err, fs.ErrNotExist) {
+				return fmt.Errorf("remove %s: %w", e.Path, err)
+			}
+			continue
+		}
+		data, err := os.ReadFile(filepath.Join(dir, e.Stored))
+		if err != nil {
+			return fmt.Errorf("read backup of %s: %w", e.Path, err)
+		}
+		mode := fs.FileMode(e.Mode)
+		if mode == 0 {
+			mode = fsutil.FilePerm
+		}
+		if err := fsutil.WriteAtomic(e.Path, data, mode); err != nil {
+			return err
+		}
 	}
 	return nil
 }

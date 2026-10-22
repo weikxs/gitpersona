@@ -88,6 +88,8 @@ Paths must be absolute or start with `~/`.
 | `gitpersona pin <profile>` / `unpin` | Bind the current repository to a profile, or remove the pin |
 | `gitpersona list [--json]` | List profiles, directories and pins |
 | `gitpersona doctor` | Check the setup and explain how to fix problems |
+| `gitpersona rollback [<name>\|latest] [--yes]` | List backups, or restore one (the current state is backed up first) |
+| `gitpersona uninstall [--yes]` | Remove GitPersona from your Git configuration; keeps config.toml |
 | `gitpersona help <command>` | Show the flags of a command |
 
 ## How it behaves

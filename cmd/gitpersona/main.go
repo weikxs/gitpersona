@@ -35,6 +35,8 @@ Commands:
   unpin       Remove the pin of the current repository
   list        List profiles, directories and pins
   doctor      Check the setup and explain how to fix problems
+  rollback    List backups or restore one
+  uninstall   Remove GitPersona from your Git configuration
   version     Print build information
   help        Show help for a command
 

@@ -212,3 +212,84 @@ func mustParse(t *testing.T, text string) config.Config {
 	}
 	return cfg
 }
+
+func TestRollbackRestoresAnEarlierState(t *testing.T) {
+	w := editWorld(t)
+	env, out := w.env(t, filepath.Join(w.home, "side"))
+	if err := Apply(context.Background(), env, ApplyOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(env.WorkDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := Use(context.Background(), env, "personal"); err != nil {
+		t.Fatal(err)
+	}
+	afterUse := readConfig(t, w)
+	out.Reset()
+
+	if err := Rollback(context.Background(), env, "", false); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "latest") || !strings.Contains(out.String(), "config.toml") {
+		t.Fatalf("rollback without a snapshot should list the backups:\n%s", out.String())
+	}
+	if err := Rollback(context.Background(), env, "latest", false); err == nil || !strings.Contains(err.Error(), "--yes") {
+		t.Fatalf("rollback without --yes = %v, want a request for confirmation", err)
+	}
+	if err := Rollback(context.Background(), env, "latest", true); err != nil {
+		t.Fatal(err)
+	}
+
+	if readConfig(t, w) != commentedConfig || readConfig(t, w) == afterUse {
+		t.Fatalf("rollback should restore the configuration before `use`:\n%s", readConfig(t, w))
+	}
+}
+
+func TestUninstallRestoresTheUsersGitConfig(t *testing.T) {
+	w := editWorld(t)
+	userConfig := "[user]\n\temail = me@example.com\n"
+	mustWrite(t, filepath.Join(w.home, ".gitconfig"), userConfig, 0o644)
+	env, _ := w.env(t, w.home)
+	if err := Apply(context.Background(), env, ApplyOptions{}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := Uninstall(context.Background(), env, false); err == nil || !strings.Contains(err.Error(), "--yes") {
+		t.Fatalf("uninstall without --yes = %v", err)
+	}
+	if err := Uninstall(context.Background(), env, true); err != nil {
+		t.Fatal(err)
+	}
+
+	if got, _ := os.ReadFile(filepath.Join(w.home, ".gitconfig")); string(got) != userConfig {
+		t.Fatalf("~/.gitconfig after uninstall = %q, want the original", got)
+	}
+	for _, gone := range []string{"rules.gitconfig", "profiles"} {
+		if _, err := os.Stat(filepath.Join(w.home, ".config", "gitpersona", gone)); !os.IsNotExist(err) {
+			t.Errorf("%s still exists after uninstall", gone)
+		}
+	}
+	if readConfig(t, w) != commentedConfig {
+		t.Error("uninstall must keep the user's config.toml")
+	}
+	if got := runGit(t, w.repos["blog"], "config", "user.email"); got != "me@example.com" {
+		t.Fatalf("after uninstall git should use the user's own email, got %q", got)
+	}
+}
+
+func TestUninstallDeletesAGitConfigItCreated(t *testing.T) {
+	w := editWorld(t)
+	env, _ := w.env(t, w.home)
+	if err := Apply(context.Background(), env, ApplyOptions{}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := Uninstall(context.Background(), env, true); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := os.Stat(filepath.Join(w.home, ".gitconfig")); !os.IsNotExist(err) {
+		t.Fatal("~/.gitconfig created by GitPersona should be removed when it would be empty")
+	}
+}

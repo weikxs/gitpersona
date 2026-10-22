@@ -102,6 +102,27 @@ var commands = map[string]command{
 			}
 		},
 	},
+	"rollback": {
+		synopsis:    "rollback [<name>|latest] [--yes]",
+		description: "Without a name, list the backups. With a name (or latest), restore the files of that backup;\nthe current state is backed up first, so the rollback can be undone too.",
+		maxArgs:     1,
+		bind: func(fs *flag.FlagSet) runFunc {
+			yes := fs.Bool("yes", false, "restore without asking")
+			return func(ctx context.Context, env app.Env, args []string) int {
+				return fail(env.Stderr, app.Rollback(ctx, env, firstArg(args), *yes))
+			}
+		},
+	},
+	"uninstall": {
+		synopsis:    "uninstall [--yes]",
+		description: "Remove the GitPersona block from your global Git configuration and delete the generated files.\nYour config.toml and the backups are kept.",
+		bind: func(fs *flag.FlagSet) runFunc {
+			yes := fs.Bool("yes", false, "uninstall without asking")
+			return func(ctx context.Context, env app.Env, _ []string) int {
+				return fail(env.Stderr, app.Uninstall(ctx, env, *yes))
+			}
+		},
+	},
 	"doctor": {
 		synopsis:    "doctor",
 		description: "Check the configuration, the generated files and the signed-in accounts, and explain how to fix problems.",

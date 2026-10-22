@@ -7,7 +7,6 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/weikxs/gitpersona/internal/backup"
 	"github.com/weikxs/gitpersona/internal/config"
 	"github.com/weikxs/gitpersona/internal/fsutil"
 	"github.com/weikxs/gitpersona/internal/paths"
@@ -146,17 +145,18 @@ func (e Env) saveEdited(ctx context.Context, edited string, want config.Config) 
 	if err := got.Validate(e.Home, e.CaseInsensitive); err != nil {
 		return err
 	}
-	if _, err := backup.Snapshot(e.backupDir(), e.Now(), []string{e.configFile()}); err != nil {
+	generated, err := e.planWith(ctx, got)
+	if err != nil {
 		return err
 	}
 	perm := fsutil.FilePerm
 	if info, err := os.Stat(e.configFile()); err == nil {
 		perm = info.Mode().Perm()
 	}
-	if err := fsutil.WriteAtomic(e.configFile(), []byte(edited), perm); err != nil {
-		return err
-	}
-	return Apply(ctx, e, ApplyOptions{Yes: true})
+	// One snapshot covers the configuration and the generated files, so a
+	// rollback undoes the whole edit.
+	edit := change{path: e.configFile(), content: edited, perm: perm}
+	return e.applyChanges(append([]change{edit}, generated...), ApplyOptions{Yes: true})
 }
 
 func (e Env) readConfigText() (string, config.Config, error) {

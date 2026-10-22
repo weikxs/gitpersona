@@ -85,6 +85,8 @@ Git、`gh`、`glab` 都假定只有一个全局的"当前账户"，于是很容�
 | `gitpersona pin <身份>` / `unpin` | 把当前仓库绑定到某个身份，或取消绑定 |
 | `gitpersona list [--json]` | 列出身份、目录和 Pin |
 | `gitpersona doctor` | 检查配置并说明如何修复问题 |
+| `gitpersona rollback [<名称>\|latest] [--yes]` | 列出备份，或恢复某个备份（恢复前会先备份当前状态） |
+| `gitpersona uninstall [--yes]` | 从 Git 配置中移除 GitPersona；保留 config.toml |
 | `gitpersona help <命令>` | 查看某个命令的参数 |
 
 ## 行为说明
