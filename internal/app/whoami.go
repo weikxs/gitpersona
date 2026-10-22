@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 
 	"github.com/weikxs/gitpersona/internal/config"
 	"github.com/weikxs/gitpersona/internal/paths"
@@ -25,6 +26,11 @@ type WhoamiReport struct {
 	InRepository   bool   `json:"in_repository"`
 	EffectiveEmail string `json:"effective_email,omitempty"`
 	Consistent     bool   `json:"consistent"`
+	// EnvOverride names an environment variable that sets the author email
+	// for commits made here, overriding every configuration file.
+	EnvOverride string `json:"env_override,omitempty"`
+	// LocalEmail is a repository-local user.email, which also overrides profiles.
+	LocalEmail string `json:"local_email,omitempty"`
 	// NewRepositories, outside a repository, is the profile that repositories
 	// created or cloned here will use.
 	NewRepositories *NewRepositories `json:"new_repositories,omitempty"`
@@ -41,7 +47,7 @@ type NewRepositories struct {
 // Whoami reports which profile applies to the current directory and whether
 // Git currently agrees.
 func Whoami(ctx context.Context, e Env, asJSON bool) error {
-	cfg, err := config.Load(e.configFile())
+	cfg, err := e.loadConfig()
 	if err != nil {
 		return err
 	}
@@ -87,8 +93,29 @@ func (e Env) whoami(ctx context.Context, cfg config.Config) WhoamiReport {
 		report.Profile, report.Account, report.Provider, report.Host = p.ID, p.Account, p.Provider, p.Host
 		report.Name, report.Email = p.Name, p.Email
 	}
-	report.Consistent = !inRepo || !r.Found || report.EffectiveEmail == report.Email
+	if inRepo {
+		report.LocalEmail, _ = e.git(ctx, root, "config", "--local", "user.email")
+	}
+	for _, name := range []string{"GIT_AUTHOR_EMAIL", "GIT_COMMITTER_EMAIL"} {
+		if v := os.Getenv(name); v != "" && v != report.Email {
+			report.EnvOverride = name
+			break
+		}
+	}
+	report.Consistent = report.EnvOverride == "" && (!inRepo || !r.Found || report.EffectiveEmail == report.Email)
 	return report
+}
+
+// mismatchAdvice explains why Git does not use the profile and how to fix it.
+func mismatchAdvice(r WhoamiReport) string {
+	switch {
+	case r.EnvOverride != "":
+		return fmt.Sprintf("the environment variable %s overrides the profile; unset it (for example in your direnv or shell setup)", r.EnvOverride)
+	case r.LocalEmail != "":
+		return fmt.Sprintf("this repository sets user.email %q itself; remove it with `git config --local --unset user.email`", r.LocalEmail)
+	default:
+		return fmt.Sprintf("Git currently uses %q; run `gitpersona doctor`", r.EffectiveEmail)
+	}
 }
 
 func printWhoami(e Env, r WhoamiReport) {
@@ -101,8 +128,11 @@ func printWhoami(e Env, r WhoamiReport) {
 		printProfile(e, r)
 	}
 	if n := r.NewRepositories; n != nil {
-		fmt.Fprintf(e.Stdout, "Repositories created or cloned here will use %s (profile %s, %s %s).\n",
-			n.Account, n.Profile, resolve.Reason(n.Reason).Describe(), n.Match)
+		reason := resolve.Reason(n.Reason).Describe()
+		if n.Match != "" {
+			reason += " " + n.Match
+		}
+		fmt.Fprintf(e.Stdout, "Repositories created or cloned here will use %s (profile %s, %s).\n", n.Account, n.Profile, reason)
 	}
 }
 
@@ -116,7 +146,6 @@ func printProfile(e Env, r WhoamiReport) {
 	fmt.Fprintf(e.Stdout, "  reason  %s\n", reason)
 	fmt.Fprintf(e.Stdout, "  path    %s\n", e.display(r.Path))
 	if !r.Consistent {
-		fmt.Fprintf(e.Stdout, "  warning Git currently uses %q. Run `gitpersona doctor`; a repository-local "+
-			"user.email (check `git config --local user.email`) or an outdated setup can cause this.\n", r.EffectiveEmail)
+		fmt.Fprintf(e.Stdout, "  warning %s\n", mismatchAdvice(r))
 	}
 }

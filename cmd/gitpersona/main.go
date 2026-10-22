@@ -59,6 +59,9 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	case "help":
 		return help(rest, stdout, stderr)
 	case "version", "-v", "--version":
+		if len(rest) > 0 {
+			return unexpected(stderr, name, rest[0])
+		}
 		fmt.Fprintln(stdout, version.Current())
 		return exitOK
 	}
@@ -80,8 +83,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return exitUsage
 	}
 	if fs.NArg() > cmd.maxArgs {
-		fmt.Fprintf(stderr, "gitpersona %s: unexpected argument %q\nRun 'gitpersona help %s' for usage.\n", name, fs.Arg(cmd.maxArgs), name)
-		return exitUsage
+		return unexpected(stderr, name, fs.Arg(cmd.maxArgs))
 	}
 
 	env, err := app.FromOS(stdin, stdout, stderr)
@@ -95,6 +97,9 @@ func help(args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
 		fmt.Fprint(stdout, usage)
 		return exitOK
+	}
+	if len(args) > 1 {
+		return unexpected(stderr, "help", args[1])
 	}
 	cmd, ok := commands[args[0]]
 	if !ok {
@@ -110,11 +115,17 @@ func help(args []string, stdout, stderr io.Writer) int {
 func printCommandHelp(w io.Writer, cmd command, fs *flag.FlagSet) {
 	fmt.Fprintf(w, "Usage: gitpersona %s\n\n%s\n", cmd.synopsis, cmd.description)
 	var flags strings.Builder
-	fs.SetOutput(&flags)
-	fs.PrintDefaults()
+	fs.VisitAll(func(f *flag.Flag) {
+		fmt.Fprintf(&flags, "  --%-10s %s\n", f.Name, f.Usage)
+	})
 	if flags.Len() > 0 {
 		fmt.Fprintf(w, "\nFlags:\n%s", flags.String())
 	}
+}
+
+func unexpected(stderr io.Writer, command, arg string) int {
+	fmt.Fprintf(stderr, "gitpersona %s: unexpected argument %q\nRun 'gitpersona help %s' for usage.\n", command, arg, command)
+	return exitUsage
 }
 
 // fail prints err and returns the matching exit status.

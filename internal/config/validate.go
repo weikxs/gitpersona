@@ -86,11 +86,11 @@ func validateProfile(p Profile, home string) []error {
 			add("%s contains a control character such as a line break", f.name)
 		}
 	}
-	if p.Name == "" {
+	if strings.TrimSpace(p.Name) == "" {
 		add("name is required")
 	}
-	if _, err := mail.ParseAddress(p.Email); err != nil || !strings.Contains(p.Email, "@") {
-		add("email %q is not valid", p.Email)
+	if addr, err := mail.ParseAddress(p.Email); err != nil || addr.Address != p.Email {
+		add("email %q is not valid: write just the address, like alex@example.com", p.Email)
 	}
 	if !slices.Contains(validSigningSet, p.Signing.Method) {
 		add("unsupported signing method %q (use none, ssh or gpg)", p.Signing.Method)
@@ -101,6 +101,9 @@ func validateProfile(p Profile, home string) []error {
 	if p.SSHKey != "" {
 		if _, err := paths.Normalize(p.SSHKey, home); err != nil {
 			add("ssh_key: %v", err)
+		}
+		if strings.HasSuffix(p.SSHKey, ".pub") {
+			add("ssh_key %q is a public key; use the private key file (without .pub)", p.SSHKey)
 		}
 	}
 	// An SSH signing key is a file; a GPG signing key is a key ID, not a path.

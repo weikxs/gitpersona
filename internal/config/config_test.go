@@ -298,3 +298,22 @@ func TestValidateExplainsMissingVersionAndEmptyConfig(t *testing.T) {
 		t.Fatalf("Validate() of an empty config = %v", err)
 	}
 }
+
+func TestValidateRejectsValuesGitWouldRefuseOrMisread(t *testing.T) {
+	tests := map[string]func(*Profile){
+		"blank name":             func(p *Profile) { p.Name = "   " },
+		"email with angle marks": func(p *Profile) { p.Email = "<alex@example.com>" },
+		"email with a name":      func(p *Profile) { p.Email = "Alex <alex@example.com>" },
+		"public key as ssh_key":  func(p *Profile) { p.SSHKey = "~/.ssh/id_ed25519.pub" },
+	}
+	for name, mutate := range tests {
+		t.Run(name, func(t *testing.T) {
+			p := validProfile("personal")
+			mutate(&p)
+
+			if err := (Config{Version: CurrentVersion, Profiles: []Profile{p}}).Validate(home, false); err == nil {
+				t.Fatal("Validate() accepted the value")
+			}
+		})
+	}
+}

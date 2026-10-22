@@ -28,6 +28,9 @@ func TestRun(t *testing.T) {
 		{name: "help for an unknown command", args: []string{"help", "bogus"}, wantCode: 2, wantStderr: `unknown command "bogus"`},
 		{name: "json is only for whoami", args: []string{"doctor", "--json"}, wantCode: 2, wantStderr: "flag provided but not defined"},
 		{name: "extra arguments are rejected", args: []string{"apply", "extra"}, wantCode: 2, wantStderr: "unexpected argument"},
+		{name: "version rejects extra arguments", args: []string{"version", "extra"}, wantCode: 2, wantStderr: "unexpected argument"},
+		{name: "help rejects extra arguments", args: []string{"help", "apply", "extra"}, wantCode: 2, wantStderr: "unexpected argument"},
+		{name: "help shows double-dash flags", args: []string{"help", "apply"}, wantCode: 0, wantStdout: "--dry-run"},
 	}
 
 	for _, tc := range tests {

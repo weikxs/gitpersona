@@ -30,6 +30,7 @@ func Doctor(ctx context.Context, e Env) bool {
 	if cfgCheck.ok {
 		checks = append(checks, e.checkGenerated(ctx))
 		checks = append(checks, e.checkBlockIsLast())
+		checks = append(checks, e.checkCurrentRepository(ctx, cfg)...)
 		checks = append(checks, e.checkGitHubAccounts(ctx, cfg)...)
 	}
 
@@ -59,6 +60,13 @@ func (e Env) checkConfig() (config.Config, check) {
 		plural(len(cfg.Profiles), "profile"), plural(len(cfg.Pins), "pin"))}
 }
 
+func differ(n int) string {
+	if n == 1 {
+		return "1 file differs"
+	}
+	return fmt.Sprintf("%d files differ", n)
+}
+
 func plural(n int, noun string) string {
 	if n == 1 {
 		return "1 " + noun
@@ -77,14 +85,28 @@ func (e Env) checkGenerated(ctx context.Context) check {
 			names[i] = e.display(c.path)
 		}
 		return check{
-			label: fmt.Sprintf("generated Git configuration is out of date (%s differ: %s)",
-				plural(len(changes), "file"), strings.Join(names, ", ")),
+			label: fmt.Sprintf("generated Git configuration is out of date (%s: %s)",
+				differ(len(changes)), strings.Join(names, ", ")),
 			advice: "run `gitpersona apply` (this also happens after gitpersona is moved or upgraded, " +
 				"or the configuration or your global Git settings change)",
 		}
 	default:
 		return check{ok: true, label: "generated Git configuration is up to date"}
 	}
+}
+
+// checkCurrentRepository explains, when doctor runs inside a repository, why
+// Git there does not use the expected profile.
+func (e Env) checkCurrentRepository(ctx context.Context, cfg config.Config) []check {
+	r := e.whoami(ctx, cfg)
+	if !r.InRepository || !r.Found {
+		return nil
+	}
+	if !r.Consistent {
+		return []check{{label: fmt.Sprintf("this repository does not use profile %s (%s)", r.Profile, r.Account),
+			advice: mismatchAdvice(r)}}
+	}
+	return []check{{ok: true, label: fmt.Sprintf("this repository uses profile %s (%s)", r.Profile, r.Account)}}
 }
 
 // checkBlockIsLast flags settings after the GitPersona block in the global

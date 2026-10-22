@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -21,6 +22,7 @@ type change struct {
 	path    string
 	content string
 	remove  bool
+	create  bool        // the file does not exist yet
 	perm    os.FileMode // 0 means fsutil.FilePerm
 }
 
@@ -87,7 +89,7 @@ func (e Env) removals(changes []change) []string {
 
 // planApply computes the changes without touching any file.
 func planApply(ctx context.Context, e Env) ([]change, error) {
-	cfg, err := config.Load(e.configFile())
+	cfg, err := e.loadConfig()
 	if err != nil {
 		return nil, err
 	}
@@ -117,6 +119,8 @@ func planApply(ctx context.Context, e Env) ([]change, error) {
 			return nil, err
 		}
 		if current != c.content {
+			_, statErr := os.Stat(c.path)
+			c.create = os.IsNotExist(statErr)
 			changes = append(changes, c)
 		}
 	}
@@ -140,6 +144,18 @@ func (e Env) generateOptions(ctx context.Context) (generate.Options, error) {
 	}
 	return opts, nil
 }
+
+// loadConfig reads the configuration and, when it is missing, says how to
+// create it.
+func (e Env) loadConfig() (config.Config, error) {
+	cfg, err := config.Load(e.configFile())
+	if errors.Is(err, config.ErrNotFound) {
+		return cfg, fmt.Errorf("%w; create it as shown in the quick start: %s", err, quickStartURL)
+	}
+	return cfg, err
+}
+
+const quickStartURL = "https://github.com/weikxs/gitpersona#quick-start"
 
 // resolvedUserGitConfig follows symbolic links, so dotfiles managers keep
 // working when GitPersona writes the global Git configuration.
@@ -235,10 +251,14 @@ func (c change) write() error {
 
 // verb is the change in the present tense; add "d" for the past tense.
 func (c change) verb() string {
-	if c.remove {
+	switch {
+	case c.remove:
 		return "remove"
+	case c.create:
+		return "create"
+	default:
+		return "update"
 	}
-	return "update"
 }
 
 // display shortens paths under the home directory to ~/..., also when the

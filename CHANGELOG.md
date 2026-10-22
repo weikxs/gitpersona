@@ -35,5 +35,12 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 - `whoami` reports exactly what Git applies in worktrees and outside repositories.
 - Line breaks and other control characters in the configuration are rejected instead of breaking Git.
 - `apply` asks for `--yes` before removing files and keeps only the newest 20 backups.
+- `apply` keeps the GitPersona block last, so later `git config --global` settings or `gh auth setup-git`
+  cannot silently override profiles; `doctor` flags settings after the block.
+- `whoami` works in bare repositories and inside `.git`, and warns about `GIT_AUTHOR_EMAIL` /
+  `GIT_COMMITTER_EMAIL` and repository-local `user.email` with the exact fix; `doctor` checks the current repository.
+- Directory names containing `[`, `*` or `?` match literally.
+- `doctor` no longer reports accounts as signed out when `gh` cannot be queried.
+- Blank names, emails with angle brackets and a `.pub` file as `ssh_key` are rejected.
 - Project scaffold: Go module, `gitpersona version` / `help` commands, Makefile, CI, release configuration,
   privacy check, contribution and development standards.

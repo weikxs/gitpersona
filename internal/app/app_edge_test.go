@@ -427,7 +427,7 @@ func TestApplyDryRunWritesNothing(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if !strings.Contains(out.String(), "would update ~/.gitconfig") || !strings.Contains(out.String(), "dry run") {
+	if !strings.Contains(out.String(), "would create ~/.gitconfig") || !strings.Contains(out.String(), "dry run") {
 		t.Errorf("dry-run output:\n%s", out.String())
 	}
 	for _, p := range []string{filepath.Join(w.home, ".gitconfig"), filepath.Join(w.home, ".config", "gitpersona", "rules.gitconfig"), filepath.Join(w.home, ".config", "gitpersona", "backups")} {
@@ -608,5 +608,53 @@ func TestApplyExplainsDisabledGlobalConfig(t *testing.T) {
 
 	if err == nil || !strings.Contains(err.Error(), "global Git configuration is disabled") {
 		t.Fatalf("Apply() with GIT_CONFIG_GLOBAL=/dev/null = %v", err)
+	}
+}
+
+func TestWhoamiWarnsAboutAuthorEmailEnvironmentVariables(t *testing.T) {
+	w := newWorld(t)
+	env, out := w.env(t, w.repos["billing"])
+	if err := Apply(context.Background(), env, ApplyOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GIT_AUTHOR_EMAIL", "direnv@example.com")
+	out.Reset()
+
+	if err := Whoami(context.Background(), env, false); err != nil {
+		t.Fatal(err)
+	}
+
+	if !strings.Contains(out.String(), "GIT_AUTHOR_EMAIL") {
+		t.Fatalf("whoami should warn that GIT_AUTHOR_EMAIL overrides the profile:\n%s", out.String())
+	}
+}
+
+func TestDoctorChecksTheCurrentRepository(t *testing.T) {
+	w := newWorld(t)
+	env, out := w.env(t, w.repos["billing"])
+	if err := Apply(context.Background(), env, ApplyOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, w.repos["billing"], "config", "--local", "user.email", "local@example.com")
+	out.Reset()
+
+	if Doctor(context.Background(), env) {
+		t.Fatalf("doctor passed although this repository overrides the profile:\n%s", out.String())
+	}
+	if !strings.Contains(out.String(), "git config --local --unset user.email") {
+		t.Fatalf("doctor should say how to remove the local override:\n%s", out.String())
+	}
+}
+
+func TestDryRunSaysCreateForNewFiles(t *testing.T) {
+	w := newWorld(t)
+	env, out := w.env(t, w.home)
+
+	if err := Apply(context.Background(), env, ApplyOptions{DryRun: true}); err != nil {
+		t.Fatal(err)
+	}
+
+	if !strings.Contains(out.String(), "would create ~/.config/gitpersona/rules.gitconfig") {
+		t.Fatalf("dry run should say create for files that do not exist yet:\n%s", out.String())
 	}
 }

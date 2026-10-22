@@ -72,7 +72,7 @@ everything else             → acme-alex    (default)
 | `account`, `name`, `email` | yes | Account on the host, commit author name and email |
 | `dirs` | no | Directories whose repositories use this profile; the most specific directory wins |
 | `ssh_key` | no | Path of the SSH private key Git should use for this profile |
-| `signing` | no | `{ method = "ssh", key = "~/.ssh/key.pub" }` or `{ method = "gpg", key = "<key id>" }` |
+| `signing` | no | `{ method = "ssh", key = "~/.ssh/key.pub" }`, `{ method = "gpg", key = "<key id>" }`, or `{ method = "none" }` |
 | `[[pin]] repo`, `profile` | — | Bind one repository to a profile, overriding directory rules |
 
 Paths must be absolute or start with `~/`.

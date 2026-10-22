@@ -69,7 +69,7 @@ Git、`gh`、`glab` 都假定只有一个全局的"当前账户"，于是很容�
 | `account`、`name`、`email` | 是 | 平台账户名、提交作者名、提交邮箱 |
 | `dirs` | 否 | 这些目录里的仓库使用此身份；最具体的目录优先 |
 | `ssh_key` | 否 | 此身份使用的 SSH 私钥路径 |
-| `signing` | 否 | `{ method = "ssh", key = "~/.ssh/key.pub" }` 或 `{ method = "gpg", key = "<密钥 ID>" }` |
+| `signing` | 否 | `{ method = "ssh", key = "~/.ssh/key.pub" }`、`{ method = "gpg", key = "<密钥 ID>" }` 或 `{ method = "none" }` |
 | `[[pin]] repo`、`profile` | — | 把单个仓库绑定到某个身份，优先于目录规则 |
 
 路径必须是绝对路径，或以 `~/` 开头。
