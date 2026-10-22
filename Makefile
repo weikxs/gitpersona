@@ -5,6 +5,9 @@ PKG      := github.com/weikxs/gitpersona
 BIN_DIR  := bin
 COVERAGE := coverage.out
 MIN_COVERAGE := 80
+# Tests keep all their files under /tmp, never in the real home directory.
+TEST_TMPDIR := /tmp/gitpersona-test
+GO_TEST := mkdir -p $(TEST_TMPDIR) && TMPDIR=$(TEST_TMPDIR) go test -race
 
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 COMMIT  ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo none)
@@ -23,12 +26,12 @@ build: ## Build the binary into bin/
 	CGO_ENABLED=0 go build -trimpath -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/$(BINARY) ./cmd/$(BINARY)
 
 .PHONY: test
-test: ## Run all tests with the race detector
-	go test -race ./...
+test: ## Run all tests with the race detector (temp files under /tmp)
+	$(GO_TEST) ./...
 
 .PHONY: cover
 cover: ## Run tests and fail below the minimum coverage
-	go test -race -coverprofile=$(COVERAGE) ./...
+	$(GO_TEST) -coverprofile=$(COVERAGE) ./...
 	@go tool cover -func=$(COVERAGE) | awk -v min=$(MIN_COVERAGE) '/^total:/ { sub("%", "", $$3); printf "total coverage: %s%% (minimum %s%%)\n", $$3, min; if ($$3 + 0 < min) exit 1 }'
 
 .PHONY: fmt

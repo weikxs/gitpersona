@@ -1,0 +1,33 @@
+version = 1
+default = "acme"
+
+[[profile]]
+id       = "personal"
+account  = "octo-alex"
+name     = "Alex Octo"
+email    = "1000001+octo-alex@users.noreply.github.com"
+signing  = { method = "ssh", key = "~/.ssh/id_ed25519_personal.pub" }
+dirs     = ["~/Projects/personal", "~/Projects/acme/oss"]
+
+[[profile]]
+id       = "acme"
+provider = "github"
+host     = "github.com"
+account  = "acme-alex"
+name     = "Alex (Acme)"
+email    = "1000002+acme-alex@users.noreply.github.com"
+dirs     = ["~/Projects/acme"]
+
+[[profile]]
+id       = "globex"
+provider = "gitlab"
+host     = "gitlab.globex.example"
+account  = "globex-alex"
+name     = "Alex"
+email    = "alex@globex.example"
+ssh_key  = "~/.ssh/id_ed25519_globex"
+dirs     = ["~/Projects/clients/globex"]
+
+[[pin]]
+repo    = "~/Downloads/globex-hotfix"
+profile = "globex"
