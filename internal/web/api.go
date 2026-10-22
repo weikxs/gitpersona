@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -38,6 +39,7 @@ type envelope struct {
 // DiscoverReport is what discovery suggests.
 type DiscoverReport struct {
 	Roots       []string              `json:"roots"`
+	Missing     []string              `json:"missing"` // chosen folders that do not exist
 	Existing    []discover.Identity   `json:"existing"`
 	Suggestions []discover.Suggestion `json:"suggestions"`
 }
@@ -170,17 +172,25 @@ func (a api) discover(c call) (any, error) {
 	if q := c.r.URL.Query().Get("roots"); q != "" {
 		roots = strings.Split(q, ",")
 	}
-	report := DiscoverReport{Roots: []string{}, Existing: []discover.Identity{}, Suggestions: []discover.Suggestion{}}
+	report := DiscoverReport{Roots: []string{}, Missing: []string{}, Existing: []discover.Identity{}, Suggestions: []discover.Suggestion{}}
 	var abs []string
+	chosen := map[string]string{} // real folder -> the folder as the user wrote it
 	for _, root := range roots {
 		norm, err := paths.Normalize(strings.TrimSpace(root), c.env.Home)
 		if err != nil {
 			return nil, err
 		}
-		if info, err := os.Stat(norm); err == nil && info.IsDir() {
-			report.Roots = append(report.Roots, c.env.Display(norm))
-			abs = append(abs, norm)
+		// Walk the real folder, so a symlinked ~/code is scanned too.
+		real, err := filepath.EvalSymlinks(norm)
+		if info, statErr := os.Stat(real); err != nil || statErr != nil || !info.IsDir() {
+			if q := c.r.URL.Query().Get("roots"); q != "" {
+				report.Missing = append(report.Missing, c.env.Display(norm))
+			}
+			continue
 		}
+		report.Roots = append(report.Roots, c.env.Display(norm))
+		abs = append(abs, real)
+		chosen[real] = norm
 	}
 	if existing, err := discover.Existing(c.ctx, c.env.Home, c.env.GlobalGitConfigPath(), c.env.Run); err == nil && existing != nil {
 		for _, id := range existing {
@@ -196,7 +206,7 @@ func (a api) discover(c call) (any, error) {
 		}
 	}
 	for _, s := range discover.Scan(c.ctx, abs, logins, discover.DefaultScanLimits) {
-		s.Dir = c.env.Display(s.Dir)
+		s.Dir = c.env.Display(asChosen(s.Dir, chosen))
 		report.Suggestions = append(report.Suggestions, s)
 	}
 	return report, nil
@@ -282,7 +292,13 @@ func (a api) addDir(c call) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	return nil, app.Use(c.ctx, env, req.Profile)
+	if err := app.Use(c.ctx, env, req.Profile); err != nil {
+		return nil, err
+	}
+	if _, err := os.Stat(env.WorkDir); errors.Is(err, os.ErrNotExist) {
+		fmt.Fprintf(c.log, "Note: %s does not exist yet; the rule applies once it does.\n", c.env.Display(env.WorkDir))
+	}
+	return nil, nil
 }
 
 func (a api) removeDir(c call) (any, error) {
@@ -372,4 +388,15 @@ func (a api) close(_ call) (any, error) {
 		go a.stop()
 	}
 	return nil, nil
+}
+
+// asChosen writes dir under the folder the user chose rather than under the
+// real folder a symlink points to.
+func asChosen(dir string, chosen map[string]string) string {
+	for real, norm := range chosen {
+		if rest, ok := strings.CutPrefix(dir, real); ok && (rest == "" || strings.HasPrefix(rest, string(filepath.Separator))) {
+			return norm + rest
+		}
+	}
+	return dir
 }

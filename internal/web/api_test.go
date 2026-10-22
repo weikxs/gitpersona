@@ -133,7 +133,7 @@ func (w *apiWorld) session(t *testing.T) *http.Cookie {
 		w.srv.keyUsed = true
 		w.srv.sessions = append(w.srv.sessions, randomToken())
 	}
-	return &http.Cookie{Name: sessionCookie, Value: w.srv.sessions[0]}
+	return &http.Cookie{Name: w.srv.cookieName(), Value: w.srv.sessions[0]}
 }
 
 func TestStateAndPreviewThenApply(t *testing.T) {
@@ -321,5 +321,39 @@ func TestSetupWizardThroughTheAPI(t *testing.T) {
 	}
 	if again := w.call(t, "POST", "/api/setup", plan); again.OK || !strings.Contains(again.Error, "already exists") {
 		t.Fatalf("a second setup must not overwrite: %+v", again)
+	}
+}
+
+func TestDiscoverFollowsSymlinksReportsMissingFoldersAndOrganizations(t *testing.T) {
+	w := newAPIWorld(t)
+	real := filepath.Join(w.home, "real code")
+	for _, r := range []struct{ dir, url string }{
+		{"work/api", "https://github.com/acme-org/api.git"},
+		{"work/web", "git@github.com:acme-org/web.git"},
+		{"fun/game", "https://github.com/octo-alex/game.git"},
+	} {
+		dir := filepath.Join(real, r.dir)
+		for _, args := range [][]string{{"init", "-q", dir}, {"-C", dir, "remote", "add", "origin", r.url}} {
+			if out, err := exec.Command("git", args...).CombinedOutput(); err != nil {
+				t.Fatalf("git %v: %v %s", args, err, out)
+			}
+		}
+	}
+	if err := os.Symlink(real, filepath.Join(w.home, "code")); err != nil {
+		t.Fatal(err)
+	}
+
+	var report DiscoverReport
+	decode(t, w.call(t, "GET", "/api/discover?roots=~/code,~/nowhere", nil), &report)
+
+	if len(report.Missing) != 1 || report.Missing[0] != "~/nowhere" {
+		t.Errorf("missing folders = %v, want ~/nowhere", report.Missing)
+	}
+	byDir := map[string]string{}
+	for _, s := range report.Suggestions {
+		byDir[s.Dir] = s.Account + "|" + s.Owner
+	}
+	if byDir["~/code/work"] != "|acme-org" || byDir["~/code/fun"] != "octo-alex|octo-alex" {
+		t.Errorf("suggestions should use the folder as chosen and name each owner, got %v", byDir)
 	}
 }

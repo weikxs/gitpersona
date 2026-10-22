@@ -5,6 +5,8 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/weikxs/gitpersona/internal/app"
@@ -56,7 +58,12 @@ var commands = map[string]command{
 					if opts.Print {
 						return fail(env.Stderr, errors.New("choose either --print or --web"))
 					}
-					return fail(env.Stderr, runUI(ctx, env, !*noOpen, "setup"))
+					section := "setup"
+					if _, err := os.Stat(filepath.Join(env.ConfigDir, "config.toml")); err == nil {
+						fmt.Fprintln(env.Stdout, "You already have a configuration, so the page opens on the overview instead of setup.")
+						section = ""
+					}
+					return fail(env.Stderr, runUI(ctx, env, !*noOpen, section))
 				}
 				return fail(env.Stderr, app.Setup(ctx, env, opts))
 			}

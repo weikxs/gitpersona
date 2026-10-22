@@ -70,3 +70,36 @@ func TestRemoteOwner(t *testing.T) {
 		}
 	}
 }
+
+func TestScanReportsDirectoriesOwnedByAnOrganization(t *testing.T) {
+	root := t.TempDir()
+	for _, r := range []struct{ dir, url string }{
+		{"work/api", "https://github.com/acme-org/api.git"},
+		{"work/web", "git@github.com:Acme-Org/web.git"},
+		{"work/tool", "https://github.com/acme-alex/tool"},
+		{"mixed/a", "https://github.com/one/a"},
+		{"mixed/b", "https://github.com/two/b"},
+	} {
+		repo(t, filepath.Join(root, r.dir), r.url)
+	}
+
+	got := Scan(context.Background(), []string{root}, []string{"Acme-Alex"}, ScanLimits{MaxDepth: 4, Timeout: time.Second})
+
+	if len(got) != 1 {
+		t.Fatalf("Scan() = %+v, want one suggestion (no owner has most of mixed/)", got)
+	}
+	if s := got[0]; s.Dir != filepath.Join(root, "work") || s.Account != "" || s.Owner != "acme-org" || s.Repos != 2 || s.Total != 3 {
+		t.Errorf("an organization's directory should be suggested without an account, got %+v", s)
+	}
+}
+
+func TestScanMatchesAccountsWhateverTheirCase(t *testing.T) {
+	root := t.TempDir()
+	repo(t, filepath.Join(root, "p", "blog"), "https://github.com/octo-alex/blog")
+
+	got := Scan(context.Background(), []string{root}, []string{"Octo-Alex"}, ScanLimits{MaxDepth: 4, Timeout: time.Second})
+
+	if len(got) != 1 || got[0].Account != "Octo-Alex" || got[0].Owner != "octo-alex" {
+		t.Fatalf("Scan() = %+v, want the account as gh knows it", got)
+	}
+}

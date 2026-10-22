@@ -45,7 +45,7 @@ func login(t *testing.T, s *Server) *http.Cookie {
 		t.Fatalf("login with the key: status %d", w.Code)
 	}
 	for _, c := range w.Result().Cookies() {
-		if c.Name == sessionCookie {
+		if c.Name == s.cookieName() {
 			if !c.HttpOnly || c.SameSite != http.SameSiteStrictMode {
 				t.Fatalf("session cookie must be HttpOnly and SameSite=Strict: %+v", c)
 			}
@@ -211,5 +211,19 @@ func TestServeOnARealLoopbackPort(t *testing.T) {
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("Serve() did not return after Stop")
+	}
+}
+
+func TestSessionCookiesOfTwoPagesDoNotCollide(t *testing.T) {
+	a, err := New("127.0.0.1:43210", Handlers{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := New("127.0.0.1:43211", Handlers{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a.cookieName() == b.cookieName() {
+		t.Fatalf("both pages use the cookie %q; the second would end the first one's session", a.cookieName())
 	}
 }

@@ -57,7 +57,7 @@ export function field(label, input, hint) {
 // status shows a message in the live region, with any command output.
 export function status(kind, message, log = "") {
   const region = document.getElementById("status");
-  const children = [h("div", { class: `notice ${kind}` }, message, log ? h("pre", {}, log.trim()) : null)];
+  const children = [h("div", { class: `notice ${kind}`, tabindex: "-1" }, message, log ? h("pre", {}, log.trim()) : null)];
   replace(region, children);
 }
 
@@ -79,6 +79,8 @@ export function confirm(title, text, action = "Confirm") {
 }
 
 // busy disables a button while work runs, so it cannot be pressed twice.
+// Afterwards focus returns to the button when it is still on the page and
+// focus was lost (for example when a confirmation was cancelled).
 export async function busy(button, work) {
   button.setAttribute("aria-busy", "true");
   button.disabled = true;
@@ -87,5 +89,6 @@ export async function busy(button, work) {
   } finally {
     button.removeAttribute("aria-busy");
     button.disabled = false;
+    if (button.isConnected && (!document.activeElement || document.activeElement === document.body)) button.focus();
   }
 }

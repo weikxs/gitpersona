@@ -5,9 +5,17 @@ import { api } from "../api.js";
 import { h, badge, busy } from "../dom.js";
 import { factList } from "./overview.js";
 
+// sourceText says in plain words where a shell was found.
+function sourceText(source = "") {
+  if (source === "dscl" || source === "getent") return "from your account settings";
+  if (source === "$SHELL") return "from the SHELL variable";
+  if (source.startsWith("process")) return "the shell that started GitPersona";
+  return source;
+}
+
 function describe(shell) {
   if (!shell?.kind) return "Not detected";
-  return [shell.kind, shell.path, shell.source ? `(${shell.source})` : ""].filter(Boolean).join(" ");
+  return [shell.kind, shell.path, shell.source ? `(${sourceText(shell.source)})` : ""].filter(Boolean).join(" ");
 }
 
 export function renderShells(section, { state, run }) {

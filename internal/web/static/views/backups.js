@@ -4,7 +4,7 @@
 import { api } from "../api.js";
 import { h, replace, busy, confirm } from "../dom.js";
 
-const dateFormat = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" });
+const dateFormat = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "medium" });
 
 export function renderBackups(section, { run }) {
   const body = h("div", { "aria-busy": "true" }, h("p", {}, "Loading backups…"));

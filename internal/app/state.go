@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/weikxs/gitpersona/internal/config"
 	"github.com/weikxs/gitpersona/internal/provider"
@@ -123,9 +125,24 @@ func (e Env) fileChanges(changes []change) []FileChange {
 			if c.remove {
 				after = ""
 			}
-			fc.Diff = textdiff.Unified(before, after, name)
+			fc.Diff = e.withTilde(textdiff.Unified(before, after, name))
 		}
 		out = append(out, fc)
 	}
 	return out
+}
+
+// withTilde writes the home directory as ~ in text shown on the page, so
+// diffs never show the user's absolute home path (it often holds their name).
+// The files themselves keep absolute paths, which Git needs.
+func (e Env) withTilde(text string) string {
+	sep := string(filepath.Separator)
+	homes := []string{e.Home}
+	if real, err := filepath.EvalSymlinks(e.Home); err == nil && real != e.Home {
+		homes = append([]string{real}, homes...)
+	}
+	for _, home := range homes {
+		text = strings.ReplaceAll(text, home+sep, "~"+sep)
+	}
+	return text
 }

@@ -13,6 +13,11 @@ import (
 // runUI serves the configuration page until it is closed or idle. section
 // is the part of the page to open first, such as "setup"; "" opens the overview.
 func runUI(ctx context.Context, env app.Env, openBrowser bool, section string) error {
+	unlock, err := lockUI(env.ConfigDir)
+	if err != nil {
+		return err
+	}
+	defer unlock()
 	ln, err := web.Listen()
 	if err != nil {
 		return fmt.Errorf("start the configuration page: %w", err)

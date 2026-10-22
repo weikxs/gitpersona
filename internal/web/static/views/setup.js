@@ -3,7 +3,7 @@
 // last step.
 
 import { api } from "../api.js";
-import { h, replace, badge, field, busy, status } from "../dom.js";
+import { h, replace, badge, field, busy, status, clearStatus } from "../dom.js";
 import { doctorCard } from "./overview.js";
 import { diffBlock } from "./apply.js";
 
@@ -44,12 +44,14 @@ function fromProposal(p) {
     defaultAccount: p.profiles.find((x) => x.id === p.default)?.account ?? "",
     unmatched: p.unmatched,
     profiles: p.profiles.map((x) => ({ ...x, include: true, dirs: x.dirs.map((d) => ({ dir: d, on: true, why: "your existing setup" })) })),
+    unassigned: [],
     roots: "",
     scanned: false,
   };
 }
 
 function update(changes, body, run) {
+  if (changes.step !== undefined && changes.step !== wizard.step) clearStatus();
   wizard = { ...wizard, ...changes };
   show(body, run);
 }
@@ -104,14 +106,17 @@ function identityFields(p, i) {
   };
   const include = h("input", { type: "checkbox", checked: p.include });
   const isDefault = h("input", { type: "radio", name: "default", value: p.account, checked: p.account === wizard.defaultAccount });
-  const fields = h("div", { class: "stack", hidden: !p.include },
-    field("Profile name", input("id", { pattern: "[a-z0-9][a-z0-9\\-]{0,31}", maxlength: 32 }), "Lowercase letters, digits and -"),
+  // A fieldset that is disabled is also skipped by form validation, so a
+  // profile the user leaves out cannot block Next.
+  const fields = h("fieldset", { class: "stack plain", hidden: !p.include, disabled: !p.include },
+    field("Profile name", input("id", { pattern: "[a-z0-9][a-z0-9\\-]{0,31}", maxlength: 32, title: "Lowercase letters, digits and -, starting with a letter or digit" }), "Lowercase letters, digits and -"),
     field("Author name", input("name")),
     field("Author email", input("email", { type: "email" }), EMAIL_HINTS[p.email_source]),
     h("label", { class: "check" }, isDefault, "Use this profile where no directory rule matches (default)"));
   include.addEventListener("change", () => {
     wizard = { ...wizard, profiles: setProfile(i, { include: include.checked }) };
     fields.hidden = !include.checked;
+    fields.disabled = !include.checked;
   });
   isDefault.addEventListener("change", () => { wizard = { ...wizard, defaultAccount: p.account }; });
   return h("fieldset", {},
@@ -134,6 +139,7 @@ function directories(body, run) {
     h("h3", { tabindex: "-1" }, "2. Choose directories"),
     h("p", { class: "muted" }, "Every repository under a chosen directory uses that profile. You can change this later."),
     scanCard(body, run),
+    wizard.unassigned.length > 0 ? unassignedCard(included, body, run) : null,
     included.map(([p, i]) => dirFields(p, i, body, run)),
     nav(body, run, {}));
   form.addEventListener("submit", (event) => {
@@ -143,16 +149,27 @@ function directories(body, run) {
   return form;
 }
 
+// onEnter makes Enter in a field press its own button instead of
+// submitting the whole step.
+function onEnter(input, button) {
+  input.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      button.click();
+    }
+  });
+}
+
 function scanCard(body, run) {
   const roots = h("input", { type: "text", value: wizard.roots, placeholder: "~/code, ~/work", autocomplete: "off", spellcheck: "false" });
   const scan = h("button", { type: "button" }, wizard.scanned ? "Scan again" : "Find suggestions");
+  onEnter(roots, scan);
   scan.addEventListener("click", () => busy(scan, async () => {
     try {
       const { data } = await api.discover(roots.value.trim());
-      update({ roots: roots.value.trim(), scanned: true, profiles: withSuggestions(data.suggestions) }, body, run);
-      status("ok", data.suggestions.length > 0
-        ? `Found ${data.suggestions.length} suggestion${data.suggestions.length === 1 ? "" : "s"} in ${data.roots.join(", ")}.`
-        : `No suggestions in ${data.roots.join(", ") || "those folders"}.`);
+      const { profiles, unassigned } = withSuggestions(data.suggestions);
+      update({ roots: roots.value.trim(), scanned: true, profiles, unassigned }, body, run);
+      status(data.missing.length > 0 ? "warn" : "ok", scanSummary(data));
     } catch (err) {
       status("fail", err.message);
     }
@@ -164,29 +181,80 @@ function scanCard(body, run) {
       scan));
 }
 
+function scanSummary(data) {
+  const n = data.suggestions.length;
+  const parts = [];
+  if (data.roots.length > 0) {
+    parts.push(n > 0 ? `Found ${n} suggestion${n === 1 ? "" : "s"} in ${data.roots.join(", ")}.`
+      : `No folder in ${data.roots.join(", ")} has repositories that mostly belong to one owner.`);
+  }
+  if (data.missing.length > 0) parts.push(`These folders do not exist: ${data.missing.join(", ")}.`);
+  return parts.join(" ") || "None of the usual code folders exist; type the folders to look in.";
+}
+
+// withSuggestions adds each suggestion to the profile of its account; those
+// owned by someone else, such as an organization, wait for the user to choose.
 function withSuggestions(suggestions) {
-  return wizard.profiles.map((p) => {
-    const found = suggestions.filter((s) => s.account === p.account && !p.dirs.some((d) => d.dir === s.dir));
-    return { ...p, dirs: [...p.dirs, ...found.map((s) => ({ dir: s.dir, on: true, why: `${s.repos} of ${s.total} repositories there` }))] };
+  const known = (dir) => wizard.profiles.some((p) => p.dirs.some((d) => d.dir === dir)) ||
+    wizard.unassigned.some((u) => u.dir === dir);
+  const fresh = suggestions.filter((s) => !known(s.dir));
+  const why = (s) => `${s.repos} of ${s.total} repositories there`;
+  const profiles = wizard.profiles.map((p) => {
+    const found = fresh.filter((s) => s.account && s.account === p.account);
+    return { ...p, dirs: [...p.dirs, ...found.map((s) => ({ dir: s.dir, on: true, why: why(s) }))] };
   });
+  const unassigned = [...wizard.unassigned,
+    ...fresh.filter((s) => !profiles.some((p) => p.account === s.account)).map((s) => ({ dir: s.dir, owner: s.owner, why: why(s) }))];
+  return { profiles, unassigned };
+}
+
+function unassignedCard(included, body, run) {
+  return h("div", { class: "card" },
+    h("h4", {}, "Owned by someone else"),
+    h("p", { class: "muted" }, "Most repositories in these folders belong to an owner that is not one of your accounts, " +
+      "often an organization. Choose the profile to use there, or leave them out."),
+    wizard.unassigned.map((u, k) => {
+      const select = h("select", {},
+        h("option", { value: "" }, "Leave out"),
+        included.map(([p, i]) => h("option", { value: String(i) }, `${p.id} (${p.account})`)));
+      select.addEventListener("change", () => {
+        if (select.value === "") return;
+        const i = Number(select.value);
+        const dirs = [...wizard.profiles[i].dirs, { dir: u.dir, on: true, why: `${u.why}, owned by ${u.owner}` }];
+        update({ profiles: setProfile(i, { dirs }), unassigned: wizard.unassigned.filter((_, j) => j !== k) }, body, run);
+      });
+      return field(`${u.dir} · ${u.owner} · ${u.why}`, select);
+    }));
+}
+
+// cleanDir writes a directory without a trailing slash.
+function cleanDir(dir) {
+  return dir.length > 1 ? dir.replace(/\/+$/, "") : dir;
 }
 
 function dirFields(p, i, body, run) {
   const add = h("input", { type: "text", autocomplete: "off", spellcheck: "false", placeholder: "~/code/" + p.id });
   const addButton = h("button", { type: "button" }, "Add");
+  onEnter(add, addButton);
   addButton.addEventListener("click", () => {
-    const dir = add.value.trim();
+    const dir = cleanDir(add.value.trim());
     if (!dir) return;
     if (!dir.startsWith("~/") && !dir.startsWith("/")) {
-      status("fail", "Write the directory as an absolute path or one starting with ~/.");
+      status("fail", "Write the directory as an absolute path or one starting with ~/, for example ~/code/work.");
+      add.focus();
       return;
     }
-    const dirs = wizard.profiles[i].dirs;
-    if (dirs.some((d) => d.dir === dir)) {
-      status("fail", `${dir} is already in the list.`);
+    const owner = wizard.profiles.find((x) => x.include && x.dirs.some((d) => d.on && cleanDir(d.dir) === dir));
+    if (owner) {
+      status("fail", owner === wizard.profiles[i] ? `${dir} is already in the list.`
+        : `${dir} is already chosen for ${owner.id}; untick it there first.`);
+      add.focus();
       return;
     }
-    update({ profiles: setProfile(i, { dirs: [...dirs, { dir, on: true, why: "added by you" }] }) }, body, run);
+    clearStatus();
+    const dirs = [...wizard.profiles[i].dirs, { dir, on: true, why: "added by you" }];
+    update({ profiles: setProfile(i, { dirs }) }, body, run);
+    body.querySelectorAll("fieldset input[type=text]")[included(i)]?.focus();
   });
   return h("fieldset", {},
     h("legend", {}, `${p.id} (${p.account})`),
@@ -200,6 +268,11 @@ function dirFields(p, i, body, run) {
       return h("label", { class: "check" }, box, h("span", { class: "mono" }, d.dir), h("span", { class: "muted" }, ` · ${d.why}`));
     }),
     h("div", { class: "row" }, field("Add a directory", add), addButton));
+}
+
+// included returns the position of profile i among the included profiles.
+function included(i) {
+  return wizard.profiles.slice(0, i).filter((p) => p.include).length;
 }
 
 // Step 3: every file the setup writes, then apply.

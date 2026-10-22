@@ -53,7 +53,8 @@ func TestAddDirToMultilineArrayKeepsComments(t *testing.T) {
 func TestAddDirWithoutDirsKeyAddsOne(t *testing.T) {
 	got, err := AddDir(commented, "globex", "~/Projects/clients/globex", editOpts)
 
-	assertEdit(t, got, err, "id      = \"globex\"\ndirs = [\"~/Projects/clients/globex\"]\n")
+	// The new key goes after the profile's last key, aligned like the others.
+	assertEdit(t, got, err, "email   = \"alex@globex.example\"\ndirs    = [\"~/Projects/clients/globex\"]\n")
 }
 
 func TestAddDirEscapesQuotesAndBackslashes(t *testing.T) {
@@ -285,7 +286,7 @@ func TestSetProfileFieldReplacesOrAddsTheKey(t *testing.T) {
 	assertEdit(t, renamed, err, `name    = "Alex A."`)
 
 	withHost, err := SetProfileField(commented, "globex", "host", "gitlab.globex.example")
-	assertEdit(t, withHost, err, "id      = \"globex\"\nhost = \"gitlab.globex.example\"")
+	assertEdit(t, withHost, err, "email   = \"alex@globex.example\"\nhost    = \"gitlab.globex.example\"")
 
 	cleared, err := SetProfileField(commented, "acme", "name", "")
 	if err != nil || strings.Contains(cleared, `name    = "Alex (Acme)"`) {
@@ -331,5 +332,14 @@ func TestSetProfileSigning(t *testing.T) {
 	table := commented + "\n[profile.signing]\nmethod = \"ssh\"\n"
 	if _, err := SetProfileSigning(strings.Replace(table, "", "", 1), "ghost", Signing{}); err == nil {
 		t.Fatal("unknown profile accepted")
+	}
+}
+
+func TestNewKeysGoAfterAMultiLineArray(t *testing.T) {
+	got, err := SetProfileField(commented, "personal", "ssh_key", "~/.ssh/id_personal")
+
+	assertEdit(t, got, err, "  \"~/Projects/acme/oss\",\n]\nssh_key = \"~/.ssh/id_personal\"\n")
+	if _, err := Parse([]byte(got)); err != nil {
+		t.Fatalf("the edit broke the file: %v\n%s", err, got)
 	}
 }

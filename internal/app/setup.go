@@ -27,7 +27,7 @@ var invalidIDChars = regexp.MustCompile(`[^a-z0-9-]+`)
 // for account status (no tokens) and for each account's public profile.
 func Setup(ctx context.Context, e Env, opts SetupOptions) error {
 	if _, err := os.Stat(e.configFile()); err == nil && !opts.Print {
-		return fmt.Errorf("%s already exists; change it with `gitpersona use` and `gitpersona pin`, or edit it", e.display(e.configFile()))
+		return fmt.Errorf("%s already exists; change it on the configuration page (`gitpersona ui`), with `gitpersona use` and `gitpersona pin`, or by hand", e.display(e.configFile()))
 	}
 	ctx, cancel := context.WithTimeout(ctx, setupTimeout)
 	defer cancel()

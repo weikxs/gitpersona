@@ -68,9 +68,16 @@ function profileCard(p, ctx) {
         run(() => api.removeDir(dir), `Removed ${dir}.`),
     }),
     addPathForm({
-      label: "Add a directory", hint: "Every repository under it uses this profile, e.g. ~/code/work",
+      label: "Add a directory", hint: `Every repository under it uses this profile, e.g. ~/code/${p.id}`,
       button: "Add directory",
-      onAdd: (dir) => run(() => api.addDir(dir, p.id), `Repositories under ${dir} now use ${p.id}.`),
+      onAdd: async (dir) => {
+        const owner = ownerOf(state, dir);
+        if (owner && owner !== p.id && !(await confirm(`Move ${dir} to ${p.id}?`,
+          `${dir} uses ${owner} now. Moving it makes its repositories use ${p.id} instead.`, "Move"))) {
+          return;
+        }
+        await run(() => api.addDir(dir, p.id), `Repositories under ${dir} now use ${p.id}.`);
+      },
     }),
     pathList({
       title: "Pinned repositories", items: pins.map((pin) => pin.repo), empty: "None. Pin a repository that sits under another profile's directory.",
@@ -99,7 +106,10 @@ function profileCard(p, ctx) {
   async function remove() {
     const extra = [p.dirs.length ? `its ${p.dirs.length} director${p.dirs.length === 1 ? "y" : "ies"}` : "",
       pins.length ? `${pins.length} pin${pins.length === 1 ? "" : "s"}` : ""].filter(Boolean).join(" and ");
-    if (await confirm(`Remove ${p.id}?`, `This removes the profile${extra ? ` with ${extra}` : ""}. You can undo it under Backups.`, "Remove profile")) {
+    const fallback = p.id === state.config.default
+      ? ` ${p.id} is your default profile, so directories without a rule will use Git's own identity until you choose another default.`
+      : "";
+    if (await confirm(`Remove ${p.id}?`, `This removes the profile${extra ? ` with ${extra}` : ""}.${fallback} You can undo it under Backups.`, "Remove profile")) {
       await run(() => api.removeProfile(p.id), `Removed profile ${p.id}.`);
     }
   }
@@ -137,4 +147,11 @@ function addPathForm({ label, hint, button, onAdd }) {
     busy(submit, () => onAdd(input.value.trim()));
   });
   return form;
+}
+
+// ownerOf returns the profile whose directories include dir (ignoring a
+// trailing slash), or "".
+function ownerOf(state, dir) {
+  const clean = (d) => (d.length > 1 ? d.replace(/\/+$/, "") : d);
+  return state.config.profiles.find((p) => p.dirs.some((d) => clean(d) === clean(dir)))?.id ?? "";
 }

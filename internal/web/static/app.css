@@ -330,6 +330,7 @@ details.change[open] summary::before { content: "▾"; }
 /* Messages */
 
 .notice {
+  white-space: pre-line; /* several errors arrive one per line */
   padding: var(--space-3) var(--space-4);
   border-radius: var(--radius);
   border: 1px solid var(--border);
@@ -386,3 +387,4 @@ ol.steps li.done::before { content: "✓"; color: var(--ok); }
 ol.steps li[aria-current="step"] { border-color: var(--accent); color: var(--text); font-weight: 600; }
 a.button { text-decoration: none; }
 a.button.primary { color: var(--accent-text); }
+fieldset.plain { border: 0; padding: 0; margin: 0; min-width: 0; }

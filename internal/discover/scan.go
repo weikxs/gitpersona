@@ -21,12 +21,14 @@ type ScanLimits struct {
 // DefaultScanLimits suit a home directory's usual code folders.
 var DefaultScanLimits = ScanLimits{MaxDepth: 4, Timeout: 5 * time.Second}
 
-// Suggestion proposes a directory rule: most repositories directly under
-// Dir belong to Account.
+// Suggestion proposes a directory rule: most repositories directly under Dir
+// belong to Owner. Account is the signed-in account that is Owner, or "" when
+// Owner is someone else, such as an organization, and the user must choose.
 type Suggestion struct {
 	Dir     string `json:"dir"`
 	Account string `json:"account"`
-	Repos   int    `json:"repos"` // repositories of Account under Dir
+	Owner   string `json:"owner"`
+	Repos   int    `json:"repos"` // repositories of Owner under Dir
 	Total   int    `json:"total"` // repositories under Dir with a remote on the host
 }
 
@@ -37,14 +39,14 @@ var remoteURLPattern = regexp.MustCompile(`(?m)^\s*url\s*=\s*(.+?)\s*$`)
 
 // Scan walks roots looking for repositories, reads only the remote URLs in
 // their .git/config, and suggests a rule for each parent directory whose
-// repositories mostly belong to one of accounts on github.com.
+// repositories on github.com mostly have one owner.
 func Scan(ctx context.Context, roots, accounts []string, limits ScanLimits) []Suggestion {
 	ctx, cancel := context.WithTimeout(ctx, limits.Timeout)
 	defer cancel()
 
 	type tally struct {
-		total     int
-		byAccount map[string]int
+		total   int
+		byOwner map[string]int
 	}
 	parents := map[string]*tally{}
 	for _, root := range roots {
@@ -56,27 +58,25 @@ func Scan(ctx context.Context, roots, accounts []string, limits ScanLimits) []Su
 			parent := filepath.Dir(repo)
 			t := parents[parent]
 			if t == nil {
-				t = &tally{byAccount: map[string]int{}}
+				t = &tally{byOwner: map[string]int{}}
 				parents[parent] = t
 			}
 			t.total++
-			if slices.Contains(accounts, owner) {
-				t.byAccount[owner]++
-			}
+			t.byOwner[strings.ToLower(owner)]++
 		})
 	}
 
 	var suggestions []Suggestion
 	for dir, t := range parents {
 		best, count := "", 0
-		for account, n := range t.byAccount {
-			if n > count || (n == count && account < best) {
-				best, count = account, n
+		for owner, n := range t.byOwner {
+			if n > count || (n == count && owner < best) {
+				best, count = owner, n
 			}
 		}
-		// Suggest only when the account owns most repositories there.
+		// Suggest only when one owner has most repositories there.
 		if count*2 > t.total {
-			suggestions = append(suggestions, Suggestion{Dir: dir, Account: best, Repos: count, Total: t.total})
+			suggestions = append(suggestions, Suggestion{Dir: dir, Account: accountFor(accounts, best), Owner: best, Repos: count, Total: t.total})
 		}
 	}
 	slices.SortFunc(suggestions, func(a, b Suggestion) int { return cmp.Compare(a.Dir, b.Dir) })
@@ -152,4 +152,14 @@ func remoteOwner(url, host string) string {
 	}
 	owner, _, _ := strings.Cut(strings.TrimPrefix(path, "/"), "/")
 	return owner
+}
+
+// accountFor returns the account (as gh spells it) whose login is owner.
+func accountFor(accounts []string, owner string) string {
+	for _, a := range accounts {
+		if strings.EqualFold(a, owner) {
+			return a
+		}
+	}
+	return ""
 }

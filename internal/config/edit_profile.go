@@ -151,9 +151,7 @@ func setRawKey(lines []string, b table, key, raw string) []string {
 		out[k] = replaceValue(out[k], raw)
 		return out
 	}
-	id := keyLine(out, b, "id")
-	indent := keyPattern.FindStringSubmatch(out[id])[1]
-	return insert(out, id+1, indent+key+" = "+raw+eol(out))
+	return insertKey(out, b, key, raw)
 }
 
 func signingValue(s Signing) string {

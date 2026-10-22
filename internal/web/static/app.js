@@ -19,10 +19,12 @@ const VIEWS = {
   setup: { title: "Set up GitPersona", render: renderSetup },
 };
 const DEFAULT_VIEW = "overview";
-// NO_CHANGE matches command output saying a change was already in place.
-const NO_CHANGE = /nothing to change|already up to date/i;
+// NO_CHANGE matches output that says a change was already in place; it
+// counts only when that is all the command printed.
+const NO_CHANGE = /^[^\n]*(nothing to change|already up to date)[^\n]*$/i;
 
 let state = null;
+let closed = false; // after Close the page shows only the stopped message
 
 function currentView() {
   const name = location.hash.slice(1);
@@ -43,10 +45,12 @@ async function run(action, success) {
     const { log } = await action();
     await loadState();
     render();
-    status("ok", NO_CHANGE.test(log) ? "Nothing to change." : success, log);
+    status("ok", NO_CHANGE.test(log.trim()) ? "Nothing to change." : success, log);
+    focusResult();
     return true;
   } catch (err) {
     status("fail", err.message, err instanceof ApiError ? err.log : "");
+    focusResult();
     return false;
   }
 }
@@ -70,6 +74,13 @@ function render({ focus = false } = {}) {
   if (focus) heading.focus();
 }
 
+// focusResult moves keyboard focus to the result message when the control
+// that started the action is gone (the view was drawn again).
+function focusResult() {
+  if (document.activeElement && document.activeElement !== document.body) return;
+  document.querySelector("#status .notice")?.focus();
+}
+
 async function refreshAll() {
   try {
     await loadState();
@@ -85,6 +96,9 @@ async function closePage() {
   } catch {
     // The server may already be gone; the page is closed either way.
   }
+  closed = true;
+  document.querySelector(".nav")?.remove();
+  document.getElementById("close")?.remove();
   replace(document.getElementById("view"),
     h("section", {}, h("h2", {}, "GitPersona has stopped"), h("p", {}, "You can close this tab. Run `gitpersona ui` to open the page again.")));
   clearStatus();
@@ -93,6 +107,7 @@ async function closePage() {
 async function start() {
   document.getElementById("close").addEventListener("click", closePage);
   window.addEventListener("hashchange", () => {
+    if (closed) return;
     clearStatus();
     render({ focus: true });
   });

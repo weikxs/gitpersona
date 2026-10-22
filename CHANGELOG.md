@@ -52,6 +52,24 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ### Fixed
 
+- Directory suggestions include folders whose repositories belong to an organization: the setup page lists them
+  with their owner so you can choose the profile. Symlinked folders such as `~/code` are scanned, and folders that do
+  not exist are named instead of reported as having no suggestions.
+- Saving a profile whose SSH key or SSH signing key file does not exist is refused, and `doctor` reports it, instead of
+  every commit failing later. GitPersona only checks that the file is there; it never opens it.
+- `doctor` warns about directory rules for folders that do not exist and about hand-made `includeIf` identity rules
+  left from before GitPersona.
+- The configuration page asks before moving a directory from another profile, explains what removing the default
+  profile changes, reports a restored backup as a restore, and writes nothing (and makes no backup) when a save
+  changes nothing.
+- Setup page: Enter in a field adds the directory or scans instead of skipping the step; a profile you leave out no
+  longer blocks Next; duplicate directories are caught when added; old messages are cleared.
+- Opening a second page no longer ends the first page's session, and only one page can run at a time, so two pages
+  never edit the configuration together. After Close the page offers nothing that would fail.
+- Diffs on the page show your home directory as `~`, so screenshots do not reveal it.
+- New keys are added after a profile's last key and aligned like the others.
+- Keyboard focus returns to the button or the result after an action; plainer wording on the Shells page; doctor
+  advice links to the matching part of the page; `setup --web` with an existing configuration opens the overview.
 - The configuration page checks the format of profile and account names before sending them: the browser had
   ignored the field patterns, because a `-` in a character class must be escaped in the patterns browsers use.
 - Profiles without signing restore your own global signing settings instead of turning signing off.

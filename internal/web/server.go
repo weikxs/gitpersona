@@ -26,7 +26,7 @@ import (
 var static embed.FS
 
 const (
-	sessionCookie   = "gitpersona_session"
+	sessionCookie   = "gitpersona_session" // plus the port: see cookieName
 	csrfHeader      = "X-GitPersona-CSRF"
 	tokenBytes      = 32
 	defaultIdle     = 15 * time.Minute
@@ -108,7 +108,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !s.validSession(r) {
-		http.Error(w, "forbidden: open GitPersona with the link printed by `gitpersona ui`", http.StatusForbidden)
+		http.Error(w, "forbidden: this page needs the one-time link GitPersona printed in your terminal; "+
+			"each link works once, so run `gitpersona ui` again for a new one", http.StatusForbidden)
 		return
 	}
 	if r.Method != http.MethodGet && r.Method != http.MethodHead && !s.validChange(r) {
@@ -128,12 +129,12 @@ func (s *Server) exchangeKey(w http.ResponseWriter, r *http.Request) {
 	s.keyUsed = true
 	session := randomToken()
 	s.sessions = append(s.sessions, session)
-	http.SetCookie(w, &http.Cookie{Name: sessionCookie, Value: session, Path: "/", HttpOnly: true, SameSite: http.SameSiteStrictMode})
+	http.SetCookie(w, &http.Cookie{Name: s.cookieName(), Value: session, Path: "/", HttpOnly: true, SameSite: http.SameSiteStrictMode})
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 
 func (s *Server) validSession(r *http.Request) bool {
-	c, err := r.Cookie(sessionCookie)
+	c, err := r.Cookie(s.cookieName())
 	if err != nil {
 		return false
 	}
@@ -225,4 +226,11 @@ func randomToken() string {
 
 func equal(a, b string) bool {
 	return subtle.ConstantTimeCompare([]byte(a), []byte(b)) == 1
+}
+
+// cookieName includes the port: browsers share cookies between ports of the
+// same host, so a second page must not replace the first page's session.
+func (s *Server) cookieName() string {
+	_, port, _ := net.SplitHostPort(s.addr)
+	return sessionCookie + "_" + port
 }

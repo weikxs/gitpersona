@@ -164,8 +164,12 @@ func (e Env) saveEdited(ctx context.Context, command, edited string, want config
 	}
 	// One snapshot covers the configuration and the generated files, so a
 	// rollback undoes the whole edit.
-	edit := change{path: e.configFile(), content: edited, perm: perm}
-	return e.applyChanges(append([]change{edit}, generated...), ApplyOptions{Yes: true, Command: command})
+	// An edit that changes nothing writes nothing and makes no backup.
+	changes := generated
+	if current, err := os.ReadFile(e.configFile()); err != nil || string(current) != edited {
+		changes = append([]change{{path: e.configFile(), content: edited, perm: perm}}, generated...)
+	}
+	return e.applyChanges(changes, ApplyOptions{Yes: true, Command: command})
 }
 
 func (e Env) readConfigText() (string, config.Config, error) {

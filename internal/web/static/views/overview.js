@@ -100,6 +100,14 @@ function accountsCard(state) {
     body);
 }
 
+// adviceLink points advice that names a command to the part of the page
+// that does the same.
+function adviceLink(advice) {
+  if (advice.includes("install-shell")) return [" ", h("a", { href: "#shells" }, "Set up shells here")];
+  if (advice.includes("gitpersona apply")) return [" ", h("a", { href: "#apply" }, "Review and apply here")];
+  return null;
+}
+
 export function doctorCard(doctor) {
   const warnings = doctor.checks.some((c) => c.status === "warn");
   const summary = !doctor.ok ? badge("fail", "Needs attention")
@@ -107,7 +115,7 @@ export function doctorCard(doctor) {
   return h("div", { class: "card" },
     h("div", { class: "card-head" }, h("h3", {}, "Health checks"), summary),
     h("ul", { class: "checks" }, doctor.checks.map((c) =>
-      h("li", {}, badge(c.status), h("span", {}, c.label), c.advice ? h("span", { class: "advice" }, c.advice) : null))),
+      h("li", {}, badge(c.status), h("span", {}, c.label), c.advice ? h("span", { class: "advice" }, c.advice, adviceLink(c.advice)) : null))),
     doctor.ok ? null : h("p", { class: "muted" }, "Run `gitpersona doctor --fix` in a terminal to repair what can be fixed automatically."));
 }
 

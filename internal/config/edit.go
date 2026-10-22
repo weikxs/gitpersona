@@ -54,9 +54,7 @@ func AddDir(text, profileID, dir string, o EditOptions) (string, error) {
 	value := tomlQuote(dir)
 	k := keyLine(lines, b, "dirs")
 	if k < 0 {
-		id := keyLine(lines, b, "id")
-		indent := keyPattern.FindStringSubmatch(lines[id])[1]
-		return joinText(insert(lines, id+1, indent+"dirs = ["+value+"]"+eol(lines)), nl), nil
+		return joinText(insertKey(lines, b, "dirs", "["+value+"]"), nl), nil
 	}
 	arr, err := parseArray(lines, k)
 	if err != nil {
@@ -261,4 +259,25 @@ func insert(lines []string, at int, line string) []string {
 	out := append([]string{}, lines[:at]...)
 	out = append(out, line)
 	return append(out, lines[at:]...)
+}
+
+// insertKey adds key = raw at the end of table b's keys, aligned like its id
+// line ("id      = ..." gives "dirs    = ..."), so the result reads as if
+// written by hand.
+func insertKey(lines []string, b table, key, raw string) []string {
+	at := b.start + 1
+	for i := b.end - 1; i > b.start; i-- {
+		if t := strings.TrimSpace(lines[i]); t != "" && !strings.HasPrefix(t, "#") {
+			at = i + 1
+			break
+		}
+	}
+	indent, width := "", len(key)+1
+	if id := keyLine(lines, b, "id"); id >= 0 {
+		m := keyPattern.FindStringSubmatch(lines[id])
+		indent = m[1]
+		// The key column: everything before "=", such as "id      ".
+		width = max(width, len(strings.TrimRight(m[0], " \t"))-len(indent)-1)
+	}
+	return insert(lines, at, fmt.Sprintf("%s%-*s= %s%s", indent, width, key, raw, eol(lines)))
 }

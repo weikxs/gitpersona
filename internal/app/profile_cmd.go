@@ -23,6 +23,9 @@ func AddProfile(ctx context.Context, e Env, p config.Profile) error {
 	if err != nil {
 		return err
 	}
+	if err := requireKeyFiles(p, e.Home); err != nil {
+		return err
+	}
 	edited, err := config.AddProfile(text, p)
 	if err != nil {
 		return err
@@ -56,6 +59,13 @@ func UpdateProfile(ctx context.Context, e Env, id string, c ProfileChanges) erro
 			return err
 		}
 		want = withProfile(want, id, func(p *config.Profile) { p.Signing = *c.Signing })
+	}
+	if c.SSHKey != nil || c.Signing != nil {
+		if p, ok := want.ProfileByID(id); ok {
+			if err := requireKeyFiles(p, e.Home); err != nil {
+				return err
+			}
+		}
 	}
 	return e.saveEdited(ctx, "update profile "+id, edited, want)
 }
