@@ -1,0 +1,2 @@
+// GitPersona configuration page.
+export {};
