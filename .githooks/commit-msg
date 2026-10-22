@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+# Installed with `make hooks`. Enforces Conventional Commits 1.0 subjects.
+set -euo pipefail
+
+subject=$(head -n1 "$1")
+pattern='^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\([a-z0-9-]+\))?!?: .{1,72}$'
+
+if [[ "$subject" =~ ^(Merge|Revert\ \") ]]; then
+  exit 0
+fi
+
+if ! [[ "$subject" =~ $pattern ]]; then
+  cat >&2 <<EOF
+commit-msg: subject must follow Conventional Commits, for example:
+  feat(resolve): pick the most specific workspace rule
+  fix(credential): fall through when no profile matches
+Got: $subject
+EOF
+  exit 1
+fi

@@ -1,0 +1,62 @@
+version: 2
+
+project_name: gitpersona
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: gitpersona
+    main: ./cmd/gitpersona
+    binary: gitpersona
+    env:
+      - CGO_ENABLED=0
+    goos: [darwin, linux]
+    goarch: [amd64, arm64]
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+      - -X github.com/weikxs/gitpersona/internal/version.version={{ .Version }}
+      - -X github.com/weikxs/gitpersona/internal/version.commit={{ .ShortCommit }}
+      - -X github.com/weikxs/gitpersona/internal/version.date={{ .Date }}
+
+archives:
+  - formats: [tar.gz]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - LICENSE
+      - README.md
+      - README.zh-CN.md
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  use: github
+  groups:
+    - title: Features
+      regexp: '^.*?feat(\(.+\))??!?:.+$'
+      order: 0
+    - title: Bug fixes
+      regexp: '^.*?fix(\(.+\))??!?:.+$'
+      order: 1
+    - title: Other changes
+      order: 999
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^ci:"
+      - "^chore:"
+
+homebrew_casks:
+  - name: gitpersona
+    repository:
+      owner: weikxs
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    homepage: https://github.com/weikxs/gitpersona
+    description: Git profiles that follow your directories
+    license: MIT

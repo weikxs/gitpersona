@@ -1,0 +1,16 @@
+# Product requirements and planning are internal; never publish.
+docs/prd/
+
+# Local privacy denylist (real identifiers checked by scripts/check-privacy.sh); never publish.
+.privacy-denylist
+
+# Build and test output
+/bin/
+/dist/
+coverage.out
+*.test
+
+# Editors and OS
+.idea/
+.vscode/
+.DS_Store

@@ -1,0 +1,4 @@
+* text=auto eol=lf
+*.go diff=golang
+*.png binary
+*.gif binary

@@ -1,0 +1,46 @@
+name: Bug report
+description: Something does not work as documented
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please replace real account names, emails and paths with placeholders
+        (for example `octo-alex` and `~/Projects/personal`) before posting.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. gitpersona use personal
+        2. cd ~/Projects/personal/demo
+        3. git commit ...
+    validations:
+      required: true
+  - type: textarea
+    id: doctor
+    attributes:
+      label: Output of `gitpersona doctor`
+      render: text
+  - type: input
+    id: version
+    attributes:
+      label: Output of `gitpersona version`
+    validations:
+      required: true
+  - type: dropdown
+    id: shell
+    attributes:
+      label: Shell
+      options: [zsh, bash, fish, other]
+  - type: input
+    id: os
+    attributes:
+      label: Operating system and version

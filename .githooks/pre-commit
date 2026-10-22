@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Installed with `make hooks`. Keeps formatting and privacy problems out of commits.
+set -euo pipefail
+
+make --no-print-directory fmt-check privacy
