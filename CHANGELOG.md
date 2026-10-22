@@ -52,6 +52,8 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ### Fixed
 
+- The configuration page checks the format of profile and account names before sending them: the browser had
+  ignored the field patterns, because a `-` in a character class must be escaped in the patterns browsers use.
 - Profiles without signing restore your own global signing settings instead of turning signing off.
 - The oldest backup (the state before GitPersona) is never pruned; backups record which command made them.
 - `uninstall` restores startup files exactly, including ones without a final newline; edits keep CRLF line

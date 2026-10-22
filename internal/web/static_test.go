@@ -181,3 +181,24 @@ func luminance(hex string) float64 {
 	}
 	return sum
 }
+
+// Browsers compile pattern attributes with the RegExp v flag, where these
+// characters must be escaped inside a character class; an invalid pattern is
+// silently ignored, so the field would not be checked at all.
+func TestInputPatternsAreValidInVMode(t *testing.T) {
+	patterns := regexp.MustCompile(`pattern: "((?:[^"\\]|\\.)*)"`)
+	classes := regexp.MustCompile(`\[((?:[^\]\\]|\\.)*)\]`)
+	reserved := regexp.MustCompile(`(^|[^\\])[()\[\]{}/|-]`)
+	for name, content := range staticFiles(t) {
+		for _, m := range patterns.FindAllStringSubmatch(content, -1) {
+			source := strings.ReplaceAll(m[1], `\\`, `\`) // the JavaScript string's value
+			for _, class := range classes.FindAllStringSubmatch(source, -1) {
+				// Ranges such as a-z are allowed; remove them before looking.
+				body := regexp.MustCompile(`[A-Za-z0-9]-[A-Za-z0-9]`).ReplaceAllString(class[1], "")
+				if reserved.MatchString(body) {
+					t.Errorf("%s: pattern %q has an unescaped special character in [%s]", name, source, class[1])
+				}
+			}
+		}
+	}
+}

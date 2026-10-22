@@ -100,6 +100,11 @@ GitPersona is about identities, so this rule has no exceptions.
 - **Isolation:** no network, no real `$HOME`, no real accounts. Use `t.TempDir()`, `t.Setenv("HOME", …)`,
   and fake `gh` / `glab` / `ssh` executables placed first on `PATH`.
 - **Integration tests** run the real `git` binary against temporary repositories.
+- **End-to-end tests** (`test/e2e`, `make e2e`) drive the configuration page in a real headless Chrome over the
+  DevTools protocol, against a built `gitpersona` and a demo home under `/tmp`. They check the user flows, that no
+  page scrolls sideways at 375px or on a desktop, in light and dark mode, and that the browser reports no script
+  error or Content Security Policy violation. They are skipped unless `GITPERSONA_E2E=1`; set `GITPERSONA_CHROME`
+  to choose the browser. Run them whenever the page or its API changes.
 - **Golden files** for generated configuration live in `testdata/`; update them only on purpose.
 - Run with `-race`. Tests must pass on macOS and Linux.
 

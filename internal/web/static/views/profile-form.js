@@ -25,8 +25,8 @@ export function profileForm({ profile, accounts, onSubmit, onCancel }) {
   const p = profile ?? { id: "", account: "", name: "", email: "", ssh_key: "", signing: { method: "", key: "" } };
   const listId = `accounts-${p.id || "new"}`;
   const inputs = {
-    id: textInput("id", p.id, { required: true, pattern: "[a-z0-9][a-z0-9-]{0,31}", maxlength: 32 }),
-    account: textInput("account", p.account, { required: true, list: listId, pattern: "[A-Za-z0-9][A-Za-z0-9._-]*" }),
+    id: textInput("id", p.id, { required: true, pattern: "[a-z0-9][a-z0-9\\-]{0,31}", maxlength: 32 }),
+    account: textInput("account", p.account, { required: true, list: listId, pattern: "[A-Za-z0-9][A-Za-z0-9._\\-]*" }),
     name: textInput("name", p.name, { required: true, autocomplete: "name" }),
     email: h("input", { type: "email", name: "email", value: p.email, required: true, autocomplete: "email" }),
     ssh_key: textInput("ssh_key", p.ssh_key),

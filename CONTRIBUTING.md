@@ -12,6 +12,7 @@ git clone https://github.com/weikxs/gitpersona.git
 cd gitpersona
 make hooks     # install the pre-commit and commit-msg hooks
 make check     # format, vet, privacy check, tests with coverage
+make e2e       # the configuration page in headless Chrome (needs Chrome)
 ```
 
 Run `make` to see every target.

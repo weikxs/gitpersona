@@ -34,6 +34,10 @@ cover: ## Run tests and fail below the minimum coverage
 	$(GO_TEST) -coverprofile=$(COVERAGE) ./...
 	@go tool cover -func=$(COVERAGE) | awk -v min=$(MIN_COVERAGE) '/^total:/ { sub("%", "", $$3); printf "total coverage: %s%% (minimum %s%%)\n", $$3, min; if ($$3 + 0 < min) exit 1 }'
 
+.PHONY: e2e
+e2e: ## Drive the configuration page in headless Chrome (needs Chrome; GITPERSONA_CHROME picks one)
+	mkdir -p $(TEST_TMPDIR) && GITPERSONA_E2E=1 TMPDIR=$(TEST_TMPDIR) go test -race -count=1 ./test/e2e/
+
 .PHONY: fmt
 fmt: ## Format the code
 	gofmt -w .

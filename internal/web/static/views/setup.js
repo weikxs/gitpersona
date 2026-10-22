@@ -105,7 +105,7 @@ function identityFields(p, i) {
   const include = h("input", { type: "checkbox", checked: p.include });
   const isDefault = h("input", { type: "radio", name: "default", value: p.account, checked: p.account === wizard.defaultAccount });
   const fields = h("div", { class: "stack", hidden: !p.include },
-    field("Profile name", input("id", { pattern: "[a-z0-9][a-z0-9-]{0,31}", maxlength: 32 }), "Lowercase letters, digits and -"),
+    field("Profile name", input("id", { pattern: "[a-z0-9][a-z0-9\\-]{0,31}", maxlength: 32 }), "Lowercase letters, digits and -"),
     field("Author name", input("name")),
     field("Author email", input("email", { type: "email" }), EMAIL_HINTS[p.email_source]),
     h("label", { class: "check" }, isDefault, "Use this profile where no directory rule matches (default)"));
