@@ -60,7 +60,11 @@ func planApply(ctx context.Context, e Env) ([]change, error) {
 	if err != nil {
 		return nil, err
 	}
-	files, err := generate.Generate(cfg, e.generateOptions(ctx, cfg))
+	opts, err := e.generateOptions(ctx)
+	if err != nil {
+		return nil, err
+	}
+	files, err := generate.Generate(cfg, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -88,40 +92,22 @@ func planApply(ctx context.Context, e Env) ([]change, error) {
 	return append(changes, e.staleProfiles(desired)...), nil
 }
 
-func (e Env) generateOptions(ctx context.Context, cfg config.Config) generate.Options {
-	sshCommand := e.gitConfigAll(ctx, "core.sshCommand")
+func (e Env) generateOptions(ctx context.Context) (generate.Options, error) {
+	sshCommand, err := e.gitConfigAll(ctx, "core.sshCommand")
+	if err != nil {
+		return generate.Options{}, err
+	}
 	opts := generate.Options{
 		Home:            e.Home,
 		ConfigDir:       e.ConfigDir,
 		Executable:      e.Executable,
 		CaseInsensitive: e.CaseInsensitive,
-		FallbackHelpers: map[string][]string{},
 		Canonicalize:    paths.ResolveSymlinks,
 	}
 	if len(sshCommand) > 0 {
 		opts.FallbackSSHCommand = sshCommand[len(sshCommand)-1]
 	}
-	generic := e.gitConfigAll(ctx, "credential.helper")
-	for _, p := range cfg.Profiles {
-		url := "https://" + p.Host
-		if _, done := opts.FallbackHelpers[url]; done {
-			continue
-		}
-		helpers := append(slices.Clone(generic), e.gitConfigAll(ctx, "credential."+url+".helper")...)
-		opts.FallbackHelpers[url] = userHelpers(helpers)
-	}
-	return opts
-}
-
-// userHelpers drops list resets and any GitPersona helper, keeping order.
-func userHelpers(helpers []string) []string {
-	kept := []string{}
-	for _, h := range helpers {
-		if h != "" && !strings.Contains(h, " credential --provider ") {
-			kept = append(kept, h)
-		}
-	}
-	return kept
+	return opts, nil
 }
 
 func (e Env) gitConfigWithBlock() (change, error) {

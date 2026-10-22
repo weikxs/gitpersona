@@ -31,9 +31,6 @@ type Options struct {
 	ConfigDir       string
 	Executable      string // absolute path of the gitpersona binary
 	CaseInsensitive bool
-	// FallbackHelpers lists, per credential URL such as "https://github.com",
-	// the user's own credential helpers to keep after GitPersona's.
-	FallbackHelpers map[string][]string
 	// FallbackSSHCommand restores the user's core.sshCommand for profiles
 	// without an SSH key. Empty means plain "ssh".
 	FallbackSSHCommand string
@@ -152,17 +149,22 @@ func writeSSH(b *strings.Builder, p config.Profile, u usage, opts Options) error
 	return nil
 }
 
+// writeCredential makes GitPersona the only credential helper for the
+// profile's host. The user's own helpers are deliberately not chained after
+// it: Git asks every helper to store a credential that worked, so a chained
+// keychain or store helper would keep a copy of the gh token. Providers
+// GitPersona does not handle yet get no credential section at all, so the
+// user's helpers keep working for them.
 func writeCredential(b *strings.Builder, p config.Profile, opts Options) {
-	url := "https://" + p.Host
+	if p.Provider != config.ProviderGitHub {
+		return
+	}
 	helper := fmt.Sprintf("!%s credential --provider %s --host %s --account %s",
 		shellQuote(opts.Executable), p.Provider, shellQuote(p.Host), shellQuote(p.Account))
 
-	fmt.Fprintf(b, "[credential %s]\n", quoteSubsection(url))
-	writeKV(b, "helper", "") // reset, so GitPersona answers first
+	fmt.Fprintf(b, "[credential %s]\n", quoteSubsection("https://"+p.Host))
+	writeKV(b, "helper", "") // reset: no other helper may answer or store for this host
 	writeKV(b, "helper", helper)
-	for _, fallback := range opts.FallbackHelpers[url] {
-		writeKV(b, "helper", fallback)
-	}
 	writeKV(b, "username", p.Account)
 }
 

@@ -7,12 +7,15 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"unicode"
 
 	"github.com/weikxs/gitpersona/internal/paths"
 )
 
 var (
 	idPattern       = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,31}$`)
+	accountPattern  = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$`)
+	hostPattern     = regexp.MustCompile(`^[A-Za-z0-9]([A-Za-z0-9.-]{0,251}[A-Za-z0-9])?(:[0-9]{1,5})?$`)
 	validProviders  = []string{ProviderGitHub, ProviderGitLab, ProviderBitbucket, ProviderGeneric}
 	validSigningSet = []string{"", SigningNone, SigningSSH, SigningGPG}
 )
@@ -22,8 +25,15 @@ var (
 // directories differing only in case count as the same directory.
 func (c Config) Validate(home string, caseInsensitive bool) error {
 	var errs []error
-	if c.Version != CurrentVersion {
+	switch c.Version {
+	case CurrentVersion:
+	case 0:
+		errs = append(errs, fmt.Errorf("version is missing: add `version = %d` at the top of the file", CurrentVersion))
+	default:
 		errs = append(errs, fmt.Errorf("unsupported config version %d (expected %d)", c.Version, CurrentVersion))
+	}
+	if len(c.Profiles) == 0 {
+		errs = append(errs, errors.New("no profiles are defined: add at least one [[profile]]"))
 	}
 	if c.Default != "" {
 		if _, ok := c.ProfileByID(c.Default); !ok {
@@ -57,11 +67,24 @@ func validateProfile(p Profile, home string) []error {
 	if !slices.Contains(validProviders, p.Provider) {
 		add("unsupported provider %q (use one of %s)", p.Provider, strings.Join(validProviders, ", "))
 	}
-	if p.Host == "" {
+	switch {
+	case p.Host == "":
 		add("host is required")
+	case !hostPattern.MatchString(p.Host):
+		add("host %q is not a valid host name", p.Host)
 	}
-	if p.Account == "" {
+	switch {
+	case p.Account == "":
 		add("account is required")
+	case !accountPattern.MatchString(p.Account):
+		add("account %q may only contain letters, digits, '.', '_' and '-'", p.Account)
+	}
+	for _, f := range []struct{ name, value string }{
+		{"name", p.Name}, {"email", p.Email}, {"ssh_key", p.SSHKey}, {"signing key", p.Signing.Key},
+	} {
+		if hasControl(f.value) {
+			add("%s contains a control character such as a line break", f.name)
+		}
 	}
 	if p.Name == "" {
 		add("name is required")
@@ -86,12 +109,28 @@ func validateProfile(p Profile, home string) []error {
 			add("signing key: %v", err)
 		}
 	}
+	seen := map[string]bool{}
 	for _, d := range p.Dirs {
-		if _, err := paths.Normalize(d, home); err != nil {
+		norm, err := paths.Normalize(d, home)
+		switch {
+		case hasControl(d):
+			add("directory contains a control character such as a line break")
+		case err != nil:
 			add("directory: %v", err)
+		case norm == "/":
+			add("directory %q is the root directory; use the default profile instead", d)
+		case seen[norm]:
+			add("directory %q is listed twice", d)
 		}
+		seen[norm] = true
 	}
 	return errs
+}
+
+// hasControl reports whether s contains a control character. Such characters
+// could break out of a Git configuration value.
+func hasControl(s string) bool {
+	return strings.ContainsFunc(s, unicode.IsControl)
 }
 
 // validateDirOwnership enforces that a directory belongs to one profile only.
@@ -120,6 +159,9 @@ func (c Config) validatePins(home string, caseInsensitive bool) []error {
 	seen := map[string]bool{}
 	for _, pin := range c.Pins {
 		norm, err := paths.Normalize(pin.Repo, home)
+		if hasControl(pin.Repo) {
+			err = errors.New("path contains a control character such as a line break")
+		}
 		if err != nil {
 			errs = append(errs, fmt.Errorf("pin: %w", err))
 			continue

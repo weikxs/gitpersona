@@ -87,14 +87,24 @@ func (e Env) git(ctx context.Context, dir string, args ...string) (string, error
 	return strings.TrimSpace(string(out)), err
 }
 
+// gitConfigMissing is the exit status of `git config --get` for an absent key.
+const gitConfigMissing = 1
+
 // gitConfigAll returns every value of a global Git setting, or nil when the
-// setting is absent.
-func (e Env) gitConfigAll(ctx context.Context, key string) []string {
+// setting is absent. Any other failure (for example a broken configuration
+// file) is an error, so callers never act on a silently empty answer.
+func (e Env) gitConfigAll(ctx context.Context, key string) ([]string, error) {
 	out, err := e.git(ctx, e.Home, "config", "--global", "--get-all", key)
-	if err != nil || out == "" {
-		return nil
+	var exit *exec.ExitError
+	switch {
+	case errors.As(err, &exit) && exit.ExitCode() == gitConfigMissing:
+		return nil, nil
+	case err != nil:
+		return nil, fmt.Errorf("read global Git setting %s: %w (run `git config --global --list` to see the problem)", key, err)
+	case out == "":
+		return nil, nil
 	}
-	return strings.Split(out, "\n")
+	return strings.Split(out, "\n"), nil
 }
 
 // repoRoot returns the top-level directory of the repository containing dir.

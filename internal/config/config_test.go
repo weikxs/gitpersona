@@ -229,3 +229,72 @@ func TestLoadReportsUnreadableFile(t *testing.T) {
 		t.Fatalf("Load() of a directory = %v, want a read error that is not ErrNotFound", err)
 	}
 }
+
+func TestValidateRejectsControlCharactersInEveryTextField(t *testing.T) {
+	inject := "x\n[core]\n\tsshCommand = evil"
+	tests := map[string]func(*Profile){
+		"name":    func(p *Profile) { p.Name = "Alex" + inject },
+		"email":   func(p *Profile) { p.Email = "a@example.com" + inject },
+		"dir":     func(p *Profile) { p.Dirs = []string{"~/Projects/a" + inject} },
+		"ssh_key": func(p *Profile) { p.SSHKey = "~/.ssh/id" + inject },
+		"signing": func(p *Profile) { p.Signing = Signing{Method: SigningGPG, Key: "ABC" + inject} },
+	}
+	for field, mutate := range tests {
+		t.Run(field, func(t *testing.T) {
+			p := validProfile("personal")
+			mutate(&p)
+			cfg := Config{Version: CurrentVersion, Profiles: []Profile{p}}
+
+			err := cfg.Validate(home, false)
+
+			if err == nil || !strings.Contains(err.Error(), "control character") {
+				t.Fatalf("Validate() = %v, want a control character error for %s", err, field)
+			}
+		})
+	}
+}
+
+func TestValidateAccountAndHostSyntax(t *testing.T) {
+	tests := []struct {
+		account, host string
+		wantErr       string
+	}{
+		{account: "acme-alex", host: "github.com"},
+		{account: "alex.smith_2", host: "gitlab.globex.example:8443"},
+		{account: "it's;me", host: "github.com", wantErr: "account"},
+		{account: "acme-alex", host: "github.com/evil", wantErr: "host"},
+		{account: "acme-alex", host: "-github.com", wantErr: "host"},
+	}
+	for _, tc := range tests {
+		p := validProfile("personal")
+		p.Account, p.Host = tc.account, tc.host
+		cfg := Config{Version: CurrentVersion, Profiles: []Profile{p}}
+
+		err := cfg.Validate(home, false)
+
+		if tc.wantErr == "" && err != nil {
+			t.Errorf("%s@%s: unexpected error %v", tc.account, tc.host, err)
+		}
+		if tc.wantErr != "" && (err == nil || !strings.Contains(err.Error(), tc.wantErr)) {
+			t.Errorf("%s@%s: error %v, want one about %s", tc.account, tc.host, err, tc.wantErr)
+		}
+	}
+}
+
+func TestValidateRejectsRootDirAndDuplicateDirInOneProfile(t *testing.T) {
+	cfg := Config{Version: CurrentVersion, Profiles: []Profile{validProfile("personal", "/", "~/Projects/a", "~/Projects/a/")}}
+
+	err := cfg.Validate(home, false)
+
+	if err == nil || !strings.Contains(err.Error(), "the root directory") || !strings.Contains(err.Error(), "listed twice") {
+		t.Fatalf("Validate() = %v, want errors for / and the duplicate", err)
+	}
+}
+
+func TestValidateExplainsMissingVersionAndEmptyConfig(t *testing.T) {
+	err := Config{}.Validate(home, false)
+
+	if err == nil || !strings.Contains(err.Error(), "version is missing") || !strings.Contains(err.Error(), "no profiles") {
+		t.Fatalf("Validate() of an empty config = %v", err)
+	}
+}

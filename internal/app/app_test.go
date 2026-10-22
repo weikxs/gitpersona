@@ -210,7 +210,29 @@ func TestApplyPreservesUserConfigBacksUpAndIsIdempotent(t *testing.T) {
 	}
 }
 
-func TestUsersCredentialHelperStillAnswersWhenGitPersonaCannot(t *testing.T) {
+func TestUsersStoringHelperNeverReceivesGHTokens(t *testing.T) {
+	w := newWorld(t)
+	store := filepath.Join(t.TempDir(), "stored-credentials")
+	mustWrite(t, filepath.Join(w.home, ".gitconfig"), "[credential]\n\thelper = store --file "+store+"\n", 0o644)
+	env, _ := w.env(t, w.home)
+	if err := Apply(context.Background(), env); err != nil {
+		t.Fatal(err)
+	}
+
+	// What Git does around a successful push: fill, then approve to every helper.
+	filled := runGitInput(t, w.repos["billing"], "protocol=https\nhost=github.com\n\n", "credential", "fill")
+	runGitInput(t, w.repos["billing"], filled+"\n\n", "credential", "approve")
+
+	if !strings.Contains(filled, "password=token-for-acme-alex") {
+		t.Fatalf("GitPersona should answer for github.com:\n%s", filled)
+	}
+	saved, _ := os.ReadFile(store)
+	if strings.Contains(string(saved), "token-for-") {
+		t.Fatalf("the user's store helper saved a gh token:\n%s", saved)
+	}
+}
+
+func TestUsersHelperStillServesHostsGitPersonaDoesNotHandle(t *testing.T) {
 	w := newWorld(t)
 	userHelper := `!f() { test "$1" = get && echo username=fallback-user && echo password=fallback-pass; }; f`
 	mustWrite(t, filepath.Join(w.home, ".gitconfig"), "[credential]\n\thelper = "+strconv.Quote(userHelper)+"\n", 0o644)
@@ -219,15 +241,10 @@ func TestUsersCredentialHelperStillAnswersWhenGitPersonaCannot(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	withGH := runGitInput(t, w.repos["billing"], "protocol=https\nhost=github.com\n\n", "credential", "fill")
-	t.Setenv("PATH", w.pathWithoutGH)
-	withoutGH := runGitInput(t, w.repos["billing"], "protocol=https\nhost=github.com\n\n", "credential", "fill")
+	gitlab := runGitInput(t, w.repos["hotfix"], "protocol=https\nhost=gitlab.globex.example\n\n", "credential", "fill")
 
-	if !strings.Contains(withGH, "username=acme-alex") {
-		t.Errorf("with gh available, GitPersona should answer first:\n%s", withGH)
-	}
-	if !strings.Contains(withoutGH, "username=fallback-user") {
-		t.Errorf("without gh, the user's own helper should answer:\n%s", withoutGH)
+	if !strings.Contains(gitlab, "username=fallback-user") {
+		t.Fatalf("for a GitLab profile (not handled yet) the user's own helper must still answer:\n%s", gitlab)
 	}
 }
 

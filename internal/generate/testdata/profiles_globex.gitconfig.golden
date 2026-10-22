@@ -7,7 +7,3 @@
 	gpgsign = false
 [core]
 	sshCommand = ssh -i '/tmp/home/.ssh/id_ed25519_globex' -o IdentitiesOnly=yes
-[credential "https://gitlab.globex.example"]
-	helper = ""
-	helper = !'/opt/tools/gitpersona' credential --provider gitlab --host 'gitlab.globex.example' --account 'globex-alex'
-	username = globex-alex

@@ -42,10 +42,6 @@ func demoOptions() Options {
 		ConfigDir:       configDir,
 		Executable:      exe,
 		CaseInsensitive: true,
-		FallbackHelpers: map[string][]string{
-			"https://github.com": {"!/usr/local/bin/gh auth git-credential"},
-		},
-		FallbackSSHCommand: "",
 	}
 }
 
@@ -125,6 +121,8 @@ func TestQuoteValue(t *testing.T) {
 		"has ; semicolon": `"has ; semicolon"`,
 		`back\slash`:      `"back\\slash"`,
 		`say "hi"`:        `"say \"hi\""`,
+		"line\nbreak":     `"line\nbreak"`,
+		"tab\there":       `"tab\there"`,
 	}
 	for in, want := range tests {
 		if got := quoteValue(in); got != want {
@@ -209,5 +207,20 @@ func TestGenerateGPGSigningUsesOpenPGPFormatAndKeyID(t *testing.T) {
 
 	if !strings.Contains(personal, "signingkey = 3AA5C34371567BD2") || !strings.Contains(personal, "format = openpgp") {
 		t.Fatalf("GPG signing snippet:\n%s", personal)
+	}
+}
+
+func TestGenerateCredentialOnlyForGitHubAndWithoutOtherHelpers(t *testing.T) {
+	files, err := Generate(demoConfig(), demoOptions())
+	if err != nil {
+		t.Fatal(err)
+	}
+	acme, globex := files[0].Content, files[1].Content
+
+	if strings.Count(acme, "helper = ") != 2 || !strings.Contains(acme, `helper = ""`) {
+		t.Errorf("GitHub profile must reset helpers and add only GitPersona:\n%s", acme)
+	}
+	if strings.Contains(globex, "[credential") {
+		t.Errorf("GitLab profile must leave credential helpers alone until GitLab is supported:\n%s", globex)
 	}
 }

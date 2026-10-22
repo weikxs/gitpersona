@@ -7,7 +7,7 @@ import "strings"
 func quoteValue(s string) string {
 	needsQuotes := s == "" ||
 		strings.TrimSpace(s) != s ||
-		strings.ContainsAny(s, "#;\"\\")
+		strings.ContainsAny(s, "#;\"\\\n\t")
 	if !needsQuotes {
 		return s
 	}
@@ -20,7 +20,7 @@ func quoteSubsection(s string) string {
 }
 
 func escapeQuoted(s string) string {
-	return strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(s)
+	return strings.NewReplacer(`\`, `\\`, `"`, `\"`, "\n", `\n`, "\t", `\t`).Replace(s)
 }
 
 // shellQuote quotes s for POSIX sh, which runs "!"-prefixed Git helpers.
