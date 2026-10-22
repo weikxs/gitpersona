@@ -35,6 +35,10 @@ Commands:
   unpin       Remove the pin of the current repository
   list        List profiles, directories and pins
   doctor      Check the setup and explain how to fix problems
+  shells      Show your default shell, the current shell and installed shells
+  install-shell  Add prompt display and gh switching to your shell
+  init        Print the shell integration script
+  prompt      Print the account Git uses here (for prompts)
   rollback    List backups or restore one
   uninstall   Remove GitPersona from your Git configuration
   version     Print build information

@@ -103,7 +103,10 @@ func Uninstall(_ context.Context, e Env, yes bool) error {
 }
 
 func (e Env) planUninstall() ([]change, error) {
-	var changes []change
+	changes, err := e.removeShellBlocks()
+	if err != nil {
+		return nil, err
+	}
 	gitconfig := e.resolvedUserGitConfig()
 	current, err := readOptional(gitconfig)
 	if err != nil {

@@ -85,6 +85,9 @@ Git、`gh`、`glab` 都假定只有一个全局的"当前账户"，于是很容�
 | `gitpersona pin <身份>` / `unpin` | 把当前仓库绑定到某个身份，或取消绑定 |
 | `gitpersona list [--json]` | 列出身份、目录和 Pin |
 | `gitpersona doctor` | 检查配置并说明如何修复问题 |
+| `gitpersona shells [--json]` | 显示默认 shell、当前正在用的 shell 和已安装的 shell |
+| `gitpersona install-shell [--shell fish,zsh,bash]` | 为 shell 加上提示符显示（以及 gh 切换）；默认只装你的登录 shell |
+| `gitpersona prompt [--format]` | 输出这里 Git 使用的账户，供提示符使用（`{account}`、`{profile}`、`{host}`） |
 | `gitpersona rollback [<名称>\|latest] [--yes]` | 列出备份，或恢复某个备份（恢复前会先备份当前状态） |
 | `gitpersona uninstall [--yes]` | 从 Git 配置中移除 GitPersona；保留 config.toml |
 | `gitpersona help <命令>` | 查看某个命令的参数 |
@@ -93,6 +96,7 @@ Git、`gh`、`glab` 都假定只有一个全局的"当前账户"，于是很容�
 
 - **优先级：** Pin → 最具体的目录规则 → `default`。Git 按仓库 `.git` 目录的位置应用规则，所以 **worktree 跟随它的主仓库**。在任何仓库之外只有 `default` 生效；`whoami` 还会告诉你在这里新克隆的仓库会用哪个身份。
 - **凭据：** 对 GitHub 身份，GitPersona 是该主机唯一的凭据助手，借用 `gh` 已保存的令牌，因此不会有其他助手另存一份。如果某个账户没有在 `gh` 登录，Git 会要求输入密码；`gitpersona doctor` 会告诉你该登录哪个账户。
+- **Shell：** 默认 shell 从系统用户记录读取（而不是 `$SHELL`，终端、IDE 和各种工具经常会改它），当前正在用的 shell 从进程关系识别，已安装的 shell 从 `/etc/shells` 读取。fish 使用 `conf.d` 下的独立文件；zsh 使用 `~/.zshenv`；bash 使用 `~/.bashrc`。tide 中添加 `gitpersona` 显示项；Powerlevel10k 中添加 `gitpersona` 段；其他提示符调用 `gitpersona_prompt`。
 - **隐私：** GitPersona 从不打开、读取、列出或使用你的私钥，也从不输出或保存令牌。
 - **你的文件：** 只在全局 Git 配置里加一个带标记的块（会跟随符号链接形式的 `~/.gitconfig` 和 `GIT_CONFIG_GLOBAL`），改动前备份，并在 `~/.config/gitpersona/backups/` 保留最近 20 份备份。
 

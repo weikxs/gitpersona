@@ -18,6 +18,10 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
   your comments and layout; every edit is verified, backed up and applied. `doctor` warns about pins to missing repositories.
 - `rollback` lists backups and restores one (each command's changes are one backup, so a rollback undoes the whole
   operation); `uninstall` removes GitPersona from your Git configuration and keeps `config.toml`.
+- Shell integration: `shells` shows the default (login) shell, the shell in use right now and the installed shells;
+  `install-shell` adds the integration (to the login shell by default); `init <shell>` prints it; `prompt` prints the
+  account for prompts in a few milliseconds, with items for tide and Powerlevel10k. `doctor` checks both the default
+  and the current shell, and `uninstall` removes the integration.
 - `apply --dry-run` and `apply --yes`; per-command help (`gitpersona help <command>`).
 - Quick start, configuration reference and behavior notes in the README.
 - `gitpersona apply`: generates per-profile Git configuration and a rules index of `includeIf` entries

@@ -4,9 +4,11 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"strings"
 
 	"github.com/weikxs/gitpersona/internal/app"
 	"github.com/weikxs/gitpersona/internal/credential"
+	"github.com/weikxs/gitpersona/internal/shell"
 )
 
 // runFunc runs a command after its flags are parsed; args are the remaining
@@ -120,6 +122,61 @@ var commands = map[string]command{
 			yes := fs.Bool("yes", false, "uninstall without asking")
 			return func(ctx context.Context, env app.Env, _ []string) int {
 				return fail(env.Stderr, app.Uninstall(ctx, env, *yes))
+			}
+		},
+	},
+	"init": {
+		synopsis:    "init <fish|zsh|bash>",
+		description: "Print the shell integration script. install-shell loads it from your shell's startup file;\nyou can also add `gitpersona init fish | source` (fish) or `eval \"$(gitpersona init zsh)\"` yourself.",
+		maxArgs:     1,
+		bind: func(*flag.FlagSet) runFunc {
+			return func(_ context.Context, env app.Env, args []string) int {
+				kind, err := shell.Parse(firstArg(args))
+				if err != nil {
+					return fail(env.Stderr, fmt.Errorf("%w: %w", errUsage, err))
+				}
+				app.InitScript(env, kind)
+				return exitOK
+			}
+		},
+	},
+	"install-shell": {
+		synopsis:    "install-shell [--shell fish,zsh,bash] [--dry-run]",
+		description: "Add the shell integration (prompt display, gh switching) to your shell's startup file.\nWithout --shell, your login shell is detected from the system user record.",
+		bind: func(fs *flag.FlagSet) runFunc {
+			shells := fs.String("shell", "", "comma-separated shells to set up")
+			dryRun := fs.Bool("dry-run", false, "show what would change without writing anything")
+			return func(ctx context.Context, env app.Env, _ []string) int {
+				var kinds []shell.Kind
+				for _, name := range strings.FieldsFunc(*shells, func(r rune) bool { return r == ',' }) {
+					kind, err := shell.Parse(strings.TrimSpace(name))
+					if err != nil {
+						return fail(env.Stderr, fmt.Errorf("%w: %w", errUsage, err))
+					}
+					kinds = append(kinds, kind)
+				}
+				return fail(env.Stderr, app.InstallShell(ctx, env, kinds, *dryRun))
+			}
+		},
+	},
+	"shells": {
+		synopsis:    "shells [--json]",
+		description: "Show your default (login) shell, the shell you are using right now, and every supported shell\ninstalled, with whether the GitPersona integration is set up in each.",
+		bind: func(fs *flag.FlagSet) runFunc {
+			asJSON := fs.Bool("json", false, "print machine-readable JSON")
+			return func(ctx context.Context, env app.Env, _ []string) int {
+				return fail(env.Stderr, app.Shells(ctx, env, *asJSON))
+			}
+		},
+	},
+	"prompt": {
+		synopsis:    "prompt [--format FORMAT]",
+		description: "Print the account Git uses here, for shell prompts. Fast: it never runs git or uses the network.\nFORMAT may use {account}, {profile} and {host} (default {account}).",
+		bind: func(fs *flag.FlagSet) runFunc {
+			format := fs.String("format", "", "output format")
+			return func(_ context.Context, env app.Env, _ []string) int {
+				app.Prompt(env, *format)
+				return exitOK
 			}
 		},
 	},

@@ -37,6 +37,7 @@ func Doctor(ctx context.Context, e Env) bool {
 		checks = append(checks, e.checkBlockIsLast())
 		checks = append(checks, e.checkCurrentRepository(ctx, cfg)...)
 		checks = append(checks, e.checkPins(cfg)...)
+		checks = append(checks, e.checkShellIntegration(ctx)...)
 		checks = append(checks, e.checkGitHubAccounts(ctx, cfg)...)
 	}
 

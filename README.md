@@ -88,6 +88,9 @@ Paths must be absolute or start with `~/`.
 | `gitpersona pin <profile>` / `unpin` | Bind the current repository to a profile, or remove the pin |
 | `gitpersona list [--json]` | List profiles, directories and pins |
 | `gitpersona doctor` | Check the setup and explain how to fix problems |
+| `gitpersona shells [--json]` | Show your default shell, the shell you use right now, and installed shells |
+| `gitpersona install-shell [--shell fish,zsh,bash]` | Add prompt display (and gh switching) to your shells; defaults to your login shell |
+| `gitpersona prompt [--format]` | Print the account Git uses here, for prompts (`{account}`, `{profile}`, `{host}`) |
 | `gitpersona rollback [<name>\|latest] [--yes]` | List backups, or restore one (the current state is backed up first) |
 | `gitpersona uninstall [--yes]` | Remove GitPersona from your Git configuration; keeps config.toml |
 | `gitpersona help <command>` | Show the flags of a command |
@@ -100,6 +103,10 @@ Paths must be absolute or start with `~/`.
 - **Credentials:** for GitHub profiles, GitPersona is the only credential helper for that host and borrows the
   token `gh` already holds, so no other helper stores a copy. If an account is not signed in to `gh`, Git asks
   for a password; `gitpersona doctor` tells you which account to sign in.
+- **Shells:** your default shell is read from the system user record (not `$SHELL`, which terminals, IDEs and
+  tools often change), the shell you use right now from the process tree, and installed shells from `/etc/shells`.
+  fish gets its own file in `conf.d`; zsh uses `~/.zshenv`; bash uses `~/.bashrc`. In tide add the
+  `gitpersona` item; in Powerlevel10k add the `gitpersona` segment; elsewhere call `gitpersona_prompt`.
 - **Privacy:** GitPersona never opens, reads, lists or uses your private keys, and never prints or stores tokens.
 - **Your files:** it adds one marked block to your global Git configuration (following a symlinked
   `~/.gitconfig` and `GIT_CONFIG_GLOBAL`), backs up everything it changes, and keeps the newest 20 backups in

@@ -11,12 +11,15 @@ import (
 	"io/fs"
 	"os"
 	"os/exec"
+	"os/user"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
 	"github.com/weikxs/gitpersona/internal/paths"
 	"github.com/weikxs/gitpersona/internal/provider"
+	"github.com/weikxs/gitpersona/internal/shell"
 )
 
 // Env is the outside world as seen by the commands.
@@ -36,6 +39,12 @@ type Env struct {
 	Now      func() time.Time
 	LookPath func(string) (string, error)
 	Run      provider.Runner
+	// LoginShell detects the user's default (login) shell; nil means unknown.
+	LoginShell func(context.Context) shell.Detected
+	// CurrentShell detects the shell running gitpersona right now; nil means unknown.
+	CurrentShell func(context.Context) shell.Detected
+	// InstalledShells lists the supported shells on the system; nil means none known.
+	InstalledShells func() []shell.Installed
 }
 
 // FromOS builds the Env of the running process.
@@ -66,6 +75,20 @@ func FromOS(stdin io.Reader, stdout, stderr io.Writer) (Env, error) {
 		Now:             time.Now,
 		LookPath:        exec.LookPath,
 		Run:             provider.ExecRunner,
+		LoginShell: func(ctx context.Context) shell.Detected {
+			name := ""
+			if u, err := user.Current(); err == nil {
+				name = u.Username
+			}
+			return shell.LoginShell(ctx, runtime.GOOS, name, shell.Runner(provider.ExecRunner), os.Getenv)
+		},
+		CurrentShell: func(ctx context.Context) shell.Detected {
+			return shell.CurrentShell(ctx, os.Getpid(), shell.Runner(provider.ExecRunner))
+		},
+		InstalledShells: func() []shell.Installed {
+			etc, _ := os.ReadFile("/etc/shells")
+			return shell.InstalledShells(string(etc), func(p string) bool { _, err := os.Stat(p); return err == nil })
+		},
 	}, nil
 }
 
