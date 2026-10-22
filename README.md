@@ -95,6 +95,7 @@ Paths must be absolute or start with `~/`.
 | `gitpersona prompt [--format]` | Print the account Git uses here, for prompts (`{account}`, `{profile}`, `{host}`) |
 | `gitpersona rollback [<name>\|latest] [--yes]` | List backups, or restore one (the current state is backed up first) |
 | `gitpersona uninstall [--yes]` | Remove GitPersona from your Git configuration; keeps config.toml |
+| `gitpersona ui [--no-open]` | Open the configuration page in your browser: profiles, directories, pins, a diff preview before applying, health checks, shells and backups. It listens only on 127.0.0.1, the link works once, and it stops after 15 minutes without use |
 | `gitpersona help <command>` | Show the flags of a command |
 
 Prompt and plugin-manager setups (tide, Powerlevel10k, Starship, fisher, oh-my-zsh): see [docs/integrations.md](docs/integrations.md).

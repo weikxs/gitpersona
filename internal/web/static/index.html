@@ -5,10 +5,43 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="csrf-token" content="{{CSRF}}">
 <title>GitPersona</title>
+<link rel="icon" href="data:,">
 <link rel="stylesheet" href="/static/app.css">
 <script type="module" src="/static/app.js"></script>
 </head>
 <body>
-<main id="app"><p>Loading…</p></main>
+<a class="skip-link" href="#main">Skip to content</a>
+<header class="topbar">
+  <div>
+    <h1>GitPersona</h1>
+    <p class="tagline">One identity per directory: author, credentials, SSH key, signing and gh account.</p>
+  </div>
+  <button type="button" id="close">Close page</button>
+</header>
+<div class="layout">
+  <nav class="nav" aria-label="Sections">
+    <ul>
+      <li><a href="#overview">Overview</a></li>
+      <li><a href="#profiles">Profiles</a></li>
+      <li><a href="#apply">Review &amp; apply</a></li>
+      <li><a href="#shells">Shells</a></li>
+      <li><a href="#backups">Backups</a></li>
+    </ul>
+  </nav>
+  <main id="main" tabindex="-1">
+    <div id="status" role="status" aria-live="polite"></div>
+    <div id="view"><p>Loading…</p></div>
+  </main>
+</div>
+<dialog id="confirm" aria-labelledby="confirm-title">
+  <form method="dialog">
+    <h2 id="confirm-title">Are you sure?</h2>
+    <p id="confirm-text"></p>
+    <div class="actions">
+      <button value="cancel" type="submit">Cancel</button>
+      <button value="ok" type="submit" id="confirm-ok" class="danger">Confirm</button>
+    </div>
+  </form>
+</dialog>
 </body>
 </html>

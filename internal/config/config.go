@@ -64,8 +64,8 @@ type Profile struct {
 
 // Signing configures commit signing for a profile.
 type Signing struct {
-	Method string `toml:"method,omitempty"`
-	Key    string `toml:"key,omitempty"`
+	Method string `toml:"method,omitempty" json:"method"`
+	Key    string `toml:"key,omitempty" json:"key,omitempty"`
 }
 
 // Pin binds one repository to a profile, overriding directory rules.

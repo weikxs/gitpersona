@@ -14,6 +14,9 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ### Added
 
+- `ui`: a local configuration page for profiles, directories and pins, with a diff preview before applying,
+  health checks, shells and backups. It listens only on 127.0.0.1, uses a one-time link, CSRF protection and a strict
+  Content Security Policy, loads nothing from outside, works at phone width and in dark mode.
 - `use`, `remove`, `pin`, `unpin` and `list [--json]`: edit the configuration from the command line while keeping
   your comments and layout; every edit is verified, backed up and applied. `doctor` warns about pins to missing repositories.
 - `rollback` lists backups and restores one (each command's changes are one backup, so a rollback undoes the whole
