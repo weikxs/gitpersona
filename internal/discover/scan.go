@@ -24,10 +24,10 @@ var DefaultScanLimits = ScanLimits{MaxDepth: 4, Timeout: 5 * time.Second}
 // Suggestion proposes a directory rule: most repositories directly under
 // Dir belong to Account.
 type Suggestion struct {
-	Dir     string
-	Account string
-	Repos   int // repositories of Account under Dir
-	Total   int // repositories under Dir with a remote on the host
+	Dir     string `json:"dir"`
+	Account string `json:"account"`
+	Repos   int    `json:"repos"` // repositories of Account under Dir
+	Total   int    `json:"total"` // repositories under Dir with a remote on the host
 }
 
 // skippedDirs are never descended into.

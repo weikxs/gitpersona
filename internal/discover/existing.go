@@ -14,11 +14,11 @@ import (
 
 // Identity is one identity found in an existing setup.
 type Identity struct {
-	Name    string
-	Email   string
-	Account string   // credential username for github.com, if set
-	Dirs    []string // directories, written with ~/ where possible
-	Source  string   // the included file the identity came from
+	Name    string   `json:"name"`
+	Email   string   `json:"email"`
+	Account string   `json:"account,omitempty"` // credential username for github.com, if set
+	Dirs    []string `json:"dirs"`              // directories, written with ~/ where possible
+	Source  string   `json:"source"`            // the included file the identity came from
 }
 
 const includeIfPrefix = "includeif."

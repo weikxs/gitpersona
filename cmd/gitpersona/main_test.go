@@ -33,6 +33,7 @@ func TestRun(t *testing.T) {
 		{name: "version rejects extra arguments", args: []string{"version", "extra"}, wantCode: 2, wantStderr: "unexpected argument"},
 		{name: "help rejects extra arguments", args: []string{"help", "apply", "extra"}, wantCode: 2, wantStderr: "unexpected argument"},
 		{name: "help shows double-dash flags", args: []string{"help", "apply"}, wantCode: 0, wantStdout: "--dry-run"},
+		{name: "setup takes --print or --web, not both", args: []string{"setup", "--web", "--print"}, wantCode: 1, wantStderr: "either --print or --web"},
 	}
 
 	for _, tc := range tests {

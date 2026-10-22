@@ -4,9 +4,9 @@
 import { api } from "../api.js";
 import { h, replace, badge, field, busy } from "../dom.js";
 
-export function renderOverview(section, { state, run }) {
+export function renderOverview(section, { state }) {
   if (!state.config_exists) {
-    section.append(setupCard(run));
+    section.append(setupCard());
   } else if (state.config_error) {
     section.append(h("div", { class: "notice fail", role: "alert" },
       h("strong", {}, "The configuration has a problem. "), state.config_error));
@@ -14,15 +14,12 @@ export function renderOverview(section, { state, run }) {
   section.append(resolveCard(), accountsCard(state), doctorCard(state.doctor));
 }
 
-function setupCard(run) {
-  const button = h("button", { type: "button", class: "primary" }, "Create configuration");
-  button.addEventListener("click", () => busy(button, () =>
-    run(() => api.setup(), "Configuration created. Review it under Profiles, then apply it.")));
+function setupCard() {
   return h("div", { class: "card" },
     h("h3", {}, "Get started"),
-    h("p", {}, "No configuration yet. GitPersona can create one profile for each account signed in to gh, " +
-      "using each account's public name and noreply email."),
-    button);
+    h("p", {}, "No configuration yet. Setup takes three steps: confirm one profile for each account signed in to gh, " +
+      "choose the directories each one covers, then review and apply."),
+    h("a", { class: "button primary", href: "#setup" }, "Start setup"));
 }
 
 function resolveCard() {
@@ -103,8 +100,10 @@ function accountsCard(state) {
     body);
 }
 
-function doctorCard(doctor) {
-  const summary = doctor.ok ? badge("ok", "All checks pass") : badge("warn", "Needs attention");
+export function doctorCard(doctor) {
+  const warnings = doctor.checks.some((c) => c.status === "warn");
+  const summary = !doctor.ok ? badge("fail", "Needs attention")
+    : warnings ? badge("warn", "Works, with warnings") : badge("ok", "All checks pass");
   return h("div", { class: "card" },
     h("div", { class: "card-head" }, h("h3", {}, "Health checks"), summary),
     h("ul", { class: "checks" }, doctor.checks.map((c) =>

@@ -37,8 +37,10 @@ everything else             → acme-alex    (default)
 ## Quick start
 
 1. Sign in to every GitHub account with the GitHub CLI: `gh auth login` (once per account).
-2. Run `gitpersona setup`: it creates `~/.config/gitpersona/config.toml` with a profile for each account `gh` is
-   signed in to. Then, in each directory that belongs to an account, run `gitpersona use <profile>`.
+2. Run `gitpersona setup --web`: in three steps in your browser it proposes a profile for each account `gh` is
+   signed in to (reusing an existing `includeIf` setup), suggests directories from your repositories' remotes, and shows
+   every file before writing it. In a terminal only, `gitpersona setup` creates the same profiles; then, in each
+   directory that belongs to an account, run `gitpersona use <profile>`.
    Or describe your profiles yourself:
 
    ```toml
@@ -95,6 +97,7 @@ Paths must be absolute or start with `~/`.
 | `gitpersona prompt [--format]` | Print the account Git uses here, for prompts (`{account}`, `{profile}`, `{host}`) |
 | `gitpersona rollback [<name>\|latest] [--yes]` | List backups, or restore one (the current state is backed up first) |
 | `gitpersona uninstall [--yes]` | Remove GitPersona from your Git configuration; keeps config.toml |
+| `gitpersona setup [--print \| --web]` | Create a first configuration from the accounts signed in to gh; `--web` does it in three steps in the browser (confirm identities, choose directories with suggestions, review every file and apply) |
 | `gitpersona ui [--no-open]` | Open the configuration page in your browser: profiles, directories, pins, a diff preview before applying, health checks, shells and backups. It listens only on 127.0.0.1, the link works once, and it stops after 15 minutes without use |
 | `gitpersona help <command>` | Show the flags of a command |
 

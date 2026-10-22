@@ -290,3 +290,36 @@ func gitEmail(t *testing.T, dir string) string {
 	out, _ := exec.Command("git", "-C", dir, "config", "user.email").Output()
 	return strings.TrimSpace(string(out))
 }
+
+func TestSetupWizardThroughTheAPI(t *testing.T) {
+	w := newAPIWorld(t)
+	if err := os.Remove(filepath.Join(w.home, ".config", "gitpersona", "config.toml")); err != nil {
+		t.Fatal(err)
+	}
+
+	var proposal app.SetupProposal
+	decode(t, w.call(t, "GET", "/api/setup", nil), &proposal)
+	if proposal.Default != "octo-alex" || len(proposal.Profiles) != 2 || proposal.Profiles[0].Dirs == nil {
+		t.Fatalf("proposal = %+v", proposal)
+	}
+
+	plan := app.SetupPlan{Default: "work", Profiles: []app.SetupProfile{
+		{ID: "work", Account: "acme-alex", Name: "Alex (Acme)", Email: "1000002+acme-alex@users.noreply.github.com",
+			Dirs: []string{"~/Projects/acme"}},
+	}}
+	var preview []app.FileChange
+	decode(t, w.call(t, "POST", "/api/setup/preview", plan), &preview)
+	if len(preview) == 0 || preview[0].Action != "create" || !strings.Contains(preview[0].Path, "config.toml") {
+		t.Fatalf("preview = %+v", preview)
+	}
+
+	if applied := w.call(t, "POST", "/api/setup", plan); !applied.OK {
+		t.Fatalf("setup = %+v", applied)
+	}
+	if got := gitEmail(t, filepath.Join(w.home, "Projects", "acme", "billing")); got != "1000002+acme-alex@users.noreply.github.com" {
+		t.Fatalf("after the wizard git uses %q", got)
+	}
+	if again := w.call(t, "POST", "/api/setup", plan); again.OK || !strings.Contains(again.Error, "already exists") {
+		t.Fatalf("a second setup must not overwrite: %+v", again)
+	}
+}

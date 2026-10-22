@@ -8,6 +8,7 @@ import { renderProfiles } from "./views/profiles.js";
 import { renderApply } from "./views/apply.js";
 import { renderShells } from "./views/shells.js";
 import { renderBackups } from "./views/backups.js";
+import { renderSetup } from "./views/setup.js";
 
 const VIEWS = {
   overview: { title: "Overview", render: renderOverview },
@@ -15,6 +16,7 @@ const VIEWS = {
   apply: { title: "Review & apply", render: renderApply },
   shells: { title: "Shells", render: renderShells },
   backups: { title: "Backups", render: renderBackups },
+  setup: { title: "Set up GitPersona", render: renderSetup },
 };
 const DEFAULT_VIEW = "overview";
 // NO_CHANGE matches command output saying a change was already in place.
@@ -24,7 +26,9 @@ let state = null;
 
 function currentView() {
   const name = location.hash.slice(1);
-  return Object.hasOwn(VIEWS, name) ? name : DEFAULT_VIEW;
+  if (Object.hasOwn(VIEWS, name)) return name;
+  // Without a configuration, the page opens on the setup steps.
+  return state && !state.config_exists ? "setup" : DEFAULT_VIEW;
 }
 
 async function loadState() {

@@ -32,14 +32,9 @@ func Setup(ctx context.Context, e Env, opts SetupOptions) error {
 	ctx, cancel := context.WithTimeout(ctx, setupTimeout)
 	defer cancel()
 
-	gh, err := e.LookPath("gh")
+	source, accounts, err := e.signedInAccounts(ctx)
 	if err != nil {
-		return fmt.Errorf("setup needs the GitHub CLI: install it from https://cli.github.com and run `gh auth login` for each account")
-	}
-	source := provider.GitHub{GH: gh, Run: e.Run}
-	accounts, err := source.Accounts(ctx, config.DefaultGitHubHost)
-	if err != nil || len(accounts) == 0 {
-		return fmt.Errorf("no GitHub account is signed in to gh; run `gh auth login` for each account, then try again")
+		return err
 	}
 
 	text := renderSetup(ctx, source, accounts)
@@ -79,15 +74,7 @@ func renderSetup(ctx context.Context, source provider.GitHub, accounts []provide
 		if a.State != "success" {
 			continue
 		}
-		name, email := a.Login, a.Login+"@users.noreply.github.com"
-		if u, err := source.User(ctx, config.DefaultGitHubHost, a.Login); err == nil {
-			if u.Name != "" {
-				name = u.Name
-			}
-			if u.ID > 0 {
-				email = fmt.Sprintf("%d+%s@users.noreply.github.com", u.ID, a.Login)
-			}
-		}
+		name, email := ghIdentity(ctx, source, a.Login)
 		fmt.Fprintf(&b, "\n[[profile]]\nid      = %q\naccount = %q\nname    = %q\nemail   = %q # GitHub noreply address\n",
 			profileID(a.Login), a.Login, name, email)
 	}

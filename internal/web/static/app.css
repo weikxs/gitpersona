@@ -248,7 +248,7 @@ button, .button {
   transition: background-color var(--speed) ease-out, border-color var(--speed) ease-out;
 }
 button:hover { border-color: var(--muted); }
-button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+button.primary, .button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
 button.danger { background: transparent; border-color: var(--fail); color: var(--fail); }
 button.danger:hover { background: var(--fail-soft); }
 button.small { min-height: 36px; padding: 0 var(--space-3); font-size: var(--text-sm); }
@@ -259,6 +259,7 @@ button:disabled, button[aria-busy="true"] { opacity: 0.5; cursor: not-allowed; }
 /* Forms */
 
 .stack { display: grid; gap: var(--space-3); }
+.stack > *, details.change { min-width: 0; }
 .field { display: grid; gap: var(--space-1); }
 .field label { font-weight: 500; }
 .field .hint { color: var(--muted); font-size: var(--text-sm); }
@@ -278,7 +279,7 @@ input, select {
 input[aria-invalid="true"] { border-color: var(--fail); }
 fieldset { border: 1px solid var(--border); border-radius: var(--radius); padding: var(--space-3); margin: 0; }
 legend { padding: 0 var(--space-1); font-weight: 500; }
-label.check { display: flex; align-items: center; gap: var(--space-2); min-height: 44px; }
+label.check { display: flex; flex-wrap: wrap; align-items: center; gap: 0 var(--space-2); min-height: 44px; }
 label.check input { width: 20px; min-height: 20px; }
 
 /* Status badges: an icon character and a word, never color alone. */
@@ -338,7 +339,7 @@ details.change[open] summary::before { content: "▾"; }
 .notice.ok { border-color: var(--ok); }
 .notice.fail { border-color: var(--fail); background: var(--fail-soft); }
 .notice.warn { border-color: var(--warn); background: var(--warn-soft); }
-.notice pre { margin: var(--space-2) 0 0; white-space: pre-wrap; font: var(--text-sm) / 1.45 var(--mono); }
+.notice pre { margin: var(--space-2) 0 0; white-space: pre-wrap; overflow-wrap: anywhere; font: var(--text-sm) / 1.45 var(--mono); }
 
 #status:empty { display: none; }
 
@@ -357,3 +358,31 @@ dialog .actions { justify-content: flex-end; margin-top: var(--space-4); }
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; animation: none !important; }
 }
+
+/* Setup steps: numbered, with the current step marked in text as well. */
+
+ol.steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-4);
+  padding: 0;
+  list-style: none;
+  counter-reset: step;
+}
+ol.steps li {
+  counter-increment: step;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted);
+  background: var(--surface);
+}
+ol.steps li::before { content: counter(step) "."; font-weight: 600; }
+ol.steps li.done::before { content: "✓"; color: var(--ok); }
+ol.steps li[aria-current="step"] { border-color: var(--accent); color: var(--text); font-weight: 600; }
+a.button { text-decoration: none; }
+a.button.primary { color: var(--accent-text); }

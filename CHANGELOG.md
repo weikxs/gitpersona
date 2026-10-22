@@ -14,6 +14,9 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ### Added
 
+- `setup --web` and the page's setup steps: confirm one profile per signed-in account (reusing an existing `includeIf`
+  setup), choose directories with suggestions from repository remotes, review every file including `config.toml`,
+  then apply in one backup and see the health checks.
 - `ui`: a local configuration page for profiles, directories and pins, with a diff preview before applying,
   health checks, shells and backups. It listens only on 127.0.0.1, uses a one-time link, CSRF protection and a strict
   Content Security Policy, loads nothing from outside, works at phone width and in dark mode.

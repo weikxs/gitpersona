@@ -102,6 +102,11 @@ func Preview(ctx context.Context, e Env) ([]FileChange, error) {
 	if err != nil {
 		return nil, err
 	}
+	return e.fileChanges(changes), nil
+}
+
+// fileChanges describes changes with their diffs.
+func (e Env) fileChanges(changes []change) []FileChange {
 	out := make([]FileChange, 0, len(changes))
 	for _, c := range changes {
 		name := e.display(c.path)
@@ -122,5 +127,5 @@ func Preview(ctx context.Context, e Env) ([]FileChange, error) {
 		}
 		out = append(out, fc)
 	}
-	return out, nil
+	return out
 }

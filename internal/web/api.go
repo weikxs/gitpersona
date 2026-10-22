@@ -58,6 +58,8 @@ func API(env app.Env, stop func()) map[string]http.HandlerFunc {
 		"GET /api/state":            a.handle(a.state),
 		"GET /api/preview":          a.handle(a.preview),
 		"POST /api/apply":           a.handle(a.apply),
+		"GET /api/setup":            a.handle(a.proposeSetup),
+		"POST /api/setup/preview":   a.handle(a.previewSetup),
 		"POST /api/setup":           a.handle(a.setup),
 		"GET /api/discover":         a.handle(a.discover),
 		"GET /api/resolve":          a.handle(a.resolve),
@@ -140,8 +142,27 @@ func (a api) apply(c call) (any, error) {
 	return nil, app.Apply(c.ctx, c.env, app.ApplyOptions{Yes: req.Yes, Command: "apply (web)"})
 }
 
+func (a api) proposeSetup(c call) (any, error) { return app.ProposeSetup(c.ctx, c.env) }
+
+func (a api) previewSetup(c call) (any, error) {
+	var plan app.SetupPlan
+	if err := c.decode(&plan); err != nil {
+		return nil, err
+	}
+	return app.PreviewSetup(c.ctx, c.env, plan)
+}
+
+// setup writes the confirmed plan, or without profiles the configuration
+// `gitpersona setup` would write.
 func (a api) setup(c call) (any, error) {
-	return nil, app.Setup(c.ctx, c.env, app.SetupOptions{})
+	var plan app.SetupPlan
+	if err := c.decode(&plan); err != nil {
+		return nil, err
+	}
+	if len(plan.Profiles) == 0 {
+		return nil, app.Setup(c.ctx, c.env, app.SetupOptions{})
+	}
+	return nil, app.ApplySetup(c.ctx, c.env, plan)
 }
 
 func (a api) discover(c call) (any, error) {
@@ -162,7 +183,10 @@ func (a api) discover(c call) (any, error) {
 		}
 	}
 	if existing, err := discover.Existing(c.ctx, c.env.Home, c.env.GlobalGitConfigPath(), c.env.Run); err == nil && existing != nil {
-		report.Existing = existing
+		for _, id := range existing {
+			id.Source = c.env.Display(id.Source)
+			report.Existing = append(report.Existing, id)
+		}
 	}
 	var logins []string
 	if gh, err := c.env.LookPath("gh"); err == nil {

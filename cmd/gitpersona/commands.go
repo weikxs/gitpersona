@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"strings"
@@ -38,17 +39,25 @@ var commands = map[string]command{
 		bind: func(fs *flag.FlagSet) runFunc {
 			noOpen := fs.Bool("no-open", false, "print the link without opening a browser")
 			return func(ctx context.Context, env app.Env, _ []string) int {
-				return fail(env.Stderr, runUI(ctx, env, !*noOpen))
+				return fail(env.Stderr, runUI(ctx, env, !*noOpen, ""))
 			}
 		},
 	},
 	"setup": {
-		synopsis:    "setup [--print]",
-		description: "Create a first configuration with one profile per GitHub account gh is signed in to, each\naccount's noreply email, and gh's active account as the default. It asks gh for account status\n(no tokens) and for each account's public profile. --print shows it without writing.",
+		synopsis:    "setup [--print | --web [--no-open]]",
+		description: "Create a first configuration with one profile per GitHub account gh is signed in to, each\naccount's noreply email, and gh's active account as the default. It asks gh for account status\n(no tokens) and for each account's public profile. --print shows it without writing. --web opens\nthe setup steps in your browser, where you also choose directories and review every file first.",
 		bind: func(fs *flag.FlagSet) runFunc {
 			var opts app.SetupOptions
 			fs.BoolVar(&opts.Print, "print", false, "print the configuration instead of writing it")
+			web := fs.Bool("web", false, "set up in the browser: confirm identities, choose directories, review, apply")
+			noOpen := fs.Bool("no-open", false, "with --web, print the link without opening a browser")
 			return func(ctx context.Context, env app.Env, _ []string) int {
+				if *web {
+					if opts.Print {
+						return fail(env.Stderr, errors.New("choose either --print or --web"))
+					}
+					return fail(env.Stderr, runUI(ctx, env, !*noOpen, "setup"))
+				}
 				return fail(env.Stderr, app.Setup(ctx, env, opts))
 			}
 		},
