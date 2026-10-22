@@ -28,6 +28,7 @@ Usage:
   gitpersona <command> [flags]
 
 Commands:
+  ui          Open the configuration page in your browser
   setup       Create a first configuration from your signed-in GitHub accounts
   apply       Generate Git configuration from the GitPersona configuration
   whoami      Show which profile applies here and why

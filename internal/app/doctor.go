@@ -93,7 +93,7 @@ func (e Env) fixAll(ctx context.Context, checks []check) bool {
 	return len(done) > 0
 }
 
-func (e Env) printDoctorJSON(checks []check) bool {
+func doctorReport(checks []check) DoctorReport {
 	report := DoctorReport{OK: true, Checks: make([]DoctorCheck, len(checks))}
 	for i, c := range checks {
 		status := "ok"
@@ -105,6 +105,11 @@ func (e Env) printDoctorJSON(checks []check) bool {
 		}
 		report.Checks[i] = DoctorCheck{Status: status, Label: c.label, Advice: c.advice}
 	}
+	return report
+}
+
+func (e Env) printDoctorJSON(checks []check) bool {
+	report := doctorReport(checks)
 	enc := json.NewEncoder(e.Stdout)
 	enc.SetIndent("", "  ")
 	_ = enc.Encode(report)

@@ -166,3 +166,12 @@ func printProfile(e Env, r WhoamiReport) {
 		fmt.Fprintf(e.Stdout, "  warning %s\n", mismatchAdvice(r))
 	}
 }
+
+// WhoamiReportFor returns the whoami report for e.WorkDir.
+func WhoamiReportFor(ctx context.Context, e Env) (WhoamiReport, error) {
+	cfg, err := e.loadConfig()
+	if err != nil {
+		return WhoamiReport{}, err
+	}
+	return e.whoami(ctx, cfg), nil
+}

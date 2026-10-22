@@ -184,3 +184,12 @@ func readOptional(path string) (string, error) {
 	}
 	return string(data), nil
 }
+
+// GlobalGitConfigPath is the global Git configuration file GitPersona edits.
+func (e Env) GlobalGitConfigPath() string { return e.userGitConfig() }
+
+// BackupDir is where backups are kept.
+func (e Env) BackupDir() string { return e.backupDir() }
+
+// Display shortens a path under the home directory to ~/...
+func (e Env) Display(path string) string { return e.display(path) }

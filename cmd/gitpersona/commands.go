@@ -32,6 +32,16 @@ func firstArg(args []string) string {
 }
 
 var commands = map[string]command{
+	"ui": {
+		synopsis:    "ui [--no-open]",
+		description: "Open the configuration page in your browser. It runs only on this computer (127.0.0.1),\nthe link works once, and the page stops after 15 minutes without use.",
+		bind: func(fs *flag.FlagSet) runFunc {
+			noOpen := fs.Bool("no-open", false, "print the link without opening a browser")
+			return func(ctx context.Context, env app.Env, _ []string) int {
+				return fail(env.Stderr, runUI(ctx, env, !*noOpen))
+			}
+		},
+	},
 	"setup": {
 		synopsis:    "setup [--print]",
 		description: "Create a first configuration with one profile per GitHub account gh is signed in to, each\naccount's noreply email, and gh's active account as the default. It asks gh for account status\n(no tokens) and for each account's public profile. --print shows it without writing.",

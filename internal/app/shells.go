@@ -32,15 +32,7 @@ type InstalledShell struct {
 // Shells reports the default (login) shell, the shell in use right now, and
 // every supported shell installed, with its integration status.
 func Shells(ctx context.Context, e Env, asJSON bool) error {
-	report := ShellsReport{
-		Default:   detectedShell(e.loginShell(ctx)),
-		Current:   detectedShell(e.currentShell(ctx)),
-		Installed: []InstalledShell{},
-	}
-	for _, in := range e.installedShells() {
-		_, ok := e.integrated(in.Kind)
-		report.Installed = append(report.Installed, InstalledShell{Kind: string(in.Kind), Path: in.Path, Integrated: ok})
-	}
+	report := e.shellsReport(ctx)
 	if asJSON {
 		enc := json.NewEncoder(e.Stdout)
 		enc.SetIndent("", "  ")
@@ -58,6 +50,19 @@ func Shells(ctx context.Context, e Env, asJSON bool) error {
 		fmt.Fprintf(e.Stdout, "  %-4s  %s  %s\n", in.Kind, in.Path, status)
 	}
 	return nil
+}
+
+func (e Env) shellsReport(ctx context.Context) ShellsReport {
+	report := ShellsReport{
+		Default:   detectedShell(e.loginShell(ctx)),
+		Current:   detectedShell(e.currentShell(ctx)),
+		Installed: []InstalledShell{},
+	}
+	for _, in := range e.installedShells() {
+		_, ok := e.integrated(in.Kind)
+		report.Installed = append(report.Installed, InstalledShell{Kind: string(in.Kind), Path: in.Path, Integrated: ok})
+	}
+	return report
 }
 
 func detectedShell(d shell.Detected) DetectedShell {

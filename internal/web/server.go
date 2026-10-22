@@ -78,6 +78,14 @@ func New(addr string, h Handlers) (*Server, error) {
 	return s, nil
 }
 
+// Register adds API routes after the server exists, so routes such as
+// "close" can use the server's Stop.
+func (s *Server) Register(routes map[string]http.HandlerFunc) {
+	for pattern, handler := range routes {
+		s.mux.HandleFunc(pattern, handler)
+	}
+}
+
 // Key is the one-time key for the launch URL.
 func (s *Server) Key() string { return s.key }
 
