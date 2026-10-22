@@ -54,12 +54,13 @@ func Setup(ctx context.Context, e Env, opts SetupOptions) error {
 		fmt.Fprint(e.Stdout, text)
 		return nil
 	}
-	if err := e.applyChanges([]change{{path: e.configFile(), content: text, create: true}}, ApplyOptions{}); err != nil {
+	if err := e.applyChanges([]change{{path: e.configFile(), content: text, create: true}}, ApplyOptions{Command: "setup"}); err != nil {
 		return err
 	}
 	fmt.Fprintf(e.Stdout, "\nNext steps:\n"+
 		"  1. Check names and emails in %s.\n"+
-		"  2. In each directory that belongs to an account: gitpersona use <profile>\n"+
+		"  2. In each directory that belongs to an account: gitpersona use <profile> (this also applies it)\n"+
+		"     or, after editing the file yourself: gitpersona apply\n"+
 		"  3. gitpersona install-shell, then gitpersona doctor\n", e.display(e.configFile()))
 	return nil
 }

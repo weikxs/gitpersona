@@ -34,10 +34,20 @@ type Options struct {
 	// FallbackSSHCommand restores the user's core.sshCommand for profiles
 	// without an SSH key. Empty means plain "ssh".
 	FallbackSSHCommand string
+	// FallbackSigning restores the user's own signing settings for profiles
+	// without signing. Empty fields are not restored; signing is then off.
+	FallbackSigning Signing
 	// Canonicalize, if set, resolves symbolic links in a path. Git matches
 	// includeIf against the real path of the repository, so when a rule's
 	// directory goes through a symlink an entry for the real path is added.
 	Canonicalize func(string) string
+}
+
+// Signing holds the user's global commit-signing settings.
+type Signing struct {
+	GPGSign    string // commit.gpgsign
+	SigningKey string // user.signingkey
+	Format     string // gpg.format
 }
 
 // File is one generated file.
@@ -110,8 +120,7 @@ func profileSnippet(p config.Profile, u usage, opts Options) (string, error) {
 func writeSigning(b *strings.Builder, p config.Profile, u usage, opts Options) error {
 	if !p.Signing.Enabled() {
 		if u.signing {
-			b.WriteString("[commit]\n")
-			writeKV(b, "gpgsign", "false")
+			writeFallbackSigning(b, opts.FallbackSigning)
 		}
 		return nil
 	}
@@ -130,6 +139,21 @@ func writeSigning(b *strings.Builder, p config.Profile, u usage, opts Options) e
 	b.WriteString("[commit]\n")
 	writeKV(b, "gpgsign", "true")
 	return nil
+}
+
+// writeFallbackSigning puts back the user's own signing settings, which
+// another profile's signing would otherwise override.
+func writeFallbackSigning(b *strings.Builder, s Signing) {
+	if s.SigningKey != "" {
+		b.WriteString("[user]\n")
+		writeKV(b, "signingkey", s.SigningKey)
+	}
+	if s.Format != "" {
+		b.WriteString("[gpg]\n")
+		writeKV(b, "format", s.Format)
+	}
+	b.WriteString("[commit]\n")
+	writeKV(b, "gpgsign", cmp.Or(s.GPGSign, "false"))
 }
 
 func writeSSH(b *strings.Builder, p config.Profile, u usage, opts Options) error {

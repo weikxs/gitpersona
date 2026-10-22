@@ -125,7 +125,7 @@ func InstallShell(ctx context.Context, e Env, kinds []shell.Kind, dryRun bool) e
 			}
 		}
 	}
-	if err := e.applyChanges(changes, ApplyOptions{DryRun: dryRun}); err != nil {
+	if err := e.applyChanges(changes, ApplyOptions{DryRun: dryRun, Command: "install-shell"}); err != nil {
 		return err
 	}
 	if len(changes) > 0 && !dryRun {

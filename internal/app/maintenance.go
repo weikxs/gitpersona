@@ -30,7 +30,11 @@ func Rollback(ctx context.Context, e Env, which string, yes bool) error {
 			if i == 0 {
 				name += " (latest)"
 			}
-			fmt.Fprintf(e.Stdout, "%s  %s\n", name, strings.Join(e.entryNames(info.Manifest), ", "))
+			made := ""
+			if info.Manifest.Command != "" {
+				made = "  by `gitpersona " + info.Manifest.Command + "`"
+			}
+			fmt.Fprintf(e.Stdout, "%s%s\n    %s\n", name, made, strings.Join(e.entryNames(info.Manifest), ", "))
 		}
 		fmt.Fprintln(e.Stdout, "\nRestore one with: gitpersona rollback <name|latest> --yes")
 		return nil
@@ -48,7 +52,7 @@ func Rollback(ctx context.Context, e Env, which string, yes bool) error {
 	for i, en := range chosen.Manifest.Entries {
 		paths[i] = en.Path
 	}
-	undo, err := backup.Snapshot(e.backupDir(), e.Now(), paths)
+	undo, err := backup.SnapshotFor(e.backupDir(), e.Now(), "rollback "+which, paths)
 	if err != nil {
 		return err
 	}
@@ -111,7 +115,7 @@ func Uninstall(_ context.Context, e Env, yes bool) error {
 		}
 		return fmt.Errorf("uninstall would change %s; run `gitpersona uninstall --yes`", strings.Join(names, ", "))
 	}
-	if err := e.applyChanges(changes, ApplyOptions{Yes: true}); err != nil {
+	if err := e.applyChanges(changes, ApplyOptions{Yes: true, Command: "uninstall"}); err != nil {
 		return err
 	}
 	_ = os.Remove(filepath.Join(e.ConfigDir, "profiles")) // only succeeds when empty

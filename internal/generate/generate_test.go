@@ -230,3 +230,20 @@ func TestEscapeGlob(t *testing.T) {
 		t.Fatalf("escapeGlob() = %s, want %s", got, want)
 	}
 }
+
+func TestProfilesWithoutSigningRestoreTheUsersGlobalSigning(t *testing.T) {
+	opts := demoOptions()
+	opts.FallbackSigning = Signing{GPGSign: "true", SigningKey: "/tmp/home/.ssh/global.pub", Format: "ssh"}
+
+	files, err := Generate(demoConfig(), opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	acme := files[0].Content
+
+	for _, want := range []string{"gpgsign = true", "signingkey = /tmp/home/.ssh/global.pub", "format = ssh"} {
+		if !strings.Contains(acme, want) {
+			t.Errorf("profile without signing should restore the user's %q:\n%s", want, acme)
+		}
+	}
+}

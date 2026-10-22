@@ -153,8 +153,8 @@ func TestPruneKeepsOnlyTheNewestSnapshots(t *testing.T) {
 			dirs = append(dirs, e.Name())
 		}
 	}
-	if len(dirs) != 2 || dirs[0] != "20260102T030408.000000006Z" || dirs[1] != "20260102T030409.000000006Z" {
-		t.Fatalf("after Prune(2) snapshots = %v, want the two newest", dirs)
+	if len(dirs) != 3 || dirs[0] != "20260102T030405.000000006Z" || dirs[1] != "20260102T030408.000000006Z" || dirs[2] != "20260102T030409.000000006Z" {
+		t.Fatalf("after Prune(2) snapshots = %v, want the oldest plus the two newest", dirs)
 	}
 	if _, err := os.Stat(filepath.Join(root, "not-a-snapshot.txt")); err != nil {
 		t.Fatal("Prune() removed a file that is not a snapshot")
@@ -207,5 +207,34 @@ func TestListNewestFirst(t *testing.T) {
 
 	if err != nil || len(got) != 2 || got[0].Dir != newer || got[1].Dir != older {
 		t.Fatalf("List() = %+v, %v; want newest first", got, err)
+	}
+}
+
+func TestPruneKeepsTheOldestSnapshot(t *testing.T) {
+	root := t.TempDir()
+	for i := 0; i < 5; i++ {
+		if _, err := Snapshot(root, fixedTime.Add(time.Duration(i)*time.Second), nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if err := Prune(root, 2); err != nil {
+		t.Fatal(err)
+	}
+
+	entries, _ := os.ReadDir(root)
+	if len(entries) != 3 || entries[0].Name() != "20260102T030405.000000006Z" {
+		t.Fatalf("after Prune(2) = %v; want the oldest (state before GitPersona) plus the 2 newest", entries)
+	}
+}
+
+func TestSnapshotRecordsWhichCommandMadeIt(t *testing.T) {
+	dir, err := SnapshotFor(t.TempDir(), fixedTime, "use personal", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if m, _ := ReadManifest(dir); m.Command != "use personal" {
+		t.Fatalf("manifest command = %q", m.Command)
 	}
 }

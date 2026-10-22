@@ -38,7 +38,8 @@ func Upsert(content, body string) (string, error) {
 	case strings.HasSuffix(content, newline):
 		return content + newline + region, nil
 	default:
-		return content + newline + newline + region, nil
+		// No blank line: Remove can then tell that the newline was added.
+		return content + newline + region, nil
 	}
 }
 
@@ -52,8 +53,14 @@ func Remove(content string) (string, error) {
 	}
 
 	before, after := lines[:begin], lines[end+1:]
-	if len(after) == 0 && len(before) > 0 && before[len(before)-1] == newline {
-		before = before[:len(before)-1]
+	if len(after) == 0 && len(before) > 0 {
+		if before[len(before)-1] == newline {
+			// The blank line Upsert added before the region.
+			before = before[:len(before)-1]
+		} else {
+			// The file had no final newline; Upsert added one.
+			return strings.TrimSuffix(join(before), newline), nil
+		}
 	}
 	return join(before) + join(after), nil
 }

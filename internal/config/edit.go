@@ -26,7 +26,23 @@ const (
 	pinHeader     = "[[pin]]"
 )
 
-var keyPattern = regexp.MustCompile(`^(\s*)([A-Za-z_]+)\s*=\s*`)
+// keyPattern matches `key =`, `"key" =` and `'key' =` (all valid TOML).
+var keyPattern = regexp.MustCompile(`^(\s*)(?:"([A-Za-z_]+)"|'([A-Za-z_]+)'|([A-Za-z_]+))\s*=\s*`)
+
+// keyName returns the key of a keyPattern match.
+func keyName(m []string) string {
+	return m[2] + m[3] + m[4]
+}
+
+// eol is "\r" when the file uses CRLF line endings, so inserted lines match.
+func eol(lines []string) string {
+	for _, l := range lines {
+		if strings.HasSuffix(l, "\r") {
+			return "\r"
+		}
+	}
+	return ""
+}
 
 // AddDir appends dir to the dirs of the profile with the given id.
 func AddDir(text, profileID, dir string, o EditOptions) (string, error) {
@@ -40,7 +56,7 @@ func AddDir(text, profileID, dir string, o EditOptions) (string, error) {
 	if k < 0 {
 		id := keyLine(lines, b, "id")
 		indent := keyPattern.FindStringSubmatch(lines[id])[1]
-		return joinText(insert(lines, id+1, indent+"dirs = ["+value+"]"), nl), nil
+		return joinText(insert(lines, id+1, indent+"dirs = ["+value+"]"+eol(lines)), nl), nil
 	}
 	arr, err := parseArray(lines, k)
 	if err != nil {
@@ -87,10 +103,11 @@ func AddPin(text, repo, profileID string, o EditOptions) (string, error) {
 		lines[k] = replaceValue(lines[k], tomlQuote(profileID))
 		return joinText(lines, nl), nil
 	}
+	cr := eol(lines)
 	if len(lines) > 0 {
-		lines = append(lines, "")
+		lines = append(lines, cr)
 	}
-	lines = append(lines, pinHeader, "repo    = "+tomlQuote(repo), "profile = "+tomlQuote(profileID))
+	lines = append(lines, pinHeader+cr, "repo    = "+tomlQuote(repo)+cr, "profile = "+tomlQuote(profileID)+cr)
 	return joinText(lines, true), nil
 }
 
@@ -157,7 +174,7 @@ func findPin(lines []string, repo string, o EditOptions) (table, bool) {
 
 func keyLine(lines []string, b table, key string) int {
 	for i := b.start + 1; i < b.end; i++ {
-		if m := keyPattern.FindStringSubmatch(lines[i]); m != nil && m[2] == key {
+		if m := keyPattern.FindStringSubmatch(lines[i]); m != nil && keyName(m) == key {
 			return i
 		}
 	}

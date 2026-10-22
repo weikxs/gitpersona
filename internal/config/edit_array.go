@@ -85,7 +85,7 @@ func (a array) add(lines []string, quoted string) []string {
 		return out
 	}
 	indent := out[last.line][:len(out[last.line])-len(strings.TrimLeft(out[last.line], " \t"))]
-	return insert(out, a.closeLine, indent+quoted+",")
+	return insert(out, a.closeLine, indent+quoted+","+eol(out))
 }
 
 // remove deletes element i; an array left empty takes its key with it.

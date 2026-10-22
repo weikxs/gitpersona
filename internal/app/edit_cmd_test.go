@@ -194,7 +194,7 @@ func TestEditRefusesWhenTheResultWouldDiffer(t *testing.T) {
 	env, _ := w.env(t, w.home)
 	before := readConfig(t, w)
 
-	err := env.saveEdited(context.Background(), before+"\n[[profile]]\nid = \"surprise\"\n", mustParse(t, before))
+	err := env.saveEdited(context.Background(), "test", before+"\n[[profile]]\nid = \"surprise\"\n", mustParse(t, before))
 
 	if err == nil || !strings.Contains(err.Error(), "edit it by hand") {
 		t.Fatalf("saveEdited() = %v, want a refusal", err)
@@ -333,4 +333,37 @@ func backupList(t *testing.T, e Env) ([]string, error) {
 		dirs = append(dirs, filepath.Join(e.backupDir(), entries[i].Name()))
 	}
 	return dirs, err
+}
+
+func TestUseInASubdirectoryAlreadyCoveredAddsNothing(t *testing.T) {
+	w := editWorld(t)
+	sub := filepath.Join(w.home, "Projects", "acme", "sub")
+	if err := os.MkdirAll(sub, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	env, out := w.env(t, sub)
+
+	if err := Use(context.Background(), env, "acme"); err != nil {
+		t.Fatal(err)
+	}
+
+	if readConfig(t, w) != commentedConfig || !strings.Contains(out.String(), "already uses profile acme through ~/Projects/acme") {
+		t.Fatalf("use in a covered subdirectory should change nothing:\n%s\n%s", out.String(), readConfig(t, w))
+	}
+}
+
+func TestUnknownProfileAndInheritedRemoveMessages(t *testing.T) {
+	w := editWorld(t)
+	sub := filepath.Join(w.home, "Projects", "acme", "sub")
+	if err := os.MkdirAll(sub, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	env, _ := w.env(t, sub)
+
+	if err := Use(context.Background(), env, "nobody"); err == nil || !strings.Contains(err.Error(), `unknown profile "nobody"`) {
+		t.Errorf("Use(nobody) = %v", err)
+	}
+	if err := Remove(context.Background(), env, ""); err == nil || !strings.Contains(err.Error(), "~/Projects/acme") {
+		t.Errorf("Remove() in a covered subdirectory = %v, want it to name the parent rule", err)
+	}
 }

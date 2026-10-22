@@ -7,7 +7,7 @@
 在 `~/Projects/acme` 里，你用公司账户提交、推送、开 PR；
 换到 `~/Projects/personal`，你又自动变回个人账户。不用执行任何命令，也不用记着切换。
 
-> **状态：早期开发中。** 核心引擎（`apply`、`whoami`、`doctor`、GitHub 凭据）已可用；shell 集成、Web 页面和其他平台正在开发中。尚未发布。
+> **状态：早期开发中，尚未发布。** GitHub 身份、命令行、shell 集成和 `gh` 切换已可用；配置 Web 页面和 GitLab/Bitbucket 支持正在开发中。
 
 ## 为什么需要
 

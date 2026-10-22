@@ -24,6 +24,7 @@ const (
 // Manifest describes one snapshot.
 type Manifest struct {
 	Created time.Time `json:"created"`
+	Command string    `json:"command,omitempty"` // the gitpersona command that made it
 	Entries []Entry   `json:"entries"`
 }
 
@@ -43,6 +44,11 @@ const maxSnapshotsPerInstant = 100
 // returns that directory. An existing snapshot is never reused: when the name
 // is taken, a numeric suffix is added.
 func Snapshot(root string, now time.Time, files []string) (string, error) {
+	return SnapshotFor(root, now, "", files)
+}
+
+// SnapshotFor is Snapshot with the command that makes the change recorded.
+func SnapshotFor(root string, now time.Time, command string, files []string) (string, error) {
 	if err := os.MkdirAll(root, fsutil.DirPerm); err != nil {
 		return "", fmt.Errorf("create backup directory: %w", err)
 	}
@@ -51,7 +57,7 @@ func Snapshot(root string, now time.Time, files []string) (string, error) {
 		return "", err
 	}
 
-	manifest := Manifest{Created: now, Entries: make([]Entry, 0, len(files))}
+	manifest := Manifest{Created: now, Command: command, Entries: make([]Entry, 0, len(files))}
 	for i, path := range files {
 		entry, err := saveOne(dir, i, path)
 		if err != nil {
@@ -127,9 +133,10 @@ func ReadManifest(dir string) (Manifest, error) {
 	return m, nil
 }
 
-// Prune removes the oldest snapshots under root so that at most keep remain.
-// Snapshot names sort chronologically; entries that are not directories are
-// left alone.
+// Prune removes old snapshots under root so that the keep newest remain, plus
+// the oldest one, which holds the state from before GitPersona changed
+// anything. Snapshot names sort chronologically; entries that are not
+// directories are left alone.
 func Prune(root string, keep int) error {
 	entries, err := os.ReadDir(root)
 	if errors.Is(err, fs.ErrNotExist) {
@@ -144,11 +151,11 @@ func Prune(root string, keep int) error {
 			snapshots = append(snapshots, e.Name())
 		}
 	}
-	for len(snapshots) > keep {
-		if err := os.RemoveAll(filepath.Join(root, snapshots[0])); err != nil {
+	for len(snapshots) > keep+1 {
+		if err := os.RemoveAll(filepath.Join(root, snapshots[1])); err != nil {
 			return fmt.Errorf("remove old backup: %w", err)
 		}
-		snapshots = snapshots[1:]
+		snapshots = append(snapshots[:1], snapshots[2:]...)
 	}
 	return nil
 }

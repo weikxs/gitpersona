@@ -1,6 +1,7 @@
 package app
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -38,6 +39,8 @@ type ApplyOptions struct {
 	SkipRemovals bool
 	// NoPrune keeps every backup.
 	NoPrune bool
+	// Command names the change in the backup, for `gitpersona rollback`.
+	Command string
 }
 
 // Apply regenerates every file from the configuration. Only files whose
@@ -82,7 +85,7 @@ func (e Env) applyChanges(changes []change, opts ApplyOptions) error {
 	for i, c := range changes {
 		targets[i] = c.path
 	}
-	snapshot, err := backup.Snapshot(e.backupDir(), e.Now(), targets)
+	snapshot, err := backup.SnapshotFor(e.backupDir(), e.Now(), cmp.Or(opts.Command, "apply"), targets)
 	if err != nil {
 		return err
 	}
@@ -171,6 +174,19 @@ func (e Env) generateOptions(ctx context.Context) (generate.Options, error) {
 	}
 	if len(sshCommand) > 0 {
 		opts.FallbackSSHCommand = sshCommand[len(sshCommand)-1]
+	}
+	for key, field := range map[string]*string{
+		"commit.gpgsign":  &opts.FallbackSigning.GPGSign,
+		"user.signingkey": &opts.FallbackSigning.SigningKey,
+		"gpg.format":      &opts.FallbackSigning.Format,
+	} {
+		values, err := e.gitConfigAll(ctx, key)
+		if err != nil {
+			return generate.Options{}, err
+		}
+		if len(values) > 0 {
+			*field = values[len(values)-1]
+		}
 	}
 	return opts, nil
 }

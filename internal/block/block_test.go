@@ -29,8 +29,9 @@ func TestUpsertIntoEmptyContent(t *testing.T) {
 func TestUpsertAddsMissingTrailingNewline(t *testing.T) {
 	got, err := Upsert("[user]", body)
 
-	if err != nil || !strings.HasPrefix(got, "[user]\n\n"+Begin) {
-		t.Fatalf("Upsert() = %q, %v; want the original line terminated and a blank line before the block", got, err)
+	// No blank line: that is how Remove knows the newline was added.
+	if err != nil || !strings.HasPrefix(got, "[user]\n"+Begin) {
+		t.Fatalf("Upsert() = %q, %v; want the original line terminated, directly followed by the block", got, err)
 	}
 }
 
@@ -158,5 +159,19 @@ func TestContentAfter(t *testing.T) {
 	}
 	if !ContentAfter(trailingSetting) {
 		t.Error("ContentAfter() missed a setting after the block")
+	}
+}
+
+func TestRemoveRestoresAFileWithoutTrailingNewline(t *testing.T) {
+	original := "export EDITOR=vim"
+	withBlock, err := Upsert(original, body)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := Remove(withBlock)
+
+	if err != nil || got != original {
+		t.Fatalf("Remove(Upsert(%q)) = %q, want the original exactly", original, got)
 	}
 }

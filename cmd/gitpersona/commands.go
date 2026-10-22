@@ -130,7 +130,7 @@ var commands = map[string]command{
 	},
 	"uninstall": {
 		synopsis:    "uninstall [--yes]",
-		description: "Remove the GitPersona block from your global Git configuration and delete the generated files.\nYour config.toml and the backups are kept.",
+		description: "Remove the GitPersona block from your global Git configuration and from your shell startup files,\nand delete the generated files. Your config.toml and the backups are kept.",
 		bind: func(fs *flag.FlagSet) runFunc {
 			yes := fs.Bool("yes", false, "uninstall without asking")
 			return func(ctx context.Context, env app.Env, _ []string) int {

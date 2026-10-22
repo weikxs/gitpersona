@@ -45,6 +45,14 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ### Fixed
 
+- Profiles without signing restore your own global signing settings instead of turning signing off.
+- The oldest backup (the state before GitPersona) is never pruned; backups record which command made them.
+- `uninstall` restores startup files exactly, including ones without a final newline; edits keep CRLF line
+  endings and accept quoted keys.
+- In a profile's directory, `gh` refuses to act as another account when the profile's account is not signed in;
+  `gh auth` commands pass through untouched.
+- The shell integration keeps GitPersona first on `PATH` even after macOS `path_helper`; bash no longer creates a
+  `~/.bash_profile` that hides `~/.profile`.
 - A symlinked `~/.gitconfig` is updated through the link; `GIT_CONFIG_GLOBAL` is honored; a read-only file is refused.
 - Upgrading gitpersona with a package manager no longer breaks the credential helper.
 - `whoami` reports exactly what Git applies in worktrees and outside repositories.

@@ -10,6 +10,7 @@ import (
 	"github.com/weikxs/gitpersona/internal/config"
 	"github.com/weikxs/gitpersona/internal/fsutil"
 	"github.com/weikxs/gitpersona/internal/paths"
+	"github.com/weikxs/gitpersona/internal/resolve"
 )
 
 // Use assigns the current directory to a profile, moving it from another
@@ -19,11 +20,15 @@ func Use(ctx context.Context, e Env, profileID string) error {
 	if err != nil {
 		return err
 	}
-	if _, ok := cfg.ProfileByID(profileID); !ok {
-		return fmt.Errorf("choose a profile: gitpersona use <%s>", profileIDs(cfg))
+	if err := knownProfile(cfg, profileID, "use"); err != nil {
+		return err
 	}
 	dir := e.display(e.WorkDir)
 	opts := e.editOptions()
+	if r := e.resolveDir(cfg); r.Found && r.Reason == resolve.ReasonRule && r.Profile.ID == profileID && !samePath(r.Match, dir, opts) {
+		fmt.Fprintf(e.Stdout, "%s already uses profile %s through %s; nothing to change.\n", dir, profileID, r.Match)
+		return nil
+	}
 
 	edited, want, from := text, cfg, ""
 	if removed, owner, err := config.RemoveDir(text, dir, opts); err == nil {
@@ -38,7 +43,7 @@ func Use(ctx context.Context, e Env, profileID string) error {
 		return err
 	}
 	want = withDir(want, profileID, dir)
-	if err := e.saveEdited(ctx, edited, want); err != nil {
+	if err := e.saveEdited(ctx, "use "+profileID, edited, want); err != nil {
 		return err
 	}
 	if from != "" {
@@ -61,9 +66,13 @@ func Remove(ctx context.Context, e Env, dir string) error {
 	opts := e.editOptions()
 	edited, owner, err := config.RemoveDir(text, dir, opts)
 	if err != nil {
+		if r := e.resolveDirAt(cfg, dir); r.Found && r.Reason == resolve.ReasonRule {
+			return fmt.Errorf("%s has no rule of its own; it uses profile %s through %s (run `gitpersona remove %s` to remove that rule)",
+				dir, r.Profile.ID, r.Match, r.Match)
+		}
 		return err
 	}
-	if err := e.saveEdited(ctx, edited, withoutDir(cfg, owner, dir, opts)); err != nil {
+	if err := e.saveEdited(ctx, "remove "+dir, edited, withoutDir(cfg, owner, dir, opts)); err != nil {
 		return err
 	}
 	fmt.Fprintf(e.Stdout, "%s no longer uses profile %s.\n", dir, owner)
@@ -76,8 +85,8 @@ func Pin(ctx context.Context, e Env, profileID string) error {
 	if err != nil {
 		return err
 	}
-	if _, ok := cfg.ProfileByID(profileID); !ok {
-		return fmt.Errorf("choose a profile: gitpersona pin <%s>", profileIDs(cfg))
+	if err := knownProfile(cfg, profileID, "pin"); err != nil {
+		return err
 	}
 	repo, err := e.pinnableRepo(ctx)
 	if err != nil {
@@ -88,7 +97,7 @@ func Pin(ctx context.Context, e Env, profileID string) error {
 	if err != nil {
 		return err
 	}
-	if err := e.saveEdited(ctx, edited, withPin(cfg, repo, profileID, opts)); err != nil {
+	if err := e.saveEdited(ctx, "pin "+profileID, edited, withPin(cfg, repo, profileID, opts)); err != nil {
 		return err
 	}
 	fmt.Fprintf(e.Stdout, "%s is pinned to profile %s.\n", repo, profileID)
@@ -110,7 +119,7 @@ func Unpin(ctx context.Context, e Env) error {
 	if err != nil {
 		return err
 	}
-	if err := e.saveEdited(ctx, edited, withoutPin(cfg, repo, opts)); err != nil {
+	if err := e.saveEdited(ctx, "unpin", edited, withoutPin(cfg, repo, opts)); err != nil {
 		return err
 	}
 	fmt.Fprintf(e.Stdout, "%s is no longer pinned.\n", repo)
@@ -137,7 +146,7 @@ func (e Env) pinnableRepo(ctx context.Context) (string, error) {
 // saveEdited checks that edited parses to exactly want, backs up the
 // configuration, writes the edit and applies it. The check guards against
 // text edits that an unusual layout could make go wrong.
-func (e Env) saveEdited(ctx context.Context, edited string, want config.Config) error {
+func (e Env) saveEdited(ctx context.Context, command, edited string, want config.Config) error {
 	got, err := config.Parse([]byte(edited))
 	if err != nil || !reflect.DeepEqual(got, want) {
 		return fmt.Errorf("could not change %s safely; edit it by hand (nothing was written)", e.display(e.configFile()))
@@ -156,7 +165,7 @@ func (e Env) saveEdited(ctx context.Context, edited string, want config.Config) 
 	// One snapshot covers the configuration and the generated files, so a
 	// rollback undoes the whole edit.
 	edit := change{path: e.configFile(), content: edited, perm: perm}
-	return e.applyChanges(append([]change{edit}, generated...), ApplyOptions{Yes: true})
+	return e.applyChanges(append([]change{edit}, generated...), ApplyOptions{Yes: true, Command: command})
 }
 
 func (e Env) readConfigText() (string, config.Config, error) {
@@ -173,6 +182,32 @@ func (e Env) readConfigText() (string, config.Config, error) {
 
 func (e Env) editOptions() config.EditOptions {
 	return config.EditOptions{Home: e.Home, CaseInsensitive: e.CaseInsensitive}
+}
+
+// knownProfile explains a missing or unknown profile argument.
+func knownProfile(cfg config.Config, id, command string) error {
+	if _, ok := cfg.ProfileByID(id); ok {
+		return nil
+	}
+	if id == "" {
+		return fmt.Errorf("choose a profile: gitpersona %s <%s>", command, profileIDs(cfg))
+	}
+	return fmt.Errorf("unknown profile %q; choose one of: %s", id, profileIDs(cfg))
+}
+
+// resolveDir resolves the current directory by directory rules.
+func (e Env) resolveDir(cfg config.Config) resolve.Result {
+	return e.resolveDirAt(cfg, e.WorkDir)
+}
+
+func (e Env) resolveDirAt(cfg config.Config, dir string) resolve.Result {
+	norm, err := paths.Normalize(dir, e.Home)
+	if err != nil {
+		return resolve.Result{}
+	}
+	return resolve.Resolve(cfg, paths.ResolveSymlinks(norm), resolve.Options{
+		Home: e.Home, CaseInsensitive: e.CaseInsensitive, Canonicalize: paths.ResolveSymlinks,
+	})
 }
 
 func profileIDs(cfg config.Config) string {

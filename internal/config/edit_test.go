@@ -237,3 +237,30 @@ func sameDirs(a, b Config) bool {
 	}
 	return true
 }
+
+func TestEditsHandleQuotedKeys(t *testing.T) {
+	text := strings.Replace(commented, `id      = "acme"`, `"id"    = "acme"`, 1)
+	text = strings.Replace(text, `dirs    = ["~/Projects/acme"]`, `'dirs'  = ["~/Projects/acme"]`, 1)
+
+	got, err := AddDir(text, "acme", "~/a2", editOpts)
+
+	assertEdit(t, got, err, `'dirs'  = ["~/Projects/acme", "~/a2"]`)
+}
+
+func TestEditsKeepCRLFLineEndings(t *testing.T) {
+	crlf := strings.ReplaceAll(commented, "\n", "\r\n")
+
+	got, err := AddDir(crlf, "globex", "~/g", editOpts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	withPin, err := AddPin(got, "~/r", "acme", editOpts)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if strings.Count(withPin, "\n") != strings.Count(withPin, "\r\n") {
+		t.Fatalf("mixed line endings after editing a CRLF file:\n%q", withPin)
+	}
+	assertParses(t, withPin)
+}

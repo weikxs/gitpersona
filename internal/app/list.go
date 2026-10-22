@@ -19,6 +19,7 @@ type ListedProfile struct {
 	Provider string   `json:"provider"`
 	Host     string   `json:"host"`
 	Account  string   `json:"account"`
+	Name     string   `json:"name"`
 	Email    string   `json:"email"`
 	Dirs     []string `json:"dirs"`
 }
@@ -39,7 +40,7 @@ func List(_ context.Context, e Env, asJSON bool) error {
 	for _, p := range cfg.Profiles {
 		dirs := append([]string{}, p.Dirs...)
 		report.Profiles = append(report.Profiles, ListedProfile{ID: p.ID, Provider: p.Provider, Host: p.Host,
-			Account: p.Account, Email: p.Email, Dirs: dirs})
+			Account: p.Account, Name: p.Name, Email: p.Email, Dirs: dirs})
 	}
 	for _, p := range cfg.Pins {
 		report.Pins = append(report.Pins, ListedPin{Repo: p.Repo, Profile: p.Profile})
