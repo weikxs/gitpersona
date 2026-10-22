@@ -33,7 +33,8 @@ We credit reporters in the release notes unless they prefer to stay anonymous.
 
 - GitPersona never opens, reads, copies or uploads private keys, never scans `~/.ssh`, and never queries
   ssh-agent. Key paths you configure are passed to Git unchanged.
-- GitPersona fetches a token only when Git asks for a credential for a matching host and account, and never
-  writes tokens or passwords to disk, logs, backups or the web UI.
+- GitPersona fetches a token only when Git asks for a credential for a matching host and account, or when you
+  run `gh` / `glab` in a directory with a profile (the token goes only to that one process). It never writes
+  tokens or passwords to disk, logs, backups or the web UI.
 - The planned configuration web UI will listen on `127.0.0.1` only and require a one-time key.
 - When GitPersona cannot determine the right identity, it does nothing and leaves Git's default behavior.

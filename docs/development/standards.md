@@ -48,8 +48,9 @@ GitPersona is about identities, so this rule has no exceptions.
   scan or list `~/.ssh`; do not query ssh-agent; do not run ssh with a user's key to "test" it. Key paths are
   strings the user provides and are written into Git configuration unchanged. Tests prove this by making
   the demo key unreadable (mode 000).
-- Fetch a token only when Git itself asks for a credential and the host and account match, and hand it
-  straight to Git. Health checks and discovery use token-free status queries (`gh auth status --json hosts`),
+- Fetch a token in exactly two cases: when Git itself asks for a credential and the host and account match
+  (hand it straight to Git), or when the user runs `gh` / `glab` in a directory that has a profile (put it only
+  into the environment of that one child process). Never store, print, log or export it. Health checks and discovery use token-free status queries (`gh auth status --json hosts`),
   never `--show-token` or `gh auth token`.
 - Never write tokens or passwords to disk, logs, backups, error messages or the web UI.
 - Run external programs with `exec.Command(name, args...)`; never build shell command strings.
