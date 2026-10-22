@@ -67,15 +67,23 @@ repo    = "~/Downloads/globex-hotfix"
 profile = "globex"
 `
 
-// fakeGH answers `gh auth token --hostname H --user U` with "token-for-U".
+// fakeGH imitates the gh commands GitPersona uses. Signed-in accounts come
+// from FAKE_GH_ACCOUNTS; every invocation is appended to GH_LOG when set.
 const fakeGH = `#!/bin/sh
-user=""
-while [ $# -gt 0 ]; do
-  case "$1" in --user) user="$2"; shift ;; esac
-  shift
-done
-[ -n "$user" ] || exit 1
-echo "token-for-$user"
+[ -n "$GH_LOG" ] && echo "$*" >> "$GH_LOG"
+accounts="${FAKE_GH_ACCOUNTS-octo-alex acme-alex}"
+case "$1 $2" in
+"auth token")
+  user=""
+  while [ $# -gt 0 ]; do [ "$1" = --user ] && user="$2"; shift; done
+  case " $accounts " in *" $user "*) echo "token-for-$user" ;; *) exit 1 ;; esac ;;
+"auth status")
+  printf '{"hosts":{"github.com":['
+  sep=""
+  for a in $accounts; do printf '%s{"login":"%s","state":"success"}' "$sep" "$a"; sep=","; done
+  printf ']}}\n' ;;
+*) exit 2 ;;
+esac
 `
 
 type world struct {

@@ -59,7 +59,12 @@ func demoHome(t *testing.T) string {
 			t.Fatal(err)
 		}
 	}
-	write(filepath.Join(bin, "gh"), "#!/bin/sh\necho token\n", 0o700)
+	write(filepath.Join(bin, "gh"), `#!/bin/sh
+case "$1 $2" in
+"auth token") echo token ;;
+"auth status") echo '{"hosts":{"github.com":[{"login":"acme-alex","state":"success"}]}}' ;;
+esac
+`, 0o700)
 	write(filepath.Join(home, ".config", "gitpersona", "config.toml"), `version = 1
 default = "acme"
 [[profile]]

@@ -5,6 +5,7 @@ package provider
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"os/exec"
 )
@@ -38,4 +39,33 @@ func (g GitHub) Token(ctx context.Context, host, account string) (string, error)
 		return "", fmt.Errorf("gh auth token for %s on %s: %w", account, host, err)
 	}
 	return string(out), nil
+}
+
+// authStatus is the part of `gh auth status --json hosts` GitPersona reads.
+// It never contains tokens because --show-token is never passed.
+type authStatus struct {
+	Hosts map[string][]struct {
+		Login string `json:"login"`
+		State string `json:"state"`
+	} `json:"hosts"`
+}
+
+// SignedInAccounts lists the accounts gh is signed in to on host, using a
+// status query that does not reveal tokens.
+func (g GitHub) SignedInAccounts(ctx context.Context, host string) ([]string, error) {
+	out, err := g.Run(ctx, g.GH, "auth", "status", "--hostname", host, "--json", "hosts")
+	if err != nil {
+		return nil, fmt.Errorf("gh auth status on %s: %w", host, err)
+	}
+	var status authStatus
+	if err := json.Unmarshal(out, &status); err != nil {
+		return nil, fmt.Errorf("parse gh auth status: %w", err)
+	}
+	var accounts []string
+	for _, a := range status.Hosts[host] {
+		if a.State == "success" {
+			accounts = append(accounts, a.Login)
+		}
+	}
+	return accounts, nil
 }

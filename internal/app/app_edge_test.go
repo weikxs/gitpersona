@@ -104,18 +104,66 @@ func TestDoctorWithoutGH(t *testing.T) {
 
 func TestDoctorAccountNotSignedIn(t *testing.T) {
 	w := newWorld(t)
-	mustWrite(t, filepath.Join(w.home, ".config", "gitpersona", "config.toml"),
-		strings.Replace(demoConfig, `account = "acme-alex"`, `account = "nobody"`, 1), 0o600)
-	failingGH := filepath.Join(t.TempDir(), "gh")
-	mustWrite(t, failingGH, "#!/bin/sh\nfor a; do [ \"$a\" = nobody ] && exit 1; done\necho token\n", 0o700)
+	t.Setenv("FAKE_GH_ACCOUNTS", "octo-alex")
 	env, out := w.env(t, w.home)
-	env.LookPath = func(string) (string, error) { return failingGH, nil }
 
 	if Doctor(context.Background(), env) {
 		t.Fatal("Doctor() passed with an account that is not signed in")
 	}
-	if !strings.Contains(out.String(), "nobody is not signed in") || !strings.Contains(out.String(), "gh auth login --hostname github.com") {
+	if !strings.Contains(out.String(), "acme-alex is not signed in") || !strings.Contains(out.String(), "gh auth login --hostname github.com") {
 		t.Errorf("doctor output:\n%s", out.String())
+	}
+}
+
+func TestDoctorReportsGHStatusFailure(t *testing.T) {
+	w := newWorld(t)
+	brokenGH := filepath.Join(t.TempDir(), "gh")
+	mustWrite(t, brokenGH, "#!/bin/sh\nexit 1\n", 0o700)
+	env, out := w.env(t, w.home)
+	env.LookPath = func(string) (string, error) { return brokenGH, nil }
+
+	if Doctor(context.Background(), env) || !strings.Contains(out.String(), "could not ask gh") {
+		t.Fatalf("doctor should report that gh could not be queried:\n%s", out.String())
+	}
+}
+
+// TestNeverTouchesKeysOrTokensOutsideCredentialRequests proves the hard
+// privacy rule: GitPersona does not read, list or use private keys, and
+// health checks never fetch tokens.
+func TestNeverTouchesKeysOrTokensOutsideCredentialRequests(t *testing.T) {
+	w := newWorld(t)
+	sshDir := filepath.Join(w.home, ".ssh")
+	mustWrite(t, filepath.Join(sshDir, "id_ed25519_globex"), "PRIVATE KEY PLACEHOLDER\n", 0o000)
+	mustWrite(t, filepath.Join(sshDir, "id_ed25519_personal.pub"), "PUBLIC KEY PLACEHOLDER\n", 0o000)
+	if err := os.Chmod(sshDir, 0o000); err != nil { // not even listable
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(sshDir, 0o700) })
+	withKeys := strings.Replace(demoConfig, `email    = "alex@globex.example"`,
+		`email    = "alex@globex.example"`+"\n"+`ssh_key  = "~/.ssh/id_ed25519_globex"`, 1)
+	withKeys = strings.Replace(withKeys, `dirs    = ["~/Projects/personal", "~/Projects/acme/oss"]`,
+		`dirs    = ["~/Projects/personal", "~/Projects/acme/oss"]`+"\n"+`signing = { method = "ssh", key = "~/.ssh/id_ed25519_personal.pub" }`, 1)
+	mustWrite(t, filepath.Join(w.home, ".config", "gitpersona", "config.toml"), withKeys, 0o600)
+	ghLog := filepath.Join(t.TempDir(), "gh.log")
+	t.Setenv("GH_LOG", ghLog)
+	env, out := w.env(t, w.repos["sdk"])
+
+	if err := Apply(context.Background(), env); err != nil {
+		t.Fatalf("Apply() with unreadable keys: %v", err)
+	}
+	if err := Whoami(context.Background(), env, false); err != nil {
+		t.Fatalf("Whoami() with unreadable keys: %v", err)
+	}
+	if !Doctor(context.Background(), env) {
+		t.Fatalf("Doctor() with unreadable keys failed:\n%s", out.String())
+	}
+
+	calls, _ := os.ReadFile(ghLog)
+	if strings.Contains(string(calls), "auth token") || strings.Contains(string(calls), "show-token") {
+		t.Fatalf("apply, whoami and doctor must never fetch a token; gh was called with:\n%s", calls)
+	}
+	if !strings.Contains(string(calls), "auth status") {
+		t.Fatalf("doctor should check sign-in with a token-free status query; gh calls:\n%s", calls)
 	}
 }
 

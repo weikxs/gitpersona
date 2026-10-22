@@ -3,13 +3,14 @@ package app
 import (
 	"context"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/weikxs/gitpersona/internal/config"
 	"github.com/weikxs/gitpersona/internal/provider"
 )
 
-const tokenCheckTimeout = 15 * time.Second
+const statusCheckTimeout = 15 * time.Second
 
 // check is the outcome of one doctor check.
 type check struct {
@@ -19,7 +20,7 @@ type check struct {
 }
 
 // Doctor runs every check, prints the results and reports whether all passed.
-// It never prints tokens.
+// It never fetches tokens: sign-in is checked with a token-free status query.
 func Doctor(ctx context.Context, e Env) bool {
 	var checks []check
 	cfg, cfgCheck := e.checkConfig()
@@ -92,11 +93,23 @@ func (e Env) checkGitHubAccounts(ctx context.Context, cfg config.Config) []check
 
 	source := provider.GitHub{GH: gh, Run: e.Run}
 	checks := []check{{ok: true, label: "GitHub CLI found at " + gh}}
+	signedIn := map[string][]string{} // host -> accounts, queried once per host
 	for _, p := range profiles {
-		tctx, cancel := context.WithTimeout(ctx, tokenCheckTimeout)
-		token, err := source.Token(tctx, p.Host, p.Account)
-		cancel()
-		if err != nil || token == "" {
+		accounts, queried := signedIn[p.Host]
+		if !queried {
+			sctx, cancel := context.WithTimeout(ctx, statusCheckTimeout)
+			var err error
+			accounts, err = source.SignedInAccounts(sctx, p.Host)
+			cancel()
+			if err != nil {
+				checks = append(checks, check{label: fmt.Sprintf("could not ask gh which accounts are signed in on %s", p.Host),
+					advice: "run `gh auth status` to see what is wrong"})
+				signedIn[p.Host] = nil
+				continue
+			}
+			signedIn[p.Host] = accounts
+		}
+		if !slices.Contains(accounts, p.Account) {
 			checks = append(checks, check{
 				label:  fmt.Sprintf("profile %s: %s is not signed in to gh on %s", p.ID, p.Account, p.Host),
 				advice: fmt.Sprintf("run `gh auth login --hostname %s` and sign in as %s", p.Host, p.Account),

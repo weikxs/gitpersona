@@ -31,6 +31,9 @@ We credit reporters in the release notes unless they prefer to stay anonymous.
 
 ## Design commitments
 
-- GitPersona never writes tokens or passwords to disk, logs, backups or the web UI.
+- GitPersona never opens, reads, copies or uploads private keys, never scans `~/.ssh`, and never queries
+  ssh-agent. Key paths you configure are passed to Git unchanged.
+- GitPersona fetches a token only when Git asks for a credential for a matching host and account, and never
+  writes tokens or passwords to disk, logs, backups or the web UI.
 - The configuration web UI listens on `127.0.0.1` only and requires a one-time key.
 - When GitPersona cannot determine the right identity, it does nothing and leaves Git's default behavior.

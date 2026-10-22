@@ -70,3 +70,48 @@ func writeScript(t *testing.T, content string) string {
 	}
 	return path
 }
+
+func TestGitHubSignedInAccountsUsesTokenFreeStatus(t *testing.T) {
+	var gotArgs []string
+	gh := GitHub{GH: "gh", Run: func(_ context.Context, _ string, args ...string) ([]byte, error) {
+		gotArgs = args
+		return []byte(`{"hosts":{"github.com":[
+			{"login":"octo-alex","state":"success","active":true},
+			{"login":"acme-alex","state":"success","active":false},
+			{"login":"expired-alex","state":"error","active":false}]}}`), nil
+	}}
+
+	accounts, err := gh.SignedInAccounts(context.Background(), "github.com")
+
+	if err != nil {
+		t.Fatalf("SignedInAccounts() error: %v", err)
+	}
+	if !reflect.DeepEqual(accounts, []string{"octo-alex", "acme-alex"}) {
+		t.Errorf("SignedInAccounts() = %v, want only accounts in the success state", accounts)
+	}
+	wantArgs := []string{"auth", "status", "--hostname", "github.com", "--json", "hosts"}
+	if !reflect.DeepEqual(gotArgs, wantArgs) {
+		t.Errorf("ran gh %v, want gh %v", gotArgs, wantArgs)
+	}
+	for _, a := range gotArgs {
+		if a == "--show-token" || a == "-t" || a == "token" {
+			t.Fatalf("status query must never ask for a token, ran gh %v", gotArgs)
+		}
+	}
+}
+
+func TestGitHubSignedInAccountsErrors(t *testing.T) {
+	failing := GitHub{GH: "gh", Run: func(context.Context, string, ...string) ([]byte, error) {
+		return nil, errors.New("exit status 1")
+	}}
+	garbage := GitHub{GH: "gh", Run: func(context.Context, string, ...string) ([]byte, error) {
+		return []byte("not json"), nil
+	}}
+
+	if _, err := failing.SignedInAccounts(context.Background(), "github.com"); err == nil {
+		t.Error("SignedInAccounts() hid a gh failure")
+	}
+	if _, err := garbage.SignedInAccounts(context.Background(), "github.com"); err == nil {
+		t.Error("SignedInAccounts() accepted output that is not JSON")
+	}
+}
