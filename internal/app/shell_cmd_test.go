@@ -237,3 +237,80 @@ func TestPluginFilesMatchTheLoader(t *testing.T) {
 		}
 	}
 }
+
+func TestBashLoginFileFollowsBashsOwnOrder(t *testing.T) {
+	w := newWorld(t)
+	profile := filepath.Join(w.home, ".profile")
+	mustWrite(t, profile, "export FROM_PROFILE=1\n", 0o644)
+	env, _ := w.env(t, w.home)
+
+	if err := InstallShell(context.Background(), env, []shell.Kind{shell.Bash}, false); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := os.Stat(filepath.Join(w.home, ".bash_profile")); !os.IsNotExist(err) {
+		t.Fatal("install-shell must not create ~/.bash_profile, which would hide ~/.profile")
+	}
+	if p, _ := os.ReadFile(profile); !strings.HasPrefix(string(p), "export FROM_PROFILE=1\n") || !strings.Contains(string(p), "BASH_VERSION") {
+		t.Fatalf("~/.profile should get a bash-only loader and keep its content:\n%s", p)
+	}
+	if b, _ := os.ReadFile(filepath.Join(w.home, ".bashrc")); !strings.Contains(string(b), "gitpersona init bash") {
+		t.Fatal("~/.bashrc should get the loader")
+	}
+}
+
+func TestZshGetsZshrcTooBecausePathHelperRunsAfterZshenv(t *testing.T) {
+	w := newWorld(t)
+	env, _ := w.env(t, w.home)
+
+	if err := InstallShell(context.Background(), env, []shell.Kind{shell.Zsh}, false); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, f := range []string{".zshenv", ".zshrc"} {
+		if b, _ := os.ReadFile(filepath.Join(w.home, f)); !strings.Contains(string(b), "gitpersona init zsh") {
+			t.Errorf("~/%s should load the integration", f)
+		}
+	}
+}
+
+func TestIntegrationInstalledOtherwiseIsRecognized(t *testing.T) {
+	w := newWorld(t)
+	// fisher copies the plugin's conf.d file; zsh users follow docs/integrations.md.
+	fisherFile := filepath.Join(w.home, ".config", "fish", "conf.d", "gitpersona.fish")
+	mustWrite(t, fisherFile, "command -q gitpersona; and gitpersona init fish | source\n", 0o644)
+	mustWrite(t, filepath.Join(w.home, ".zshrc"), "eval \"$(gitpersona init zsh)\"\n", 0o644)
+	env, out := shellEnv(t, w)
+
+	if err := Shells(context.Background(), env, false); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Count(out.String(), "integration installed") != 2 {
+		t.Fatalf("fisher and hand-made setups should count as installed:\n%s", out.String())
+	}
+	out.Reset()
+	if err := InstallShell(context.Background(), env, []shell.Kind{shell.Fish}, false); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := os.ReadFile(fisherFile); block.Contains(string(b)) || !strings.Contains(out.String(), "already set up") {
+		t.Fatalf("install-shell must not add a second loader to a fisher-managed file:\n%s\n%s", b, out.String())
+	}
+}
+
+func TestDoctorWarnsWhenGHIsNotRoutedThroughGitPersona(t *testing.T) {
+	w := newWorld(t)
+	env, out := shellEnv(t, w)
+	if err := Apply(context.Background(), env, ApplyOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := InstallShell(context.Background(), env, []shell.Kind{shell.Fish}, false); err != nil {
+		t.Fatal(err)
+	}
+	out.Reset()
+
+	Doctor(context.Background(), env) // PATH still finds the fake gh before the shim
+
+	if !strings.Contains(out.String(), "! gh in this shell is not GitPersona's") {
+		t.Fatalf("doctor should notice that gh bypasses the shim:\n%s", out.String())
+	}
+}

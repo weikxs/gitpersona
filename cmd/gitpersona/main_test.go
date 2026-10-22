@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"flag"
 	"os"
 	"path/filepath"
 	"strings"
@@ -158,5 +159,28 @@ func TestCommandFailsWithoutHome(t *testing.T) {
 
 	if code := run([]string{"whoami"}, strings.NewReader(""), &stdout, &stderr); code != 1 {
 		t.Fatalf("whoami without HOME: exit %d, stderr %q; want 1", code, stderr.String())
+	}
+}
+
+func TestFlagsMayFollowArguments(t *testing.T) {
+	tests := []struct {
+		args     []string
+		wantYes  bool
+		wantArgs []string
+	}{
+		{args: []string{"latest", "--yes"}, wantYes: true, wantArgs: []string{"latest"}},
+		{args: []string{"--yes", "latest"}, wantYes: true, wantArgs: []string{"latest"}},
+		{args: []string{"latest"}, wantArgs: []string{"latest"}},
+		{args: []string{"--", "--yes"}, wantArgs: []string{"--yes"}},
+	}
+	for _, tc := range tests {
+		fs := flag.NewFlagSet("t", flag.ContinueOnError)
+		yes := fs.Bool("yes", false, "")
+
+		got, err := parseInterspersed(fs, tc.args)
+
+		if err != nil || *yes != tc.wantYes || strings.Join(got, ",") != strings.Join(tc.wantArgs, ",") {
+			t.Errorf("parseInterspersed(%v) = %v, yes=%v, %v", tc.args, got, *yes, err)
+		}
 	}
 }

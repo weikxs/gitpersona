@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/weikxs/gitpersona/internal/block"
+	"github.com/weikxs/gitpersona/internal/paths"
 	"github.com/weikxs/gitpersona/internal/shell"
 )
 
@@ -26,23 +27,63 @@ func InitScript(e Env, kind shell.Kind) {
 var loader = map[shell.Kind]string{
 	shell.Fish: "command -q gitpersona; and gitpersona init fish | source\n",
 	shell.Zsh:  "(( $+commands[gitpersona] )) && eval \"$(command gitpersona init zsh)\"\n",
-	shell.Bash: "command -v gitpersona >/dev/null 2>&1 && eval \"$(command gitpersona init bash)\"\n",
+	// bash's login file may be ~/.profile, which sh reads too: run only under bash.
+	shell.Bash: "[ -n \"$BASH_VERSION\" ] && command -v gitpersona >/dev/null 2>&1 && eval \"$(command gitpersona init bash)\"\n",
 }
 
-// shellFiles returns the startup files GitPersona edits for a shell. fish
-// gets a file of its own in conf.d; zsh uses ~/.zshenv, which non-interactive
-// shells read too; bash uses ~/.bashrc (and ~/.bash_profile on macOS, where
-// terminals start login shells).
+// shellFiles returns the startup files install-shell writes for a shell.
+//   - fish: a file of its own in conf.d.
+//   - zsh: ~/.zshenv (non-interactive shells read it too) and ~/.zshrc, which
+//     runs after macOS path_helper (in /etc/zprofile) reorders PATH.
+//   - bash: ~/.bashrc, and on macOS, where terminals start login shells, the
+//     first login file bash would read; ~/.bash_profile is created only when
+//     none exists, because it would hide ~/.bash_login and ~/.profile.
 func (e Env) shellFiles(k shell.Kind) []string {
 	switch k {
 	case shell.Fish:
-		return []string{filepath.Join(filepath.Dir(e.ConfigDir), "fish", "conf.d", "gitpersona.fish")}
+		return []string{filepath.Join(e.fishConfigDir(), "conf.d", "gitpersona.fish")}
 	case shell.Zsh:
-		return []string{filepath.Join(e.Home, ".zshenv")}
+		return []string{filepath.Join(e.Home, ".zshenv"), filepath.Join(e.Home, ".zshrc")}
 	default:
 		files := []string{filepath.Join(e.Home, ".bashrc")}
 		if runtime.GOOS == "darwin" {
-			files = append(files, filepath.Join(e.Home, ".bash_profile"))
+			files = append(files, e.bashLoginFile())
+		}
+		return files
+	}
+}
+
+func (e Env) fishConfigDir() string { return filepath.Join(filepath.Dir(e.ConfigDir), "fish") }
+
+// bashLoginFile is the file a bash login shell reads: the first existing of
+// ~/.bash_profile, ~/.bash_login and ~/.profile.
+func (e Env) bashLoginFile() string {
+	for _, name := range []string{".bash_profile", ".bash_login", ".profile"} {
+		if _, err := os.Stat(filepath.Join(e.Home, name)); err == nil {
+			return filepath.Join(e.Home, name)
+		}
+	}
+	return filepath.Join(e.Home, ".bash_profile")
+}
+
+// startupFiles lists every file where a shell's integration may live,
+// including the setups docs/integrations.md describes (fisher, init lines
+// written by hand).
+func (e Env) startupFiles(k shell.Kind) []string {
+	switch k {
+	case shell.Fish:
+		files, _ := filepath.Glob(filepath.Join(e.fishConfigDir(), "conf.d", "*.fish"))
+		return append(files, filepath.Join(e.fishConfigDir(), "config.fish"))
+	case shell.Zsh:
+		files := []string{}
+		for _, name := range []string{".zshenv", ".zshrc", ".zprofile", ".zlogin"} {
+			files = append(files, filepath.Join(e.Home, name))
+		}
+		return files
+	default:
+		files := []string{}
+		for _, name := range []string{".bashrc", ".bash_profile", ".bash_login", ".profile"} {
+			files = append(files, filepath.Join(e.Home, name))
 		}
 		return files
 	}
@@ -70,6 +111,10 @@ func InstallShell(ctx context.Context, e Env, kinds []shell.Kind, dryRun bool) e
 
 	var changes []change
 	for _, k := range kinds {
+		if path, ok := e.integratedElsewhere(k); ok {
+			fmt.Fprintf(e.Stdout, "%s is already set up in %s; leaving it as it is.\n", k, e.display(path))
+			continue
+		}
 		for _, path := range e.shellFiles(k) {
 			c, err := e.upsertFile(path, loader[k])
 			if err != nil {
@@ -120,7 +165,7 @@ func (e Env) upsertFile(path, body string) (*change, error) {
 func (e Env) removeShellBlocks() ([]change, error) {
 	var changes []change
 	for _, k := range shell.All {
-		for _, path := range e.shellFiles(k) {
+		for _, path := range e.startupFiles(k) {
 			if real, err := filepath.EvalSymlinks(path); err == nil {
 				path = real
 			}
@@ -168,14 +213,45 @@ func (e Env) checkShellIntegration(ctx context.Context) []check {
 	return checks
 }
 
-// integrated reports whether a shell's startup file has the GitPersona block.
+// integrated reports whether any startup file of a shell loads the
+// integration, however it was set up.
 func (e Env) integrated(k shell.Kind) (string, bool) {
-	for _, path := range e.shellFiles(k) {
-		if content, err := readOptional(path); err == nil && block.Contains(content) {
+	marker := "gitpersona init " + string(k)
+	for _, path := range e.startupFiles(k) {
+		if content, err := readOptional(path); err == nil && strings.Contains(content, marker) {
 			return path, true
 		}
 	}
 	return "", false
+}
+
+// integratedElsewhere reports a setup that install-shell did not make (no
+// GitPersona block), such as a fisher plugin, which install-shell must leave alone.
+func (e Env) integratedElsewhere(k shell.Kind) (string, bool) {
+	path, ok := e.integrated(k)
+	if !ok {
+		return "", false
+	}
+	content, _ := readOptional(path)
+	return path, !block.Contains(content)
+}
+
+// checkGHRouting warns when the gh found on PATH in this shell is not
+// GitPersona's entry, so gh would not follow the directory.
+func (e Env) checkGHRouting(ctx context.Context) []check {
+	if _, err := os.Lstat(e.ghEntry()); err != nil {
+		return nil
+	}
+	if _, ok := e.integrated(e.loginShell(ctx).Kind); !ok {
+		return nil
+	}
+	found, err := e.LookPath("gh")
+	if err == nil && paths.ResolveSymlinks(found) == paths.ResolveSymlinks(e.ghEntry()) {
+		return []check{{ok: true, label: "gh in this shell goes through GitPersona"}}
+	}
+	return []check{{warn: true,
+		label:  fmt.Sprintf("gh in this shell is not GitPersona's (%s), so gh does not follow your directories here", found),
+		advice: "open a new terminal; if it persists, something later in your startup files puts another directory before " + e.display(e.shimDir())}}
 }
 
 func (e Env) currentShell(ctx context.Context) shell.Detected {

@@ -1,14 +1,19 @@
 package shell
 
 import (
+	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 const binDir = "/tmp/home/.config/gitpersona/bin"
+
+// shellTestTimeout stops a script bug (such as an endless loop) from hanging the suite.
+const shellTestTimeout = 10 * time.Second
 
 func TestScriptContent(t *testing.T) {
 	for _, k := range All {
@@ -66,19 +71,22 @@ func TestScriptsRunInRealShells(t *testing.T) {
 		if err := os.WriteFile(script, []byte(Script(kind, bin)), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		// Load the script twice, then report how often bin is on PATH and the prompt function's output.
-		probe := "source " + script + "; source " + script + "; echo $PATH | tr ':' '\\n' | grep -c '^" + bin + "$'; gitpersona_prompt"
+		// bin starts at the END of PATH, as macOS path_helper leaves it. After
+		// loading the script twice it must be first and present exactly once.
+		probe := "source " + script + "; source " + script + "; echo $PATH | tr ':' '\\n' | head -1; echo $PATH | tr ':' '\\n' | grep -c '^" + bin + "$'; gitpersona_prompt"
 		if kind == Fish {
-			probe = "source " + script + "; source " + script + "; string join \\n $PATH | grep -c '^" + bin + "$'; gitpersona_prompt"
+			probe = "source " + script + "; source " + script + "; echo $PATH[1]; string join \\n $PATH | grep -c '^" + bin + "$'; gitpersona_prompt"
 		}
-		cmd := exec.Command(argv[0], append(argv[1:], probe)...)
-		cmd.Env = append(os.Environ(), "PATH="+fake+":/usr/bin:/bin")
+		ctx, cancel := context.WithTimeout(context.Background(), shellTestTimeout)
+		defer cancel()
+		cmd := exec.CommandContext(ctx, argv[0], append(argv[1:], probe)...)
+		cmd.Env = append(os.Environ(), "PATH="+fake+":/usr/bin:/bin:"+bin)
 		out, err := cmd.CombinedOutput()
 		if err != nil {
 			t.Fatalf("%s failed to load the script: %v\n%s", kind, err, out)
 		}
-		if got := strings.TrimSpace(string(out)); got != "1\ndemo-account" {
-			t.Errorf("%s: got %q, want bin on PATH once and the prompt output", kind, got)
+		if got := strings.TrimSpace(string(out)); got != bin+"\n1\ndemo-account" {
+			t.Errorf("%s: got %q, want bin first on PATH, once, and the prompt output", kind, got)
 		}
 	}
 }

@@ -100,7 +100,8 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet(name, flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	runCmd := cmd.bind(fs)
-	switch err := fs.Parse(rest); {
+	positional, err := parseInterspersed(fs, rest)
+	switch {
 	case errors.Is(err, flag.ErrHelp):
 		printCommandHelp(stdout, cmd, fs)
 		return exitOK
@@ -108,15 +109,37 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "gitpersona %s: %v\nRun 'gitpersona help %s' for usage.\n", name, err, name)
 		return exitUsage
 	}
-	if fs.NArg() > cmd.maxArgs {
-		return unexpected(stderr, name, fs.Arg(cmd.maxArgs))
+	if len(positional) > cmd.maxArgs {
+		return unexpected(stderr, name, positional[cmd.maxArgs])
 	}
 
 	env, err := app.FromOS(stdin, stdout, stderr)
 	if err != nil {
 		return fail(stderr, err)
 	}
-	return runCmd(context.Background(), env, fs.Args())
+	return runCmd(context.Background(), env, positional)
+}
+
+// parseInterspersed parses flags anywhere among the arguments, so both
+// `rollback latest --yes` and `rollback --yes latest` work. Everything after
+// "--" is positional.
+func parseInterspersed(fs *flag.FlagSet, args []string) ([]string, error) {
+	var positional []string
+	for {
+		if err := fs.Parse(args); err != nil {
+			return nil, err
+		}
+		rest := fs.Args()
+		if len(rest) == 0 {
+			return positional, nil
+		}
+		// fs.Parse consumed "--" if it was next; anything left starts with a positional.
+		if len(args) > len(rest) && args[len(args)-len(rest)-1] == "--" {
+			return append(positional, rest...), nil
+		}
+		positional = append(positional, rest[0])
+		args = rest[1:]
+	}
 }
 
 func help(args []string, stdout, stderr io.Writer) int {
