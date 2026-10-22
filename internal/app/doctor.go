@@ -26,7 +26,7 @@ type check struct {
 	label  string
 	advice string
 	// fix, when set, repairs the problem; fixes with the same key run once.
-	fix    func(context.Context) error
+	fix    func(context.Context, Env) error
 	fixKey string
 }
 
@@ -59,7 +59,11 @@ func Doctor(ctx context.Context, e Env) bool {
 func DoctorWith(ctx context.Context, e Env, opts DoctorOptions) bool {
 	checks := e.runChecks(ctx)
 	if opts.Fix {
-		if e.fixAll(ctx, checks) {
+		fixer := e
+		if opts.JSON {
+			fixer.Stdout = e.Stderr // keep stdout for the JSON report
+		}
+		if fixer.fixAll(ctx, checks) {
 			checks = e.runChecks(ctx)
 		}
 	}
@@ -79,7 +83,7 @@ func (e Env) fixAll(ctx context.Context, checks []check) bool {
 		}
 		done[c.fixKey] = true
 		fmt.Fprintf(e.Stdout, "Fixing: %s\n", c.label)
-		if err := c.fix(ctx); err != nil {
+		if err := c.fix(ctx, e); err != nil {
 			fmt.Fprintf(e.Stdout, "    could not fix it: %v\n", err)
 		}
 	}
@@ -179,7 +183,7 @@ func (e Env) checkGenerated(ctx context.Context) check {
 			names[i] = e.display(c.path)
 		}
 		return check{
-			fix: e.applyFix, fixKey: "apply",
+			fix: applyFix, fixKey: "apply",
 			label: fmt.Sprintf("generated Git configuration is out of date (%s: %s)",
 				differ(len(changes)), strings.Join(names, ", ")),
 			advice: "run `gitpersona apply` (this also happens after gitpersona is moved or upgraded, " +
@@ -190,10 +194,10 @@ func (e Env) checkGenerated(ctx context.Context) check {
 	}
 }
 
-// applyFix regenerates the files; it never removes files, which needs
-// `gitpersona apply --yes`.
-func (e Env) applyFix(ctx context.Context) error {
-	return Apply(ctx, e, ApplyOptions{})
+// applyFix regenerates the files. It never removes files (that needs
+// `gitpersona apply --yes`) and never prunes backups.
+func applyFix(ctx context.Context, e Env) error {
+	return Apply(ctx, e, ApplyOptions{SkipRemovals: true, NoPrune: true})
 }
 
 // checkPins warns about pins whose repository does not exist (yet): they are
@@ -239,7 +243,7 @@ func (e Env) checkBlockIsLast() check {
 	}
 	if block.ContentAfter(content) {
 		return check{
-			fix: e.applyFix, fixKey: "apply",
+			fix: applyFix, fixKey: "apply",
 			label:  fmt.Sprintf("%s has settings after the GitPersona block, which override every profile", e.display(e.userGitConfig())),
 			advice: "run `gitpersona apply` to move the block to the end (your settings are kept)",
 		}

@@ -44,15 +44,19 @@ func GHShim(ctx context.Context, e Env, args []string) int {
 		return exitCodeFailure
 	}
 	environ := os.Environ()
-	if account, host, ok := e.ghTarget(); ok {
+	// gh auth manages accounts itself (and refuses to while GH_TOKEN is set).
+	isAuth := len(args) > 0 && args[0] == "auth"
+	if account, host, ok := e.ghTarget(); ok && !isAuth {
 		token, err := provider.GitHub{GH: realGH, Run: e.Run}.Token(ctx, host, account)
 		token = strings.TrimSpace(token)
 		if err != nil || token == "" {
-			fmt.Fprintf(e.Stderr, "gitpersona: %s is not signed in to gh on %s; using gh's active account "+
-				"(run `gh auth login --hostname %s`)\n", account, host, host)
-		} else {
-			environ = append(environ, "GH_TOKEN="+token)
+			// Never fall back to gh's active account here: acting as another
+			// account is exactly what GitPersona exists to prevent.
+			fmt.Fprintf(e.Stderr, "gitpersona: %s is not signed in to gh on %s, and this directory uses it.\n"+
+				"Sign in with `gh auth login --hostname %s`, or set GH_TOKEN to choose an account yourself.\n", account, host, host)
+			return exitCodeFailure
 		}
+		environ = append(environ, "GH_TOKEN="+token)
 	}
 	if err := e.Exec(realGH, append([]string{ghCommand}, args...), environ); err != nil {
 		fmt.Fprintf(e.Stderr, "gitpersona: run %s: %v\n", realGH, err)
@@ -74,7 +78,9 @@ func (e Env) ghTarget() (string, string, bool) {
 		return "", "", false
 	}
 	opts := resolve.Options{Home: e.Home, CaseInsensitive: e.CaseInsensitive, Canonicalize: paths.ResolveSymlinks}
-	r := resolve.ResolveOutsideRepository(cfg)
+	// Outside a repository, follow the directory rule: what gh does there
+	// (clone, create) makes repositories that will belong to that profile.
+	r := resolve.Resolve(cfg, paths.ResolveSymlinks(e.WorkDir), opts)
 	if gitDir, ok := findGitDir(e.WorkDir); ok {
 		r = resolve.ResolveGitDir(cfg, paths.ResolveSymlinks(gitDir), opts)
 	}

@@ -34,6 +34,10 @@ const backupsToKeep = 20
 type ApplyOptions struct {
 	DryRun bool // show the changes without writing anything
 	Yes    bool // allow removing files
+	// SkipRemovals writes every other change and only reports removals.
+	SkipRemovals bool
+	// NoPrune keeps every backup.
+	NoPrune bool
 }
 
 // Apply regenerates every file from the configuration. Only files whose
@@ -62,8 +66,16 @@ func (e Env) applyChanges(changes []change, opts ApplyOptions) error {
 		return nil
 	}
 	if removals := e.removals(changes); len(removals) > 0 && !opts.Yes {
-		return fmt.Errorf("apply would remove %s; run `gitpersona apply --dry-run` to review, then `gitpersona apply --yes`",
+		msg := fmt.Sprintf("apply would remove %s; run `gitpersona apply --dry-run` to review, then `gitpersona apply --yes`",
 			strings.Join(removals, ", "))
+		if !opts.SkipRemovals {
+			return errors.New(msg)
+		}
+		fmt.Fprintf(e.Stdout, "Not removing anything: %s\n", msg)
+		changes = slices.DeleteFunc(slices.Clone(changes), func(c change) bool { return c.remove })
+		if len(changes) == 0 {
+			return nil
+		}
 	}
 
 	targets := make([]string, len(changes))
@@ -81,6 +93,9 @@ func (e Env) applyChanges(changes []change, opts ApplyOptions) error {
 		fmt.Fprintf(e.Stdout, "%sd %s\n", c.verb(), e.display(c.path))
 	}
 	fmt.Fprintf(e.Stdout, "Backup saved in %s\n", e.display(snapshot))
+	if opts.NoPrune {
+		return nil
+	}
 	return backup.Prune(e.backupDir(), backupsToKeep)
 }
 

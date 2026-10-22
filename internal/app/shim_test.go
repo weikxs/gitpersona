@@ -115,18 +115,49 @@ func TestGHShimLeavesGHAloneWhenItShould(t *testing.T) {
 	}
 }
 
-func TestGHShimFallsBackWhenTheAccountIsNotSignedIn(t *testing.T) {
+func TestGHShimRefusesWhenTheProfileAccountIsNotSignedIn(t *testing.T) {
 	w := newWorld(t)
 	env, stderr, call := shimEnv(t, w, w.repos["billing"])
 	t.Setenv("FAKE_GH_ACCOUNTS", "octo-alex")
 
-	GHShim(context.Background(), env, []string{"pr", "list"})
+	code := GHShim(context.Background(), env, []string{"pr", "create"})
 
-	if _, ok := envValue(call.env, "GH_TOKEN"); ok {
-		t.Fatal("no token should be set when the account is not signed in")
+	if code == 0 || call.path != "" {
+		t.Fatalf("gh ran (code %d, exec %q) although acme-alex is not signed in; it must not act as another account", code, call.path)
 	}
-	if !strings.Contains(stderr.String(), "acme-alex is not signed in to gh") {
-		t.Fatalf("the shim should say why it uses gh's active account:\n%s", stderr.String())
+	if !strings.Contains(stderr.String(), "acme-alex is not signed in to gh") || !strings.Contains(stderr.String(), "gh auth login") {
+		t.Fatalf("the refusal should explain how to sign in:\n%s", stderr.String())
+	}
+}
+
+func TestGHShimPassesAuthCommandsThroughUntouched(t *testing.T) {
+	w := newWorld(t)
+	env, _, call := shimEnv(t, w, w.repos["billing"])
+	t.Setenv("FAKE_GH_ACCOUNTS", "octo-alex") // even when the account is not signed in yet
+	t.Setenv("GH_LOG", filepath.Join(t.TempDir(), "gh.log"))
+
+	code := GHShim(context.Background(), env, []string{"auth", "login"})
+
+	if code != 0 || strings.Join(call.argv, " ") != "gh auth login" {
+		t.Fatalf("gh auth login should run as is (code %d, argv %v)", code, call.argv)
+	}
+	if _, ok := envValue(call.env, "GH_TOKEN"); ok {
+		t.Fatal("gh auth commands must not get a token")
+	}
+	if log, _ := os.ReadFile(os.Getenv("GH_LOG")); strings.Contains(string(log), "auth token") {
+		t.Fatalf("no token may be fetched for gh auth commands:\n%s", log)
+	}
+}
+
+func TestGHShimOutsideARepositoryUsesTheDirectoryRule(t *testing.T) {
+	w := newWorld(t)
+	personalDir := filepath.Join(w.home, "Projects", "personal") // not a repository; the default profile is acme
+	env, _, call := shimEnv(t, w, personalDir)
+
+	GHShim(context.Background(), env, []string{"repo", "clone", "octo-alex/tool"})
+
+	if token, _ := envValue(call.env, "GH_TOKEN"); token != "token-for-octo-alex" {
+		t.Fatalf("gh repo clone in ~/Projects/personal got %q, want the personal account (the clone will be a personal repository)", token)
 	}
 }
 

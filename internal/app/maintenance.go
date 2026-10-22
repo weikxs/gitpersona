@@ -15,7 +15,7 @@ import (
 // Rollback lists the backups (when which is empty) or restores one ("latest"
 // or a snapshot name). Restoring needs yes, and the current state is backed
 // up first so the rollback itself can be undone.
-func Rollback(_ context.Context, e Env, which string, yes bool) error {
+func Rollback(ctx context.Context, e Env, which string, yes bool) error {
 	infos, err := backup.List(e.backupDir())
 	if err != nil {
 		return err
@@ -57,7 +57,24 @@ func Rollback(_ context.Context, e Env, which string, yes bool) error {
 	}
 	fmt.Fprintf(e.Stdout, "Restored %s from %s.\nThe state before the rollback is saved in %s.\n",
 		strings.Join(names, ", "), filepath.Base(chosen.Dir), e.display(undo))
-	return nil
+	return e.regenerateAfterRollback(ctx)
+}
+
+// regenerateAfterRollback makes the generated files match the restored
+// configuration. A backup only holds the files its command changed, so the
+// profile files the restored rules include may have changed since. When the
+// restored global Git configuration no longer includes GitPersona (a backup
+// from before it was set up), nothing is regenerated.
+func (e Env) regenerateAfterRollback(ctx context.Context) error {
+	gitconfig, err := readOptional(e.resolvedUserGitConfig())
+	if err != nil || !block.Contains(gitconfig) {
+		return err
+	}
+	if _, err := os.Stat(e.configFile()); err != nil {
+		return nil
+	}
+	fmt.Fprintln(e.Stdout, "Regenerating the Git configuration for the restored settings:")
+	return Apply(ctx, e, ApplyOptions{Yes: true, NoPrune: true})
 }
 
 func pickSnapshot(infos []backup.Info, which string) (backup.Info, error) {

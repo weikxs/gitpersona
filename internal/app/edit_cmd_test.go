@@ -293,3 +293,44 @@ func TestUninstallDeletesAGitConfigItCreated(t *testing.T) {
 		t.Fatal("~/.gitconfig created by GitPersona should be removed when it would be empty")
 	}
 }
+
+func TestRollbackToAnOlderBackupKeepsGitWorking(t *testing.T) {
+	w := newWorld(t)
+	env, _ := w.env(t, filepath.Join(w.home, "side"))
+	if err := os.MkdirAll(env.WorkDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := Apply(context.Background(), env, ApplyOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := Use(context.Background(), env, "personal"); err != nil { // backup B: before this use
+		t.Fatal(err)
+	}
+	infos, _ := backupList(t, env)
+	olderBackup := filepath.Base(infos[0])
+	// Remove the globex profile and its pin, deleting its generated file.
+	text := readConfigFile(t, w)
+	text = text[:strings.Index(text, "[[profile]]\nid       = \"globex\"")]
+	mustWrite(t, filepath.Join(w.home, ".config", "gitpersona", "config.toml"), text, 0o600)
+	if err := Apply(context.Background(), env, ApplyOptions{Yes: true}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := Rollback(context.Background(), env, olderBackup, true); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := runGit(t, w.repos["hotfix"], "config", "user.email"); got != "alex@globex.example" {
+		t.Fatalf("after rolling back to %s, the pinned repository uses %q; the globex profile file must be regenerated", olderBackup, got)
+	}
+}
+
+func backupList(t *testing.T, e Env) ([]string, error) {
+	t.Helper()
+	entries, err := os.ReadDir(e.backupDir())
+	var dirs []string
+	for i := len(entries) - 1; i >= 0; i-- {
+		dirs = append(dirs, filepath.Join(e.backupDir(), entries[i].Name()))
+	}
+	return dirs, err
+}

@@ -3,6 +3,8 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -66,5 +68,51 @@ func TestWhoamiCheckFailsOnMismatch(t *testing.T) {
 
 	if err := WhoamiWith(context.Background(), env, WhoamiOptions{Check: true}); err == nil || !strings.Contains(err.Error(), "git config --local --unset user.email") {
 		t.Fatalf("whoami --check on mismatch = %v", err)
+	}
+}
+
+func TestDoctorFixRepairsWhatItCanEvenWhenARemovalIsPending(t *testing.T) {
+	w := newWorld(t)
+	env, out := w.env(t, w.home)
+	if err := Apply(context.Background(), env, ApplyOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	mustWrite(t, filepath.Join(env.ConfigDir, "profiles", "stray.gitconfig"), "# stray\n", 0o600)
+	if err := os.Remove(filepath.Join(env.ConfigDir, "profiles", "personal.gitconfig")); err != nil {
+		t.Fatal(err)
+	}
+	before, _ := os.ReadDir(env.backupDir())
+
+	DoctorWith(context.Background(), env, DoctorOptions{Fix: true})
+
+	if _, err := os.Stat(filepath.Join(env.ConfigDir, "profiles", "personal.gitconfig")); err != nil {
+		t.Fatalf("--fix should regenerate the missing profile file:\n%s", out.String())
+	}
+	if _, err := os.Stat(filepath.Join(env.ConfigDir, "profiles", "stray.gitconfig")); err != nil {
+		t.Fatal("--fix must never remove files")
+	}
+	if !strings.Contains(out.String(), "apply --yes") {
+		t.Fatalf("--fix should say how to remove the stray file:\n%s", out.String())
+	}
+	after, _ := os.ReadDir(env.backupDir())
+	if len(after) < len(before) {
+		t.Fatal("--fix must not prune backups")
+	}
+}
+
+func TestDoctorJSONWithFixIsValidJSON(t *testing.T) {
+	w := newWorld(t)
+	env, out := w.env(t, w.home)
+	var stderr strings.Builder
+	env.Stderr = &stderr
+
+	DoctorWith(context.Background(), env, DoctorOptions{Fix: true, JSON: true})
+
+	var got DoctorReport
+	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+		t.Fatalf("stdout is not JSON: %v\n%s", err, out.String())
+	}
+	if !strings.Contains(stderr.String(), "Fixing:") {
+		t.Fatalf("progress of --fix should go to stderr:\n%s", stderr.String())
 	}
 }
