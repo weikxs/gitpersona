@@ -75,6 +75,17 @@ func validateProfile(p Profile, home string) []error {
 	if p.Signing.Enabled() && p.Signing.Key == "" {
 		add("signing key is required when signing method is %q", p.Signing.Method)
 	}
+	if p.SSHKey != "" {
+		if _, err := paths.Normalize(p.SSHKey, home); err != nil {
+			add("ssh_key: %v", err)
+		}
+	}
+	// An SSH signing key is a file; a GPG signing key is a key ID, not a path.
+	if p.Signing.Method == SigningSSH && p.Signing.Key != "" {
+		if _, err := paths.Normalize(p.Signing.Key, home); err != nil {
+			add("signing key: %v", err)
+		}
+	}
 	for _, d := range p.Dirs {
 		if _, err := paths.Normalize(d, home); err != nil {
 			add("directory: %v", err)

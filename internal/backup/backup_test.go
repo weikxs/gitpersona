@@ -104,3 +104,29 @@ func assertPerm(t *testing.T, path string, want os.FileMode) {
 		t.Errorf("%s mode = %o, want %o", filepath.Base(path), got, want)
 	}
 }
+
+func TestSnapshotFailsWhenAFileIsUnreadable(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root can read any file")
+	}
+	work := t.TempDir()
+	secret := filepath.Join(work, "unreadable")
+	if err := os.WriteFile(secret, []byte("x"), 0o000); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := Snapshot(filepath.Join(work, "backups"), fixedTime, []string{secret}); err == nil {
+		t.Fatal("Snapshot() of an unreadable file succeeded, want an error")
+	}
+}
+
+func TestReadManifestRejectsCorruptManifest(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "manifest.json"), []byte("{not json"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := ReadManifest(dir); err == nil {
+		t.Fatal("ReadManifest() of corrupt JSON succeeded, want an error")
+	}
+}

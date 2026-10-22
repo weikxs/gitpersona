@@ -133,3 +133,22 @@ func TestResolveSymlinksKeepsPathWithoutExistingPrefix(t *testing.T) {
 		t.Fatalf("ResolveSymlinks() = %q, want the input unchanged", got)
 	}
 }
+
+func TestHomeFailsWhenUnset(t *testing.T) {
+	t.Setenv("HOME", "")
+
+	if _, err := Home(); err == nil {
+		t.Fatal("Home() with HOME unset succeeded, want an error")
+	}
+}
+
+func TestResolveSymlinksWithoutLinksReturnsSamePath(t *testing.T) {
+	dir, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if got := ResolveSymlinks(dir); got != dir {
+		t.Fatalf("ResolveSymlinks(%s) = %s, want it unchanged", dir, got)
+	}
+}

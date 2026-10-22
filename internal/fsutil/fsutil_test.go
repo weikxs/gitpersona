@@ -81,3 +81,22 @@ func TestWriteAtomicFailsInReadOnlyDirectory(t *testing.T) {
 		t.Fatal("WriteAtomic() in a read-only directory succeeded, want an error")
 	}
 }
+
+func TestWriteAtomicFailsWhenTargetIsADirectoryAndLeavesNoTempFile(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "occupied")
+	if err := os.Mkdir(filepath.Join(target), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(target, "keep"), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := WriteAtomic(target, []byte("x"), FilePerm); err == nil {
+		t.Fatal("WriteAtomic() over a non-empty directory succeeded, want an error")
+	}
+	entries, _ := os.ReadDir(dir)
+	if len(entries) != 1 {
+		t.Fatalf("directory has %d entries after a failed write, want the temp file cleaned up", len(entries))
+	}
+}

@@ -189,3 +189,43 @@ func writeFile(t *testing.T, content string) string {
 	}
 	return path
 }
+
+func TestValidateRejectsRelativeKeyPaths(t *testing.T) {
+	p := validProfile("personal")
+	p.SSHKey = "keys/id_ed25519"
+	p.Signing = Signing{Method: SigningSSH, Key: "keys/id_ed25519.pub"}
+	cfg := Config{Version: CurrentVersion, Profiles: []Profile{p}}
+
+	err := cfg.Validate(home, false)
+
+	if err == nil || !strings.Contains(err.Error(), "ssh_key") || !strings.Contains(err.Error(), "signing key") {
+		t.Fatalf("Validate() = %v, want errors for both relative key paths", err)
+	}
+}
+
+func TestValidateAcceptsGPGKeyIDs(t *testing.T) {
+	p := validProfile("personal")
+	p.Signing = Signing{Method: SigningGPG, Key: "3AA5C34371567BD2"}
+	cfg := Config{Version: CurrentVersion, Profiles: []Profile{p}}
+
+	if err := cfg.Validate(home, false); err != nil {
+		t.Fatalf("Validate() = %v, want GPG key IDs to be accepted as-is", err)
+	}
+}
+
+func TestSaveFailsWhenDirectoryCannotBeCreated(t *testing.T) {
+	blocker := filepath.Join(t.TempDir(), "file")
+	if err := os.WriteFile(blocker, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := Save(filepath.Join(blocker, "config.toml"), Config{Version: CurrentVersion}); err == nil {
+		t.Fatal("Save() under a regular file succeeded, want an error")
+	}
+}
+
+func TestLoadReportsUnreadableFile(t *testing.T) {
+	if _, err := Load(t.TempDir()); err == nil || errors.Is(err, ErrNotFound) {
+		t.Fatalf("Load() of a directory = %v, want a read error that is not ErrNotFound", err)
+	}
+}

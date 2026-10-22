@@ -184,3 +184,30 @@ func TestGenerateAddsRealPathWhenRuleGoesThroughSymlink(t *testing.T) {
 		}
 	}
 }
+
+func TestGenerateWithCanonicalizeThatChangesNothingWritesOneEntry(t *testing.T) {
+	opts := demoOptions()
+	opts.Canonicalize = func(p string) string { return p }
+
+	files, _ := Generate(demoConfig(), opts)
+	rules := files[len(files)-1].Content
+
+	if n := strings.Count(rules, "/tmp/home/Projects/acme/\"]"); n != 1 {
+		t.Fatalf("rule for ~/Projects/acme appears %d times, want 1", n)
+	}
+}
+
+func TestGenerateGPGSigningUsesOpenPGPFormatAndKeyID(t *testing.T) {
+	cfg := demoConfig()
+	cfg.Profiles[0].Signing = config.Signing{Method: config.SigningGPG, Key: "3AA5C34371567BD2"}
+
+	files, err := Generate(cfg, demoOptions())
+	if err != nil {
+		t.Fatal(err)
+	}
+	personal := files[2].Content
+
+	if !strings.Contains(personal, "signingkey = 3AA5C34371567BD2") || !strings.Contains(personal, "format = openpgp") {
+		t.Fatalf("GPG signing snippet:\n%s", personal)
+	}
+}

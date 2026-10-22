@@ -2,6 +2,8 @@ package main
 
 import (
 	"bytes"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -39,5 +41,91 @@ func TestRun(t *testing.T) {
 				t.Errorf("stderr = %q, want it to contain %q", stderr.String(), tc.wantStderr)
 			}
 		})
+	}
+}
+
+// demoHome prepares a demo home under the test temp dir (which make test puts
+// under /tmp) with one profile and a fake gh, and isolates Git from the user.
+func demoHome(t *testing.T) string {
+	t.Helper()
+	root := t.TempDir()
+	home := filepath.Join(root, "home")
+	bin := filepath.Join(root, "bin")
+	write := func(path, content string, perm os.FileMode) {
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(content), perm); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write(filepath.Join(bin, "gh"), "#!/bin/sh\necho token\n", 0o700)
+	write(filepath.Join(home, ".config", "gitpersona", "config.toml"), `version = 1
+default = "acme"
+[[profile]]
+id = "acme"
+account = "acme-alex"
+name = "Alex (Acme)"
+email = "1000002+acme-alex@users.noreply.github.com"
+dirs = ["~/Projects/acme"]
+`, 0o600)
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", "")
+	t.Setenv("GIT_CONFIG_GLOBAL", filepath.Join(home, ".gitconfig"))
+	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	return home
+}
+
+func TestCommandsEndToEnd(t *testing.T) {
+	demoHome(t)
+	steps := []struct {
+		args       []string
+		stdin      string
+		wantCode   int
+		wantStdout string
+	}{
+		{args: []string{"doctor"}, wantCode: 1, wantStdout: "run `gitpersona apply`"},
+		{args: []string{"apply"}, wantCode: 0, wantStdout: "Backup saved in"},
+		{args: []string{"doctor"}, wantCode: 0, wantStdout: "is up to date"},
+		{args: []string{"whoami", "--json"}, wantCode: 0, wantStdout: `"profile": "acme"`},
+		{args: []string{"credential", "--provider", "github", "--host", "github.com", "--account", "acme-alex", "get"},
+			stdin: "protocol=https\nhost=github.com\n\n", wantCode: 0, wantStdout: "password=token"},
+		{args: []string{"credential", "--provider", "github", "--host", "github.com", "--account", "acme-alex", "bogus"},
+			wantCode: 1},
+	}
+
+	for _, s := range steps {
+		var stdout, stderr bytes.Buffer
+
+		code := run(s.args, strings.NewReader(s.stdin), &stdout, &stderr)
+
+		if code != s.wantCode || !strings.Contains(stdout.String(), s.wantStdout) {
+			t.Fatalf("gitpersona %v: exit %d, stdout %q, stderr %q; want exit %d and stdout containing %q",
+				s.args, code, stdout.String(), stderr.String(), s.wantCode, s.wantStdout)
+		}
+	}
+}
+
+func TestCommandFailsWithoutConfig(t *testing.T) {
+	home := demoHome(t)
+	if err := os.Remove(filepath.Join(home, ".config", "gitpersona", "config.toml")); err != nil {
+		t.Fatal(err)
+	}
+	var stdout, stderr bytes.Buffer
+
+	code := run([]string{"apply"}, strings.NewReader(""), &stdout, &stderr)
+
+	if code != 1 || !strings.Contains(stderr.String(), "configuration file not found") {
+		t.Fatalf("apply without config: exit %d, stderr %q", code, stderr.String())
+	}
+}
+
+func TestCommandFailsWithoutHome(t *testing.T) {
+	t.Setenv("HOME", "")
+	var stdout, stderr bytes.Buffer
+
+	if code := run([]string{"whoami"}, strings.NewReader(""), &stdout, &stderr); code != 1 {
+		t.Fatalf("whoami without HOME: exit %d, stderr %q; want 1", code, stderr.String())
 	}
 }

@@ -103,3 +103,27 @@ func TestMalformedMarkersAreRejected(t *testing.T) {
 		})
 	}
 }
+
+func TestUpsertNormalizesBodyWithoutTrailingNewline(t *testing.T) {
+	got, err := Upsert("", "[include]")
+
+	if err != nil || got != Begin+"\n[include]\n"+End+"\n" {
+		t.Fatalf("Upsert() = %q, %v", got, err)
+	}
+}
+
+func TestUpsertWithEmptyBodyKeepsOnlyMarkers(t *testing.T) {
+	got, err := Upsert("", "")
+
+	if err != nil || got != Begin+"\n"+End+"\n" {
+		t.Fatalf("Upsert() = %q, %v", got, err)
+	}
+}
+
+func TestMarkersWithCRLFLineEndingsAreRecognized(t *testing.T) {
+	content := "[user]\r\n" + Begin + "\r\nold\r\n" + End + "\r\n"
+
+	if !Contains(content) {
+		t.Fatal("Contains() did not recognize markers with CRLF line endings")
+	}
+}
