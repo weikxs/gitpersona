@@ -110,3 +110,37 @@ func splitLines(s string) []string {
 func join(lines []string) string {
 	return strings.Join(lines, "")
 }
+
+// UpsertLast returns content with the managed region set to body and placed
+// at the end of the file. Git lets later settings override earlier ones, so
+// the region must come last to take effect over the user's own settings.
+func UpsertLast(content, body string) (string, error) {
+	without, err := Remove(content)
+	if err != nil {
+		return "", err
+	}
+	return Upsert(without, body)
+}
+
+// ContentAfter reports whether any setting (not a blank line or comment)
+// follows the managed region; such settings override it.
+func ContentAfter(content string) bool {
+	lines := splitLines(content)
+	_, end, err := locate(lines)
+	if err != nil || end < 0 {
+		return false
+	}
+	for _, l := range lines[end+1:] {
+		trimmed := strings.TrimSpace(l)
+		if trimmed != "" && !strings.HasPrefix(trimmed, "#") && !strings.HasPrefix(trimmed, ";") {
+			return true
+		}
+	}
+	return false
+}
+
+// Render returns the managed region for body, markers included, as Upsert
+// would write it.
+func Render(body string) string {
+	return render(body)
+}

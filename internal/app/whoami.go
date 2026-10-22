@@ -57,8 +57,14 @@ func Whoami(ctx context.Context, e Env, asJSON bool) error {
 
 func (e Env) whoami(ctx context.Context, cfg config.Config) WhoamiReport {
 	opts := resolve.Options{Home: e.Home, CaseInsensitive: e.CaseInsensitive, Canonicalize: paths.ResolveSymlinks}
-	root, inRepo := e.repoRoot(ctx, e.WorkDir)
-	gitDir, _ := e.git(ctx, e.WorkDir, "rev-parse", "--absolute-git-dir")
+	// Bare repositories and the inside of .git have a Git directory but no
+	// work tree, so the Git directory decides whether we are in a repository.
+	gitDir, err := e.git(ctx, e.WorkDir, "rev-parse", "--absolute-git-dir")
+	inRepo := err == nil && gitDir != ""
+	root, hasWorkTree := e.repoRoot(ctx, e.WorkDir)
+	if !hasWorkTree {
+		root = gitDir
+	}
 
 	var r resolve.Result
 	report := WhoamiReport{InRepository: inRepo}

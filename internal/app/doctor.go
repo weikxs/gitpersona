@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/weikxs/gitpersona/internal/block"
 	"github.com/weikxs/gitpersona/internal/config"
 	"github.com/weikxs/gitpersona/internal/provider"
 )
@@ -28,6 +29,7 @@ func Doctor(ctx context.Context, e Env) bool {
 	checks = append(checks, cfgCheck)
 	if cfgCheck.ok {
 		checks = append(checks, e.checkGenerated(ctx))
+		checks = append(checks, e.checkBlockIsLast())
 		checks = append(checks, e.checkGitHubAccounts(ctx, cfg)...)
 	}
 
@@ -85,6 +87,24 @@ func (e Env) checkGenerated(ctx context.Context) check {
 	}
 }
 
+// checkBlockIsLast flags settings after the GitPersona block in the global
+// Git configuration: Git applies later settings last, so they override every
+// profile (for example a user.email added with `git config --global`, or the
+// helper `gh auth setup-git` adds).
+func (e Env) checkBlockIsLast() check {
+	content, err := readOptional(e.resolvedUserGitConfig())
+	if err != nil {
+		return check{label: err.Error()}
+	}
+	if block.ContentAfter(content) {
+		return check{
+			label:  fmt.Sprintf("%s has settings after the GitPersona block, which override every profile", e.display(e.userGitConfig())),
+			advice: "run `gitpersona apply` to move the block to the end (your settings are kept)",
+		}
+	}
+	return check{ok: true, label: "the GitPersona block is the last part of " + e.display(e.userGitConfig())}
+}
+
 func (e Env) checkGitHubAccounts(ctx context.Context, cfg config.Config) []check {
 	var profiles []config.Profile
 	for _, p := range cfg.Profiles {
@@ -103,6 +123,7 @@ func (e Env) checkGitHubAccounts(ctx context.Context, cfg config.Config) []check
 	source := provider.GitHub{GH: gh, Run: e.Run}
 	checks := []check{{ok: true, label: "GitHub CLI found at " + gh}}
 	signedIn := map[string][]string{} // host -> accounts, queried once per host
+	unknownHost := map[string]bool{}  // hosts gh could not be asked about
 	for _, p := range profiles {
 		accounts, queried := signedIn[p.Host]
 		if !queried {
@@ -112,11 +133,12 @@ func (e Env) checkGitHubAccounts(ctx context.Context, cfg config.Config) []check
 			cancel()
 			if err != nil {
 				checks = append(checks, check{label: fmt.Sprintf("could not ask gh which accounts are signed in on %s", p.Host),
-					advice: "run `gh auth status` to see what is wrong"})
-				signedIn[p.Host] = nil
-				continue
+					advice: "run `gh auth status` to see what is wrong (GitPersona needs gh 2.40 or newer)"})
 			}
-			signedIn[p.Host] = accounts
+			signedIn[p.Host], unknownHost[p.Host] = accounts, err != nil
+		}
+		if unknownHost[p.Host] {
+			continue // already reported; do not guess whether the account is signed in
 		}
 		if !slices.Contains(accounts, p.Account) {
 			checks = append(checks, check{

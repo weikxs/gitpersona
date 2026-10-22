@@ -141,22 +141,54 @@ func (e Env) generateOptions(ctx context.Context) (generate.Options, error) {
 	return opts, nil
 }
 
+// resolvedUserGitConfig follows symbolic links, so dotfiles managers keep
+// working when GitPersona writes the global Git configuration.
+func (e Env) resolvedUserGitConfig() string {
+	path := e.userGitConfig()
+	if real, err := filepath.EvalSymlinks(path); err == nil {
+		return real
+	}
+	// A dangling link (the dotfiles target does not exist yet): follow it the
+	// way Git does when it writes, instead of replacing the link.
+	for range maxSymlinkHops {
+		info, err := os.Lstat(path)
+		if err != nil || info.Mode()&os.ModeSymlink == 0 {
+			return path
+		}
+		target, err := os.Readlink(path)
+		if err != nil {
+			return path
+		}
+		if !filepath.IsAbs(target) {
+			target = filepath.Join(filepath.Dir(path), target)
+		}
+		path = target
+	}
+	return path
+}
+
+// maxSymlinkHops bounds symlink chains, like the operating system does.
+const maxSymlinkHops = 40
+
+// errGlobalConfigDisabled explains GIT_CONFIG_GLOBAL=/dev/null.
+var errGlobalConfigDisabled = fmt.Errorf("the global Git configuration is disabled (GIT_CONFIG_GLOBAL=%s); "+
+	"GitPersona works through it, so unset GIT_CONFIG_GLOBAL or point it to a file", os.DevNull)
+
 // userWritablePerm is the owner-write bit; without it the user has marked the
 // file read-only and GitPersona must not change it.
 const userWritablePerm os.FileMode = 0o200
 
 func (e Env) gitConfigWithBlock() (change, error) {
 	link := e.userGitConfig()
-	// Write through symbolic links so dotfiles managers keep working.
-	path := link
-	if real, err := filepath.EvalSymlinks(link); err == nil {
-		path = real
+	if link == os.DevNull {
+		return change{}, errGlobalConfigDisabled
 	}
+	path := e.resolvedUserGitConfig()
 	current, err := readOptional(path)
 	if err != nil {
 		return change{}, err
 	}
-	updated, err := block.Upsert(current, generate.IncludeBody(filepath.Join(e.ConfigDir, generate.RulesFile)))
+	updated, err := block.UpsertLast(current, generate.IncludeBody(filepath.Join(e.ConfigDir, generate.RulesFile)))
 	if err != nil {
 		return change{}, fmt.Errorf("%s: %w. Open the file and keep exactly one pair of the lines %q and %q "+
 			"(or delete both), then run `gitpersona apply` again", e.display(link), err, block.Begin, block.End)
@@ -166,8 +198,9 @@ func (e Env) gitConfigWithBlock() (change, error) {
 	if info, err := os.Stat(path); err == nil {
 		perm = info.Mode().Perm() // the file belongs to the user; keep its mode
 		if perm&userWritablePerm == 0 && updated != current {
-			return change{}, fmt.Errorf("%s is read-only; make it writable (chmod u+w) or add the include yourself:\n%s",
-				e.display(link), generate.IncludeBody(filepath.Join(e.ConfigDir, generate.RulesFile)))
+			return change{}, fmt.Errorf("%s is read-only; make it writable (chmod u+w), or add these lines at its end "+
+				"yourself (keep the marker lines so GitPersona recognizes them):\n\n%s",
+				e.display(link), block.Render(generate.IncludeBody(filepath.Join(e.ConfigDir, generate.RulesFile))))
 		}
 	}
 	return change{path: path, content: updated, perm: perm}, nil

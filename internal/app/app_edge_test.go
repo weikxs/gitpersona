@@ -461,3 +461,152 @@ func TestApplyRequiresYesBeforeRemovingFiles(t *testing.T) {
 		t.Fatal("Apply(--yes) did not remove the stale file")
 	}
 }
+
+func TestSettingsAddedAfterTheBlockAreDetectedAndApplyMovesTheBlockLast(t *testing.T) {
+	w := newWorld(t)
+	env, out := w.env(t, w.home)
+	if err := Apply(context.Background(), env, ApplyOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	// What `git config --global user.email ...` does when there is no [user] section yet.
+	runGit(t, w.home, "config", "--global", "user.email", "me@old.example")
+	if got := runGit(t, w.repos["blog"], "config", "user.email"); got != "me@old.example" {
+		t.Fatalf("precondition: the late setting should override the profile, got %q", got)
+	}
+	out.Reset()
+
+	if Doctor(context.Background(), env) || !strings.Contains(out.String(), "after the GitPersona block") {
+		t.Fatalf("doctor must flag settings after the block:\n%s", out.String())
+	}
+	if err := Apply(context.Background(), env, ApplyOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	if got := runGit(t, w.repos["blog"], "config", "user.email"); got != "1000001+octo-alex@users.noreply.github.com" {
+		t.Fatalf("after apply the profile should win again, got %q", got)
+	}
+	if got := runGit(t, w.home, "config", "--global", "user.email"); got != "me@old.example" {
+		t.Fatalf("apply must keep the user's own setting, got %q", got)
+	}
+}
+
+func TestReadOnlyAdviceCanBePastedAndIsRecognized(t *testing.T) {
+	w := newWorld(t)
+	path := filepath.Join(w.home, ".gitconfig")
+	mustWrite(t, path, "[user]\n", 0o444)
+	env, out := w.env(t, w.home)
+	err := Apply(context.Background(), env, ApplyOptions{})
+	if err == nil {
+		t.Fatal("expected a read-only refusal")
+	}
+	msg := err.Error()
+	snippet := msg[strings.Index(msg, block.Begin):]
+
+	// The user follows the advice on their read-only file (for example in a Nix-managed config).
+	if err := os.Chmod(path, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	mustWrite(t, path, "[user]\n\n"+snippet, 0o444)
+
+	if err := Apply(context.Background(), env, ApplyOptions{}); err != nil {
+		t.Fatalf("apply after pasting the suggested block = %v, want it to recognize the block", err)
+	}
+	out.Reset()
+	if !Doctor(context.Background(), env) {
+		t.Fatalf("doctor after pasting the suggested block:\n%s", out.String())
+	}
+}
+
+func TestWhoamiInBareRepositoryAndInsideDotGit(t *testing.T) {
+	w := newWorld(t)
+	bare := filepath.Join(w.home, "Projects", "personal", "bare.git")
+	runGit(t, w.home, "init", "-q", "--bare", bare)
+	env, out := w.env(t, w.home)
+	if err := Apply(context.Background(), env, ApplyOptions{}); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, dir := range []string{bare, filepath.Join(w.repos["blog"], ".git")} {
+		env.WorkDir = dir
+		out.Reset()
+		if err := Whoami(context.Background(), env, true); err != nil {
+			t.Fatal(err)
+		}
+		var got WhoamiReport
+		if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+			t.Fatal(err)
+		}
+		if !got.InRepository || got.Profile != "personal" || runGit(t, dir, "config", "user.email") != got.Email {
+			t.Errorf("%s: whoami = %+v, want in a repository with profile personal like git", filepath.Base(dir), got)
+		}
+	}
+}
+
+func TestDirectoryWithGlobCharactersMatchesLiterally(t *testing.T) {
+	w := newWorld(t)
+	literal := filepath.Join(w.home, "Projects", "team[1]", "app")
+	lookalike := filepath.Join(w.home, "Projects", "team1", "app")
+	runGit(t, w.home, "init", "-q", literal)
+	runGit(t, w.home, "init", "-q", lookalike)
+	mustWrite(t, filepath.Join(w.home, ".config", "gitpersona", "config.toml"),
+		strings.Replace(demoConfig, `dirs    = ["~/Projects/personal", "~/Projects/acme/oss"]`, `dirs    = ["~/Projects/team[1]"]`, 1), 0o600)
+	env, _ := w.env(t, w.home)
+	if err := Apply(context.Background(), env, ApplyOptions{}); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := runGit(t, literal, "config", "user.email"); got != "1000001+octo-alex@users.noreply.github.com" {
+		t.Errorf("repository in team[1] = %q, want the personal profile", got)
+	}
+	if got := runGit(t, lookalike, "config", "user.email"); got != "1000002+acme-alex@users.noreply.github.com" {
+		t.Errorf("repository in team1 = %q, want the default profile (no glob match)", got)
+	}
+}
+
+func TestDoctorDoesNotClaimSignedOutWhenGHCannotBeQueried(t *testing.T) {
+	w := newWorld(t)
+	brokenGH := filepath.Join(t.TempDir(), "gh")
+	mustWrite(t, brokenGH, "#!/bin/sh\nexit 1\n", 0o700)
+	env, out := w.env(t, w.home)
+	env.LookPath = func(string) (string, error) { return brokenGH, nil }
+
+	Doctor(context.Background(), env)
+
+	if strings.Contains(out.String(), "is not signed in") {
+		t.Fatalf("doctor claimed an account is signed out although gh could not be queried:\n%s", out.String())
+	}
+	if strings.Count(out.String(), "could not ask gh") != 1 {
+		t.Fatalf("doctor should report the failed query once per host:\n%s", out.String())
+	}
+}
+
+func TestApplyWritesThroughADanglingGitConfigSymlink(t *testing.T) {
+	w := newWorld(t)
+	link := filepath.Join(w.home, ".gitconfig")
+	if err := os.Symlink(filepath.Join("dotfiles", "gitconfig"), link); err != nil {
+		t.Fatal(err)
+	}
+	env, _ := w.env(t, w.home)
+
+	if err := Apply(context.Background(), env, ApplyOptions{}); err != nil {
+		t.Fatal(err)
+	}
+
+	if info, err := os.Lstat(link); err != nil || info.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("dangling ~/.gitconfig link was replaced (err=%v)", err)
+	}
+	if content, _ := os.ReadFile(filepath.Join(w.home, "dotfiles", "gitconfig")); !strings.Contains(string(content), block.Begin) {
+		t.Fatalf("link target was not created with the block:\n%s", content)
+	}
+}
+
+func TestApplyExplainsDisabledGlobalConfig(t *testing.T) {
+	w := newWorld(t)
+	env, _ := w.env(t, w.home)
+	env.GlobalGitConfig = os.DevNull
+
+	err := Apply(context.Background(), env, ApplyOptions{})
+
+	if err == nil || !strings.Contains(err.Error(), "global Git configuration is disabled") {
+		t.Fatalf("Apply() with GIT_CONFIG_GLOBAL=/dev/null = %v", err)
+	}
+}

@@ -127,3 +127,36 @@ func TestMarkersWithCRLFLineEndingsAreRecognized(t *testing.T) {
 		t.Fatal("Contains() did not recognize markers with CRLF line endings")
 	}
 }
+
+func TestUpsertLastMovesTheBlockToTheEnd(t *testing.T) {
+	before := "[alias]\n\tst = status\n\n" + Begin + "\nold\n" + End + "\n[user]\n\temail = me@old.example\n"
+
+	got, err := UpsertLast(before, body)
+
+	want := "[alias]\n\tst = status\n\n[user]\n\temail = me@old.example\n\n" + Begin + "\n" + body + End + "\n"
+	if err != nil || got != want {
+		t.Fatalf("UpsertLast() = %q, %v\nwant %q", got, err, want)
+	}
+}
+
+func TestUpsertLastIsIdempotentWhenAlreadyLast(t *testing.T) {
+	once, _ := UpsertLast("[alias]\n\tst = status\n", body)
+	twice, err := UpsertLast(once, body)
+
+	if err != nil || once != twice {
+		t.Fatalf("UpsertLast() changed a file whose block was already last:\n%q\n%q", once, twice)
+	}
+}
+
+func TestContentAfter(t *testing.T) {
+	last, _ := Upsert("[alias]\n", body)
+	trailingComment := last + "\n# just a comment\n\n"
+	trailingSetting := last + "[user]\n\temail = me@old.example\n"
+
+	if ContentAfter(last) || ContentAfter(trailingComment) || ContentAfter("[user]\n") {
+		t.Error("ContentAfter() reported settings where there are none after the block")
+	}
+	if !ContentAfter(trailingSetting) {
+		t.Error("ContentAfter() missed a setting after the block")
+	}
+}

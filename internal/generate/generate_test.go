@@ -224,3 +224,9 @@ func TestGenerateCredentialOnlyForGitHubAndWithoutOtherHelpers(t *testing.T) {
 		t.Errorf("GitLab profile must leave credential helpers alone until GitLab is supported:\n%s", globex)
 	}
 }
+
+func TestEscapeGlob(t *testing.T) {
+	if got, want := escapeGlob(`/p/team[1]/a*b?c\d`), `/p/team\[1]/a\*b\?c\\d`; got != want {
+		t.Fatalf("escapeGlob() = %s, want %s", got, want)
+	}
+}

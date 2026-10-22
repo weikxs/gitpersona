@@ -199,7 +199,7 @@ func rulesIndex(cfg config.Config, opts Options) string {
 // symbolic link makes the two differ.
 func (o Options) writeIncludeIf(b *strings.Builder, gitdir, dir, suffix, profile string) {
 	for _, d := range o.pathForms(dir) {
-		fmt.Fprintf(b, "[includeIf %s]\n", quoteSubsection(gitdir+d+suffix))
+		fmt.Fprintf(b, "[includeIf %s]\n", quoteSubsection(gitdir+escapeGlob(d)+suffix))
 		writeKV(b, "path", o.profilePath(profile))
 	}
 }

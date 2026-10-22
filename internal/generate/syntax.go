@@ -23,6 +23,12 @@ func escapeQuoted(s string) string {
 	return strings.NewReplacer(`\`, `\\`, `"`, `\"`, "\n", `\n`, "\t", `\t`).Replace(s)
 }
 
+// escapeGlob makes Git's includeIf "gitdir:" pattern match path literally;
+// otherwise characters such as [ ] * ? in a directory name act as wildcards.
+func escapeGlob(path string) string {
+	return strings.NewReplacer(`\`, `\\`, "*", `\*`, "?", `\?`, "[", `\[`).Replace(path)
+}
+
 // shellQuote quotes s for POSIX sh, which runs "!"-prefixed Git helpers.
 func shellQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
