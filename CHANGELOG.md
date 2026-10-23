@@ -25,8 +25,8 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
   reports which account GitHub, GitLab or Bitbucket says it is. It runs only when you ask; ssh uses the key,
   GitPersona never opens it.
 - `doctor` warns when only the `cache` helper keeps the tokens of a host, and finds helpers set for a URL pattern
-  such as `credential.https://*.example.com.helper` or for one account (`https://<account>@host`), and the
-  system-wide helper many installations set.
+  such as `credential.https://*.example.com.helper`, and the system-wide helper many installations set. A helper
+  set only for `https://<user>@host` does not count: Git uses it only for remotes whose URL names that user.
 - `glab` follows your directories: in a GitLab profile's directory it runs with that account's token, which goes only
   to that one process.
 - One-step setup: `gitpersona setup` and `setup --web` look at what you already have — the accounts signed in to gh,

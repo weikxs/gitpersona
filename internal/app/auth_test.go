@@ -126,8 +126,10 @@ func TestURLMatchesLikeGit(t *testing.T) {
 		"https://*.demo.example":           true,
 		"https://GIT.demo.example":         true,
 		"HTTPS://git.demo.example":         true,
-		"https://git.demo.example:443":     true, // the default port
-		"git.demo.example":                 true, // a partial URL
+		"https://git.demo.example:443":     true,  // the default port
+		"git.demo.example":                 true,  // a bare host name
+		"*.demo.example":                   false, // no globs without a scheme
+		"git.demo.example:443":             false,
 		"https://alice@git.demo.example":   true, // the account itself
 		"https://bob@git.demo.example":     false,
 		"https://Alice@git.demo.example":   false, // user names are exact
@@ -155,10 +157,10 @@ func TestHelpersAreReadPerAccountInGitsOrder(t *testing.T) {
 		"[credential \"https://gitlab.globex.example\"]\n\txhelper = ignored\n")
 
 	alice, err1 := env.hostHelpers(context.Background(), "gitlab.globex.example", "alice")
-	bob, err2 := env.hostHelpers(context.Background(), "gitlab.globex.example", "bob")
+	push, err2 := env.hostHelpers(context.Background(), "gitlab.globex.example", "")
 
-	if err1 != nil || err2 != nil || !slices.Equal(alice, []string{"osxkeychain", "store"}) || !slices.Equal(bob, []string{"osxkeychain"}) {
-		t.Errorf("alice %v, bob %v (%v, %v); a user's helper and another host's reset apply to nobody else", alice, bob, err1, err2)
+	if err1 != nil || err2 != nil || !slices.Equal(alice, []string{"osxkeychain", "store"}) || !slices.Equal(push, []string{"osxkeychain"}) {
+		t.Errorf("alice %v, push %v (%v, %v); a user's helper applies only to requests naming that user", alice, push, err1, err2)
 	}
 }
 
@@ -228,5 +230,89 @@ func TestAllKeptComparesFoldersAsTheDiskDoes(t *testing.T) {
 
 	if !allKept(p, u, strings.ToLower) || allKept(p, u, func(s string) string { return s }) {
 		t.Error("allKept should follow the comparison key")
+	}
+}
+
+// Git matches https://user@host settings with the user written in the
+// remote's URL only; a push from https://host/... never reaches them.
+func TestAHelperForOneUserIsNotWhatAPushUses(t *testing.T) {
+	w := newWorld(t)
+	env, out := w.env(t, w.home)
+	if err := Apply(context.Background(), env, ApplyOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	appendConfig(t, w, "[credential \"https://globex-alex@gitlab.globex.example\"]\n\thelper = /tmp/demo/git-credential-demo\n")
+	env.Stdin = strings.NewReader("demo-token\n")
+
+	err := AuthLogin(context.Background(), env, AuthOptions{Profile: "globex"})
+
+	if err == nil || !strings.Contains(err.Error(), "no credential helper would keep the token") {
+		t.Errorf("auth login with a helper only for the user = %v", err)
+	}
+	_ = Doctor(context.Background(), env)
+	if !strings.Contains(out.String(), "profile globex: no credential helper") {
+		t.Errorf("doctor:\n%s", out.String())
+	}
+}
+
+func TestAuthLoginRefusesAStoreHelperForTheAccount(t *testing.T) {
+	w := newWorld(t)
+	fakeKeychain(t, w)
+	env, _ := w.env(t, w.home)
+	if err := Apply(context.Background(), env, ApplyOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	appendConfig(t, w, "[credential \"https://globex-alex@gitlab.globex.example\"]\n\thelper = store\n")
+	env.Stdin = strings.NewReader("demo-token\n")
+
+	err := AuthLogin(context.Background(), env, AuthOptions{Profile: "globex"})
+
+	if err == nil || !strings.Contains(err.Error(), "clear text") {
+		t.Errorf("auth login would also save with store: %v", err)
+	}
+}
+
+func TestAuthRefusesAnInvalidConfiguration(t *testing.T) {
+	w := newWorld(t)
+	env, _ := w.env(t, w.home)
+	cfgPath := filepath.Join(w.home, ".config", "gitpersona", "config.toml")
+	mustWrite(t, cfgPath, strings.Replace(readFile(t, cfgPath), `host     = "gitlab.globex.example"`, "", 1), 0o600)
+	env.Stdin = strings.NewReader("demo-token\n")
+
+	err := AuthLogin(context.Background(), env, AuthOptions{Profile: "globex"})
+
+	if err == nil || !strings.Contains(err.Error(), "profile globex needs a valid host") {
+		t.Errorf("auth login with no host = %v", err)
+	}
+}
+
+func TestAuthLogoutWorksDespiteMistakesInOtherProfiles(t *testing.T) {
+	w := newWorld(t)
+	fakeKeychain(t, w)
+	env, _ := w.env(t, w.home)
+	cfgPath := filepath.Join(w.home, ".config", "gitpersona", "config.toml")
+	mustWrite(t, cfgPath, strings.Replace(readFile(t, cfgPath), `email   = "1000002+acme-alex@users.noreply.github.com"`, `email   = "not an email"`, 1), 0o600)
+
+	if err := AuthLogout(context.Background(), env, AuthOptions{Profile: "globex"}); err != nil {
+		t.Errorf("auth logout with another profile's mistake = %v", err)
+	}
+}
+
+// A setting for account@host that resets the helpers sends the token where
+// a push never looks.
+func TestAuthLoginRefusesHelpersAPushDoesNotAsk(t *testing.T) {
+	w := newWorld(t)
+	fakeKeychain(t, w)
+	env, _ := w.env(t, w.home)
+	if err := Apply(context.Background(), env, ApplyOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	appendConfig(t, w, "[credential \"https://globex-alex@gitlab.globex.example\"]\n\thelper =\n\thelper = /tmp/demo/other-helper\n")
+	env.Stdin = strings.NewReader("demo-token\n")
+
+	err := AuthLogin(context.Background(), env, AuthOptions{Profile: "globex"})
+
+	if err == nil || !strings.Contains(err.Error(), "which a push to gitlab.globex.example does not ask") {
+		t.Errorf("auth login = %v", err)
 	}
 }

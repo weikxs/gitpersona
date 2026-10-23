@@ -64,6 +64,12 @@ func TestCheckSSHReadsEachHostsAnswer(t *testing.T) {
 		"another key": {"debug1: Server accepts key: /tmp/other/id_default ED25519 SHA256:demo explicit\n" +
 			"Welcome to GitLab, @globex-alex!\n", "ssh signed in with /tmp/other/id_default from your SSH settings instead", false},
 		"not authenticated": {"You are not authenticated.\n", "did not sign in to gitlab.globex.example: You are not authenticated.", false},
+		"greeting then closed (255)": {"Authenticated to gitlab.globex.example ([192.0.2.1]:22) using \"publickey\".\n" +
+			"Welcome to GitLab, @globex-alex!\n", "✓ globex: the key signs in to gitlab.globex.example as globex-alex", true},
+		"connection refused (255)": {"ssh: connect to host gitlab.globex.example port 22: Connection refused\n",
+			"did not sign in to gitlab.globex.example: ssh: connect to host gitlab.globex.example port 22: Connection refused", false},
+		"banner then refused": {"Welcome to GitLab demo server; only successfully authenticated users may continue.\n" +
+			"git@gitlab.globex.example: Permission denied (publickey).\n", "did not sign in to gitlab.globex.example: git@gitlab.globex.example: Permission denied (publickey).", false},
 		"refused": {"debug1: Next authentication method: publickey\ngit@gitlab.globex.example: Permission denied (publickey).\n",
 			"did not sign in to gitlab.globex.example: git@gitlab.globex.example: Permission denied (publickey).", false},
 	} {
@@ -71,7 +77,11 @@ func TestCheckSSHReadsEachHostsAnswer(t *testing.T) {
 			w := newWorld(t)
 			answer := filepath.Join(filepath.Dir(w.home), "answer")
 			mustWrite(t, answer, tc.answer, 0o600)
-			mustWrite(t, filepath.Join(filepath.Dir(w.home), "bin", "ssh"), "#!/bin/sh\ncat '"+answer+"' >&2\nexit 1\n", 0o700)
+			status := "1"
+			if strings.Contains(name, "255") {
+				status = "255"
+			}
+			mustWrite(t, filepath.Join(filepath.Dir(w.home), "bin", "ssh"), "#!/bin/sh\ncat '"+answer+"' >&2\nexit "+status+"\n", 0o700)
 			cfg := strings.Replace(demoConfig, `email    = "alex@globex.example"`, `email    = "alex@globex.example"`+"\n"+`ssh_key  = "~/.ssh/id_globex"`, 1)
 			mustWrite(t, filepath.Join(w.home, ".config", "gitpersona", "config.toml"), cfg, 0o600)
 			mustWrite(t, filepath.Join(w.home, ".ssh", "id_globex"), "KEY PLACEHOLDER (never read)\n", 0o600)

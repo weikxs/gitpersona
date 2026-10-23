@@ -3,10 +3,12 @@ package app
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -36,6 +38,25 @@ var deployKey = regexp.MustCompile(`Hi ([A-Za-z0-9-]+/[A-Za-z0-9._-]+)! You've s
 // the account.
 var signedIn = regexp.MustCompile(`(?i)(successfully authenticated|authenticated via|welcome to gitlab)`)
 
+// permissionDenied finds ssh's refusal, whatever banner came before it.
+var permissionDenied = regexp.MustCompile(`Permission denied \(`)
+
+// authenticatedTo finds ssh's own word that the key signed in.
+var authenticatedTo = regexp.MustCompile(`(?m)^Authenticated to .* using "publickey"`)
+
+// sshErrorStatus is the exit status of ssh itself failing.
+const sshErrorStatus = 255
+
+// deniedLine returns the line that says why ssh failed, or the first one.
+func deniedLine(text string) string {
+	for _, line := range strings.Split(text, "\n") {
+		if permissionDenied.MatchString(line) {
+			return strings.TrimSpace(line)
+		}
+	}
+	return firstLine(text)
+}
+
 // acceptedKey finds, in ssh -v output, the key the host accepted.
 var acceptedKey = regexp.MustCompile(`(?m)^debug1: Server accepts key: (.+?) [A-Z0-9-]+ SHA256:`)
 
@@ -53,6 +74,11 @@ func CheckSSH(ctx context.Context, e Env, opts CheckSSHOptions) error {
 	if err != nil {
 		return err
 	}
+	if opts.Profile != "" {
+		if err := knownProfile(cfg, opts.Profile, "check-ssh --profile"); err != nil {
+			return err
+		}
+	}
 	checked := 0
 	results := map[sshResult]int{}
 	for _, p := range cfg.Profiles {
@@ -64,7 +90,7 @@ func CheckSSH(ctx context.Context, e Env, opts CheckSSHOptions) error {
 	}
 	switch {
 	case opts.Profile != "" && checked == 0:
-		return fmt.Errorf("profile %q has no ssh_key, or does not exist", opts.Profile)
+		return fmt.Errorf("profile %s has no ssh_key; Git uses your own SSH settings there", opts.Profile)
 	case checked == 0:
 		fmt.Fprintln(e.Stdout, "No profile has an ssh_key; Git uses your own SSH settings.")
 	}
@@ -103,7 +129,7 @@ func (e Env) checkProfileSSH(ctx context.Context, p config.Profile) sshResult {
 	}
 	// The profile's port is the HTTPS one; ssh takes its port from the
 	// user's SSH settings.
-	host, _, _ := strings.Cut(p.Host, ":")
+	host, _ := splitHostPort(p.Host)
 	fmt.Fprintf(e.Stdout, "Connecting to %s with %s for profile %s…\n", host, e.display(key), p.ID)
 	ctx, cancel := context.WithTimeout(ctx, sshCheckTimeout)
 	defer cancel()
@@ -119,8 +145,25 @@ func (e Env) checkProfileSSH(ctx context.Context, p config.Profile) sshResult {
 	cmd.WaitDelay = sshWaitDelay
 	var out bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &out
-	_ = cmd.Run() // hosts end the session with a non-zero status after greeting
+	// Hosts end the session with a non-zero status after greeting; 255 is
+	// ssh's own failure (refused key, no connection).
+	runErr := cmd.Run()
+	var exit *exec.ExitError
+	sshError := errors.As(runErr, &exit) && exit.ExitCode() == sshErrorStatus
 	text := withoutDebug(out.String())
+	// A refusal decides; then signing in (a greeting, or ssh saying so)
+	// does, even when the host closes without an exit status (255); only
+	// then is 255 a failure, whose reason ssh prints last.
+	authenticated := authenticatedTo.MatchString(text) || signedIn.MatchString(text) ||
+		slices.ContainsFunc(welcomes, func(w *regexp.Regexp) bool { return w.MatchString(text) })
+	switch {
+	case permissionDenied.MatchString(text):
+		fmt.Fprintf(e.Stdout, "✗ %s: the key did not sign in to %s: %s\n", p.ID, host, deniedLine(text))
+		return sshFailed
+	case sshError && !authenticated:
+		fmt.Fprintf(e.Stdout, "✗ %s: the key did not sign in to %s: %s\n", p.ID, host, lastLine(text))
+		return sshFailed
+	}
 	if m := acceptedKey.FindStringSubmatch(out.String()); m != nil && !sameFile(m[1], key) {
 		fmt.Fprintf(e.Stdout, "✗ %s: %s did not accept %s; ssh signed in with %s from your SSH settings instead\n",
 			p.ID, host, e.display(key), e.display(m[1]))
@@ -138,7 +181,7 @@ func (e Env) checkProfileSSH(ctx context.Context, p config.Profile) sshResult {
 		}
 	}
 	switch {
-	case account == "" && signedIn.MatchString(text):
+	case account == "" && authenticated:
 		fmt.Fprintf(e.Stdout, "? %s: the key signs in to %s, but the host does not say as which account\n", p.ID, host)
 		return sshOK
 	case account == "":
@@ -152,11 +195,12 @@ func (e Env) checkProfileSSH(ctx context.Context, p config.Profile) sshResult {
 	return sshOK
 }
 
-// withoutDebug drops the debug lines of ssh -v from its output.
+// withoutDebug drops the debug lines of ssh -v, and its notice about a
+// new host key, from its output.
 func withoutDebug(s string) string {
 	var kept []string
 	for _, line := range strings.Split(s, "\n") {
-		if !strings.HasPrefix(line, "debug") && !strings.HasPrefix(line, "OpenSSH_") {
+		if !strings.HasPrefix(line, "debug") && !strings.HasPrefix(line, "OpenSSH_") && !strings.HasPrefix(line, "Warning: Permanently added") {
 			kept = append(kept, line)
 		}
 	}
@@ -167,6 +211,17 @@ func withoutDebug(s string) string {
 // through symlinks; it only resolves paths.
 func sameFile(a, b string) bool {
 	return filepath.Clean(a) == filepath.Clean(b) || paths.ResolveSymlinks(a) == paths.ResolveSymlinks(b)
+}
+
+// lastLine returns the last non-empty line of s, or a placeholder.
+func lastLine(s string) string {
+	lines := strings.Split(s, "\n")
+	for i := len(lines) - 1; i >= 0; i-- {
+		if line := strings.TrimSpace(lines[i]); line != "" && !authenticatedTo.MatchString(line) {
+			return line
+		}
+	}
+	return "no answer"
 }
 
 // firstLine returns the first non-empty line of s, or a placeholder.

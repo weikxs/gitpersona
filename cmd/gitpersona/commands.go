@@ -51,7 +51,10 @@ var commands = map[string]command{
 			"account gh is signed in to (public name and email, or the noreply address), your existing includeIf\n" +
 			"identities with their SSH keys and signing, directories from the remotes and emails of the\n" +
 			"repositories in your usual code folders, SSH aliases from ~/.ssh/config (keys are never opened),\n" +
-			"pins for repositories that differ from their folder, and your login shell. It shows the result and\n" +
+			"pins for repositories that differ from their folder, and your login shell. Identities whose\n" +
+			"includeIf file names the account for GitLab, Bitbucket or another host\n" +
+			"(credential.https://<host>.username), or whose repositories all push to one such host as one\n" +
+			"user, become profiles for that host, also without gh. It shows the result and\n" +
 			"asks before writing; everything is backed up first. --web shows it in your browser instead.",
 		bind: func(fs *flag.FlagSet) runFunc {
 			var opts app.SetupOptions
@@ -109,8 +112,9 @@ var commands = map[string]command{
 		description: "Manage the tokens of profiles on hosts other than GitHub (GitLab, Bitbucket, others), one per\n" +
 			"account, like gh does for GitHub. login saves a token in your own credential store (the system\n" +
 			"keychain or Git Credential Manager; never a file in clear text); logout removes it; status says\n" +
-			"which profiles have one. GitPersona keeps no copy. Without --profile, the current directory's\n" +
-			"profile is used. login reads the token hidden from the terminal, or from standard input.",
+			"which profiles have one. GitPersona keeps no copy. Without --profile, login and logout use the\n" +
+			"current directory's profile and status checks every profile. login reads the token hidden from\n" +
+			"the terminal, or from standard input.",
 		maxArgs: 1,
 		bind: func(fs *flag.FlagSet) runFunc {
 			var opts app.AuthOptions
@@ -230,7 +234,7 @@ var commands = map[string]command{
 	},
 	"install-shell": {
 		synopsis:    "install-shell [--shell fish,zsh,bash] [--dry-run]",
-		description: "Add the shell integration (prompt display, gh switching) to your shell's startup file.\nWithout --shell, your login shell is detected from the system user record.",
+		description: "Add the shell integration (prompt display, gh and glab switching) to your shell's startup file.\nWithout --shell, your login shell is detected from the system user record.",
 		bind: func(fs *flag.FlagSet) runFunc {
 			shells := fs.String("shell", "", "comma-separated shells to set up")
 			dryRun := fs.Bool("dry-run", false, "show what would change without writing anything")

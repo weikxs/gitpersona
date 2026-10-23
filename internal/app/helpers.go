@@ -38,12 +38,15 @@ func helperKind(helper string) string {
 	return "other"
 }
 
-// hostHelpers returns the credential helpers Git runs for account on
-// https://host outside every rule: the user's own, in the order Git runs
-// them, after the last reset (""). Like Git, it reads the system settings
-// first, and takes credential.helper and every credential.<url>.helper
-// whose URL matches (see urlMatches).
-func (e Env) hostHelpers(ctx context.Context, host, account string) ([]string, error) {
+// hostHelpers returns the credential helpers Git runs for https://host
+// outside every rule: the user's own, in the order Git runs them, after the
+// last reset (""). Like Git, it reads the system settings first, and takes
+// credential.helper and every credential.<url>.helper whose URL matches
+// (see urlMatches). user is the user name in the request: Git matches
+// https://user@host settings only with the user written in the remote's
+// URL, never with credential.username, so for a push it is "" while
+// `gitpersona auth login`, which names the account, also reaches them.
+func (e Env) hostHelpers(ctx context.Context, host, user string) ([]string, error) {
 	entries, err := e.gitConfigRegexp(ctx, `^credential\..*helper$`)
 	if err != nil {
 		return nil, err
@@ -58,7 +61,7 @@ func (e Env) hostHelpers(ctx context.Context, host, account string) ([]string, e
 		if dot := strings.LastIndex(rest, "."); dot >= 0 {
 			pattern, name = rest[:dot], rest[dot+1:]
 		}
-		if name != "helper" || (pattern != "" && !urlMatches(pattern, host, account)) {
+		if name != "helper" || (pattern != "" && !urlMatches(pattern, host, user)) {
 			continue
 		}
 		if kv[1] == "" {
@@ -71,21 +74,28 @@ func (e Env) hostHelpers(ctx context.Context, host, account string) ([]string, e
 }
 
 // urlMatches reports whether a credential.<url> pattern applies to every
-// repository of account on https://host, as Git's URL matching does: the
-// https scheme (or none, a partial URL), the same user if the pattern names
-// one, the same port (443 is the default), a host whose labels may be "*"
-// globs, and no path.
-func urlMatches(pattern, host, account string) bool {
-	rest := pattern
-	if scheme, after, ok := strings.Cut(pattern, "://"); ok {
-		if !strings.EqualFold(scheme, "https") {
-			return false
+// repository on https://host for a request with user, as Git's URL
+// matching does: the https scheme, the same user if the pattern names one,
+// the same port (443 is the default), a host whose labels may be "*" globs,
+// and no path. A pattern without a scheme is [user@]host, which Git
+// compares exactly, letter case included.
+func urlMatches(pattern, host, user string) bool {
+	scheme, rest, ok := strings.Cut(pattern, "://")
+	if !ok {
+		if at := strings.LastIndex(pattern, "@"); at >= 0 {
+			if pattern[:at] != user {
+				return false
+			}
+			pattern = pattern[at+1:]
 		}
-		rest = after
+		return !strings.Contains(pattern, "/") && pattern == host
+	}
+	if !strings.EqualFold(scheme, "https") {
+		return false
 	}
 	if at := strings.LastIndex(rest, "@"); at >= 0 {
-		user, _, _ := strings.Cut(rest[:at], ":")
-		if user != account { // Git compares user names exactly
+		named, _, _ := strings.Cut(rest[:at], ":")
+		if named != user { // Git compares user names exactly
 			return false
 		}
 		rest = rest[at+1:]
@@ -127,6 +137,33 @@ func splitHostPort(hp string) (host, port string) {
 	return host, port
 }
 
+// helpersProblem says what is wrong with the helpers of a profile, or "":
+// those a push asks must keep the token, one per account, and none of those
+// `auth login` saves it with may write it in clear text.
+func (e Env) helpersProblem(ctx context.Context, p config.Profile) ([]string, string, error) {
+	push, err := e.hostHelpers(ctx, p.Host, "")
+	if err != nil {
+		return nil, "", err
+	}
+	if problem := helperProblem(p.Host, push); problem != "" {
+		return push, problem, nil
+	}
+	save, err := e.hostHelpers(ctx, p.Host, p.Account)
+	if err != nil {
+		return nil, "", err
+	}
+	if slices.ContainsFunc(save, func(h string) bool { return helperKind(h) == "plain" }) {
+		return push, fmt.Sprintf("a credential helper for %s@%s (store) would keep the token in a file in clear text", p.Account, p.Host), nil
+	}
+	// A setting for account@host can reset the list: the token must go to
+	// a helper a push asks too.
+	if !slices.ContainsFunc(save, func(h string) bool { return helperKind(h) != "memory" && slices.Contains(push, h) }) {
+		return push, fmt.Sprintf("your settings for %s@%s save the token with %s, which a push to %s does not ask",
+			p.Account, p.Host, strings.Join(save, ", "), p.Host), nil
+	}
+	return push, "", nil
+}
+
 // helperProblem says what is wrong with the helpers that would keep a
 // token, or "" when one keeps it safely, one per account.
 func helperProblem(host string, helpers []string) string {
@@ -160,8 +197,8 @@ func (e Env) checkHelpers(ctx context.Context, cfg config.Config) []check {
 		if p.Provider == config.ProviderGitHub {
 			continue
 		}
-		helpers, err := e.hostHelpers(ctx, p.Host, p.Account)
-		switch problem := helperProblem(p.Host, helpers); {
+		helpers, problem, err := e.helpersProblem(ctx, p)
+		switch {
 		case err != nil:
 			checks = append(checks, check{label: err.Error()})
 		case problem != "":

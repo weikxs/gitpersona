@@ -87,6 +87,11 @@ func AuthStatus(ctx context.Context, e Env, opts AuthOptions) error {
 			continue
 		}
 		shown++
+		if err := e.checkAuthProfile(p); err != nil {
+			missing++
+			fmt.Fprintf(e.Stdout, "✗ %s\n", err)
+			continue
+		}
 		if _, err := e.profileToken(ctx, p); err != nil {
 			missing++
 			fmt.Fprintf(e.Stdout, "✗ %s: no token for %s on %s (or your credential helper failed); run `gitpersona auth login --profile %s`\n", p.ID, p.Account, p.Host, p.ID)
@@ -100,7 +105,18 @@ func AuthStatus(ctx context.Context, e Env, opts AuthOptions) error {
 	case shown == 0:
 		fmt.Fprintln(e.Stdout, "No profile is on a host other than GitHub; GitHub accounts are signed in with `gh auth login`.")
 	case missing > 0:
-		return fmt.Errorf("%d of %d profiles have no token", missing, shown)
+		return fmt.Errorf("no token for %d of %d profiles", missing, shown)
+	}
+	return nil
+}
+
+// checkAuthProfile refuses a profile whose host or account is not valid: a
+// token must never be saved for a host the configuration does not name.
+// Mistakes in other profiles do not stop auth for this one.
+func (e Env) checkAuthProfile(p config.Profile) error {
+	if !config.ValidHost(p.Host) || !config.ValidAccount(p.Account) {
+		return fmt.Errorf("profile %s needs a valid host and account in %s (host %q, account %q)",
+			p.ID, e.display(e.configFile()), p.Host, p.Account)
 	}
 	return nil
 }
@@ -152,17 +168,17 @@ func (e Env) authProfile(opts AuthOptions) (config.Profile, error) {
 	if p.Provider == config.ProviderGitHub {
 		return p, fmt.Errorf("profile %s is on GitHub, whose accounts gh keeps; sign in with `gh auth login --hostname %s`", p.ID, p.Host)
 	}
-	return p, nil
+	return p, e.checkAuthProfile(p)
 }
 
 // requireSafeHelper refuses to save a token where no helper would keep it,
 // or where the helper keeps it in a file in clear text.
 func (e Env) requireSafeHelper(ctx context.Context, p config.Profile) error {
-	helpers, err := e.hostHelpers(ctx, p.Host, p.Account)
+	_, problem, err := e.helpersProblem(ctx, p)
 	if err != nil {
 		return err
 	}
-	if problem := helperProblem(p.Host, helpers); problem != "" {
+	if problem != "" {
 		return fmt.Errorf("%s; %s first", problem, helperAdvice())
 	}
 	return nil

@@ -28,26 +28,26 @@ Usage:
   gitpersona <command> [flags]
 
 Commands:
-  ui          Open the configuration page in your browser
-  setup       Find your accounts, Git settings and repositories, and set them up in one step
-  apply       Generate Git configuration from the GitPersona configuration
-  whoami      Show which profile applies here and why
-  use         Make the current directory use a profile
-  remove      Stop assigning a directory to a profile
-  pin         Bind the current repository to a profile
-  unpin       Remove the pin of the current repository
-  list        List profiles, directories and pins
-  doctor      Check the setup and explain how to fix problems
-  auth        Save or check the token of a GitLab, Bitbucket or other profile
-  check-ssh   Check, when you ask, which account each profile's SSH key signs in as
-  shells      Show your default shell, the current shell and installed shells
-  install-shell  Add prompt display and gh switching to your shell
-  init        Print the shell integration script
-  prompt      Print the account Git uses here (for prompts)
-  rollback    List backups or restore one
-  uninstall   Remove GitPersona from your Git configuration
-  version     Print build information
-  help        Show help for a command
+  ui             Open the configuration page in your browser
+  setup          Find your accounts, Git settings and repositories, and set them up in one step
+  apply          Generate Git configuration from the GitPersona configuration
+  whoami         Show which profile applies here and why
+  use            Make the current directory use a profile
+  remove         Stop assigning a directory to a profile
+  pin            Bind the current repository to a profile
+  unpin          Remove the pin of the current repository
+  list           List profiles, directories and pins
+  doctor         Check the setup and explain how to fix problems
+  auth           Save or check the token of a GitLab, Bitbucket or other profile
+  check-ssh      Check, when you ask, which account each profile's SSH key signs in as
+  shells         Show your default shell, the current shell and installed shells
+  install-shell  Add prompt display and gh/glab switching to your shell
+  init           Print the shell integration script
+  prompt         Print the account Git uses here (for prompts)
+  rollback       List backups or restore one
+  uninstall      Remove GitPersona from your Git configuration
+  version        Print build information
+  help           Show help for a command
 
 Run "gitpersona help <command>" for the flags of a command.
 Git runs "gitpersona credential" itself; you do not need to call it.

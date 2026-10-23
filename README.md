@@ -134,7 +134,8 @@ Prompt and plugin-manager setups (tide, Powerlevel10k, Starship, fisher, oh-my-z
   for a password; `gitpersona doctor` tells you which account to sign in. For GitLab, Bitbucket and other hosts, your
   own credential helper (the system keychain, Git Credential Manager) keeps one token per account and host, as `gh`
   does for GitHub: `gitpersona auth login` saves it there (hidden input; never a file in clear text), and each
-  profile only names its account, so the right token answers. GitPersona keeps no copy.
+  profile only names its account, so the right token answers. GitPersona keeps no copy. Set the helper for the whole
+  host (or globally): Git uses a helper set for `https://<user>@host` only for remotes whose URL names that user.
 - **gh follows your directories too:** with the shell integration, running `gh` in a profile's directory uses that
   profile's account. GitPersona puts the account's token only into the environment of that one `gh` process; it is
   not printed or stored. It leaves `gh` alone when you set `GH_TOKEN`/`GITHUB_TOKEN`, use `GH_HOST` for another host,

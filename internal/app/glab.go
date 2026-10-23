@@ -79,6 +79,9 @@ func bareHost(v string) string {
 	if err != nil {
 		return ""
 	}
+	if u.Scheme == "https" {
+		return strings.TrimSuffix(u.Host, ":443") // the default port
+	}
 	return u.Host
 }
 

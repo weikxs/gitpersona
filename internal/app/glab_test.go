@@ -124,7 +124,7 @@ func TestGlabTakesTheSameHostWrittenAsAURL(t *testing.T) {
 }
 
 func TestBareHost(t *testing.T) {
-	for in, want := range map[string]string{"gitlab.com": "gitlab.com", "https://gitlab.com/": "gitlab.com", "http://git.demo.example:8080/api/v4": "git.demo.example:8080", "HTTPS://GitLab.com": "gitlab.com", "https://u@gitlab.com/": "gitlab.com"} {
+	for in, want := range map[string]string{"gitlab.com": "gitlab.com", "https://gitlab.com/": "gitlab.com", "http://git.demo.example:8080/api/v4": "git.demo.example:8080", "HTTPS://GitLab.com": "gitlab.com", "https://u@gitlab.com/": "gitlab.com", "https://gitlab.com:443": "gitlab.com", "http://gitlab.com:443": "gitlab.com:443"} {
 		if got := bareHost(in); got != want {
 			t.Errorf("bareHost(%q) = %q, want %q", in, got, want)
 		}
