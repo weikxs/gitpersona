@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/weikxs/gitpersona/internal/config"
+	"github.com/weikxs/gitpersona/internal/generate"
 	"github.com/weikxs/gitpersona/internal/paths"
 	"github.com/weikxs/gitpersona/internal/resolve"
 )
@@ -27,7 +28,10 @@ type WhoamiReport struct {
 	Path           string `json:"path"`
 	InRepository   bool   `json:"in_repository"`
 	EffectiveEmail string `json:"effective_email,omitempty"`
-	Consistent     bool   `json:"consistent"`
+	EffectiveName  string `json:"effective_name,omitempty"`
+	// EmailSource is the file Git reads user.email from here, with ~.
+	EmailSource string `json:"email_source,omitempty"`
+	Consistent  bool   `json:"consistent"`
 	// EnvOverride names an environment variable that sets the author email
 	// for commits made here, overriding every configuration file.
 	EnvOverride string `json:"env_override,omitempty"`
@@ -100,6 +104,8 @@ func (e Env) whoami(ctx context.Context, cfg config.Config) WhoamiReport {
 		report.Path = paths.ResolveSymlinks(root)
 		r = resolve.GitDir(cfg, paths.ResolveSymlinks(gitDir), opts)
 		report.EffectiveEmail, _ = e.git(ctx, root, "config", "user.email")
+		report.EffectiveName, _ = e.git(ctx, root, "config", "user.name")
+		report.EmailSource = e.emailSource(ctx, root)
 	} else {
 		report.Path = paths.ResolveSymlinks(e.WorkDir)
 		r = resolve.OutsideRepository(cfg)
@@ -132,10 +138,9 @@ func (e Env) whoami(ctx context.Context, cfg config.Config) WhoamiReport {
 	return report
 }
 
-// ownRule returns the file of the user's own includeIf rule that sets
-// user.email in the repository at root, or "" when the email comes from
-// anywhere else (GitPersona's files, the repository, the global settings).
-func (e Env) ownRule(ctx context.Context, cfg config.Config, root string) string {
+// emailOrigin returns the absolute path of the file Git reads user.email
+// from in the repository at root, or "".
+func (e Env) emailOrigin(ctx context.Context, root string) string {
 	out, err := e.git(ctx, root, "config", "--show-origin", "--get", "user.email")
 	origin, _, ok := strings.Cut(out, "\t")
 	file, isFile := strings.CutPrefix(origin, "file:")
@@ -144,6 +149,29 @@ func (e Env) ownRule(ctx context.Context, cfg config.Config, root string) string
 	}
 	if !filepath.IsAbs(file) {
 		file = filepath.Join(root, file)
+	}
+	return file
+}
+
+// emailSource is emailOrigin written with ~.
+func (e Env) emailSource(ctx context.Context, root string) string {
+	if file := e.emailOrigin(ctx, root); file != "" {
+		return e.display(file)
+	}
+	return ""
+}
+
+// ownRule returns the file of the user's own includeIf rule that sets
+// user.email in the repository at root, or "" when the email comes from
+// anywhere else (GitPersona's files, the repository, the global settings).
+func (e Env) ownRule(ctx context.Context, cfg config.Config, root string) string {
+	file := e.emailOrigin(ctx, root)
+	if file == "" {
+		return ""
+	}
+	// Under the user's own rule, GitPersona restores their global identity.
+	if paths.ResolveSymlinks(file) == paths.ResolveSymlinks(filepath.Join(e.ConfigDir, generate.BaseFile)) {
+		return e.display(file)
 	}
 	text, err := readOptional(e.resolvedUserGitConfig())
 	if err != nil {
@@ -165,6 +193,10 @@ func mismatchAdvice(r WhoamiReport) string {
 		return fmt.Sprintf("the environment variable %s overrides the profile; unset it (for example in your direnv or shell setup)", r.EnvOverride)
 	case r.LocalEmail != "":
 		return fmt.Sprintf("this repository sets user.email %q itself; remove it with `git config --local --unset user.email`", r.LocalEmail)
+	case strings.HasSuffix(r.EmailSource, "config.worktree"):
+		return fmt.Sprintf("this worktree sets user.email %q itself; remove it with `git config --worktree --unset user.email`", r.EffectiveEmail)
+	case r.EmailSource != "":
+		return fmt.Sprintf("Git currently uses %q from %s", r.EffectiveEmail, r.EmailSource)
 	default:
 		return fmt.Sprintf("Git currently uses %q; run `gitpersona doctor`", r.EffectiveEmail)
 	}
@@ -190,14 +222,22 @@ func printWhoami(e Env, r WhoamiReport) {
 
 func printProfile(e Env, r WhoamiReport) {
 	fmt.Fprintf(e.Stdout, "%s  (profile %s · %s on %s)\n", r.Account, r.Profile, r.Provider, r.Host)
-	fmt.Fprintf(e.Stdout, "  author  %s <%s>\n", r.Name, r.Email)
+	name, email := r.Name, r.Email
+	if r.InRepository && r.EffectiveEmail != "" {
+		name, email = r.EffectiveName, r.EffectiveEmail // what commits really use
+	}
+	fmt.Fprintf(e.Stdout, "  author  %s <%s>\n", name, email)
 	reason := resolve.Reason(r.Reason).Describe()
 	if r.Match != "" {
 		reason += " " + r.Match
 	}
 	fmt.Fprintf(e.Stdout, "  reason  %s\n", reason)
 	fmt.Fprintf(e.Stdout, "  path    %s\n", e.display(r.Path))
-	if r.OwnRule != "" {
+	switch {
+	case strings.HasSuffix(r.OwnRule, generate.BaseFile):
+		fmt.Fprintf(e.Stdout, "  note    Git uses %s here: your own global identity, which GitPersona keeps under your own includeIf rule\n",
+			r.EffectiveEmail)
+	case r.OwnRule != "":
 		fmt.Fprintf(e.Stdout, "  note    Git uses %s here, from your own includeIf rule (%s), which GitPersona keeps working\n",
 			r.EffectiveEmail, r.OwnRule)
 	}

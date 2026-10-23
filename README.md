@@ -104,7 +104,7 @@ Paths must be absolute or start with `~/`.
 | `gitpersona install-shell [--shell fish,zsh,bash]` | Add prompt display (and gh switching) to your shells; defaults to your login shell |
 | `gitpersona prompt [--format]` | Print the account Git uses here, for prompts (`{account}`, `{profile}`, `{host}`) |
 | `gitpersona rollback [<name>\|latest] [--yes]` | List backups, or restore one (the current state is backed up first) |
-| `gitpersona uninstall [--yes]` | Remove GitPersona from your Git configuration; keeps config.toml |
+| `gitpersona uninstall [--yes]` | Remove GitPersona from your Git configuration and put back the `includeIf` rules it took over; keeps config.toml |
 | `gitpersona setup [--yes] [--no-shell] [--keep-old-rules] [--no-default] [--print \| --web]` | Set GitPersona up from what you already have in one step (accounts, existing identities, repositories, SSH aliases, shell); asks before writing unless `--yes`; `--web` shows it in the browser, where you can also adjust it step by step |
 | `gitpersona ui [--no-open]` | Open the configuration page in your browser: profiles, directories, pins, a diff preview before applying, health checks, shells and backups. It listens only on 127.0.0.1, the link works once, and it stops after 15 minutes without use |
 | `gitpersona help <command>` | Show the flags of a command |
@@ -116,12 +116,14 @@ Prompt and plugin-manager setups (tide, Powerlevel10k, Starship, fisher, oh-my-z
 - **Precedence:** a pin, then the most specific directory rule, then `default`. Git applies the rules by the
   location of the repository's `.git` directory, so a **worktree follows its main repository**. Outside any
   repository only `default` applies; `whoami` also tells you which profile new clones will get.
-- **Your own `includeIf` rules keep working:** GitPersona includes them again among its rules in the same order of
-  specificity, so in their folders they still win over a less specific rule and over `default` (`whoami` says when
-  one sets the author). A more specific GitPersona rule or a pin wins inside them, and giving exactly their folder to
-  a profile with another identity replaces them. `setup` and `doctor --fix` remove the rules a profile fully takes
-  over. Only rules written in your global Git configuration itself are included again, and not those whose files set
-  settings Git collects as lists (`doctor` lists them). After editing those rules by hand, run `gitpersona apply`.
+- **Your own `includeIf` rules keep working:** GitPersona includes them again in your order, with its directory rules
+  placed between them by how specific they are; in each folder your rules cover it first restores your own global
+  settings, so the folder works as before (rules that only refine, such as `onbranch`, build on the profile). In their folders they still win
+  over a less specific rule and over `default` (`whoami` says when one sets the author); a more specific GitPersona
+  rule or a pin wins inside them, and giving exactly their folder to a profile with another identity replaces them.
+  Rules whose files set settings Git collects as lists (credential helpers, extra HTTP headers, URL rewrites) cannot
+  be included twice; `doctor` lists them. `setup` and `doctor --fix` remove the rules a profile fully takes over,
+  and `uninstall` puts them back. After editing your rules by hand, run `gitpersona apply`.
 - **Credentials:** for GitHub profiles, GitPersona is the only credential helper for that host and borrows the
   token `gh` already holds, so no other helper stores a copy. If an account is not signed in to `gh`, Git asks
   for a password; `gitpersona doctor` tells you which account to sign in.

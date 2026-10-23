@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/weikxs/gitpersona/internal/config"
 	"github.com/weikxs/gitpersona/internal/discover"
 )
 
@@ -17,7 +18,10 @@ import (
 // are the directories whose rules could go once a profile takes it over.
 type LeftOut struct {
 	discover.Identity
-	AccountFrom string   `json:"account_from,omitempty"`
+	AccountFrom string `json:"account_from,omitempty"`
+	// Overridden says why GitPersona cannot keep the rule working, in which
+	// case AccountFrom's profile replaces it there; "" when it keeps working.
+	Overridden  string   `json:"overridden,omitempty"`
 	Replaceable []string `json:"replaceable"`
 }
 
@@ -157,6 +161,16 @@ func setupOwners(profiles []SetupProfile) []ruleOwner {
 // An identity without a name is shown with globalName, which it commits with.
 func (e Env) leftOut(ctx context.Context, ids []discover.Identity, used []bool, owners []ruleOwner, defaultID, globalName string) []LeftOut {
 	rules := discover.IdentityRules(ctx, e.Home, e.resolvedUserGitConfig(), e.Run)
+	text, _ := readOptional(e.resolvedUserGitConfig())
+	_, skipped := e.userRules(ctx, config.Config{}, text)
+	why := map[string]string{} // directory -> why its rule is not kept working
+	for _, r := range rules {
+		for _, k := range skipped {
+			if k.Condition == r.Condition {
+				why[r.Dir] = k.Why
+			}
+		}
+	}
 	out := []LeftOut{}
 	for i, id := range ids {
 		if used[i] {
@@ -169,6 +183,9 @@ func (e Env) leftOut(ctx context.Context, ids []discover.Identity, used []bool, 
 		for _, d := range id.Dirs {
 			if by, ok := e.overriddenBy(d, owners, defaultID); ok && l.AccountFrom == "" {
 				l.AccountFrom = by.id
+			}
+			if why[d] != "" {
+				l.Overridden = why[d]
 			}
 		}
 		for _, r := range rules {

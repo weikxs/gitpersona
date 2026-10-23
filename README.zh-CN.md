@@ -98,7 +98,7 @@ Git、`gh`、`glab` 都假定只有一个全局的"当前账户"，于是很容�
 | `gitpersona install-shell [--shell fish,zsh,bash]` | 为 shell 加上提示符显示（以及 gh 切换）；默认只装你的登录 shell |
 | `gitpersona prompt [--format]` | 输出这里 Git 使用的账户，供提示符使用（`{account}`、`{profile}`、`{host}`） |
 | `gitpersona rollback [<名称>\|latest] [--yes]` | 列出备份，或恢复某个备份（恢复前会先备份当前状态） |
-| `gitpersona uninstall [--yes]` | 从 Git 配置中移除 GitPersona；保留 config.toml |
+| `gitpersona uninstall [--yes]` | 从 Git 配置中移除 GitPersona，并放回它接管过的 `includeIf` 规则；保留 config.toml |
 | `gitpersona setup [--yes] [--no-shell] [--keep-old-rules] [--no-default] [--print \| --web]` | 根据现有配置一步完成设置（账户、已有身份、仓库、SSH 别名、Shell）；写入前询问，`--yes` 不询问；`--web` 在浏览器中展示，也可以逐步调整 |
 | `gitpersona ui [--no-open]` | 在浏览器中打开配置页面：身份、目录、Pin、应用前的差异预览、体检、shell 和备份。只监听 127.0.0.1，链接只能用一次，15 分钟无操作自动退出 |
 | `gitpersona help <命令>` | 查看某个命令的参数 |
@@ -108,7 +108,7 @@ Git、`gh`、`glab` 都假定只有一个全局的"当前账户"，于是很容�
 ## 行为说明
 
 - **优先级：** Pin → 最具体的目录规则 → `default`。Git 按仓库 `.git` 目录的位置应用规则，所以 **worktree 跟随它的主仓库**。在任何仓库之外只有 `default` 生效；`whoami` 还会告诉你在这里新克隆的仓库会用哪个身份。
-- **你自己的 `includeIf` 规则继续有效：** GitPersona 会按同样的具体程度把它们重新排进自己的规则里，所以在它们的目录中，它们仍然优先于更宽泛的规则和 `default`（`whoami` 会说明作者来自你的规则）。在这些目录内部，更具体的 GitPersona 规则或 Pin 优先；把同一个目录分给身份不同的配置文件时，以配置文件为准。`setup` 和 `doctor --fix` 会删除被配置文件完全接管的规则。只有直接写在全局 Git 配置文件里的规则会被重新纳入；如果规则的文件设置了 Git 按列表累加的项（如凭据助手、额外 HTTP 头），不会重复纳入，`doctor` 会列出这些规则。手动修改这些规则后，请运行 `gitpersona apply`。
+- **你自己的 `includeIf` 规则继续有效：** GitPersona 会按你原来的顺序把它们重新纳入，它自己的目录规则按具体程度插在它们之间；在你的规则覆盖的每个目录里，会先恢复你自己的全局设置，让该目录和以前一样（`onbranch` 这类只做补充的规则则在配置文件的基础上生效）。在它们的目录中，它们仍然优先于更宽泛的规则和 `default`（`whoami` 会说明作者来自你的规则）；在这些目录内部，更具体的 GitPersona 规则或 Pin 优先；把同一个目录分给身份不同的配置文件时，以配置文件为准。规则的文件如果设置了 Git 按列表累加的项（凭据助手、额外 HTTP 头、URL 改写），无法重复纳入，`doctor` 会列出。`setup` 和 `doctor --fix` 会删除被配置文件完全接管的规则，`uninstall` 会放回。手动修改规则后，请运行 `gitpersona apply`。
 - **凭据：** 对 GitHub 身份，GitPersona 是该主机唯一的凭据助手，借用 `gh` 已保存的令牌，因此不会有其他助手另存一份。如果某个账户没有在 `gh` 登录，Git 会要求输入密码；`gitpersona doctor` 会告诉你该登录哪个账户。
 - **gh 也跟着目录走：** 装上 shell 集成后，在某个身份的目录里运行 `gh`，就会使用该身份的账户。GitPersona 只把该账户的令牌放进那一次 `gh` 进程的环境变量，不输出、不保存。当你自己设置了 `GH_TOKEN`/`GITHUB_TOKEN`、用 `GH_HOST` 指向其他主机，或没有 GitHub 身份适用时，不做任何改动。
 - **Shell：** 默认 shell 从系统用户记录读取（而不是 `$SHELL`，终端、IDE 和各种工具经常会改它），当前正在用的 shell 从进程关系识别，已安装的 shell 从 `/etc/shells` 读取。fish 使用 `conf.d` 下的独立文件；zsh 使用 `~/.zshenv`；bash 使用 `~/.bashrc`。tide 中添加 `gitpersona` 显示项；Powerlevel10k 中添加 `gitpersona` 段；其他提示符调用 `gitpersona_prompt`。

@@ -118,7 +118,11 @@ func identityRules(ctx context.Context, home, gitconfig string, run provider.Run
 		if dir == "" || dir == "~" {
 			continue // a rule for the whole home is a default, not a directory rule
 		}
-		id, keep := readIdentity(ctx, expandHome(p.path, home), global, run)
+		file := expandHome(p.path, home)
+		if realPath(file) == realPath(gitconfig) {
+			continue // a rule that includes the global configuration itself sets no identity of its own
+		}
+		id, keep := readIdentity(ctx, file, global, run)
 		if id.Email == "" {
 			continue
 		}

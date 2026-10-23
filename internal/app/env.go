@@ -148,20 +148,27 @@ func (e Env) git(ctx context.Context, dir string, args ...string) (string, error
 const gitConfigMissing = 1
 
 // gitConfigAll returns every value of a global Git setting, or nil when the
-// setting is absent. Any other failure (for example a broken configuration
-// file) is an error, so callers never act on a silently empty answer.
+// setting is absent: the user's own, from the global files and the files
+// they include (such as dotfiles), never from GitPersona's. Any other
+// failure (for example a broken configuration file) is an error, so callers
+// never act on a silently empty answer.
 func (e Env) gitConfigAll(ctx context.Context, key string) ([]string, error) {
-	out, err := e.git(ctx, e.Home, "config", "--global", "--get-all", key)
-	var exit *exec.ExitError
-	switch {
-	case errors.As(err, &exit) && exit.ExitCode() == gitConfigMissing:
-		return nil, nil
-	case err != nil:
-		return nil, fmt.Errorf("read global Git setting %s: %w (run `git config --global --list` to see the problem)", key, err)
-	case out == "":
-		return nil, nil
+	var values []string
+	for _, file := range e.globalFiles() {
+		if _, err := os.Stat(file); err != nil {
+			continue
+		}
+		out, err := e.git(ctx, e.Home, "config", "--file", file, "--get-all", key)
+		var exit *exec.ExitError
+		switch {
+		case errors.As(err, &exit) && exit.ExitCode() == gitConfigMissing:
+		case err != nil:
+			return nil, fmt.Errorf("read global Git setting %s from %s: %w", key, e.display(file), err)
+		case out != "":
+			values = append(values, strings.Split(out, "\n")...)
+		}
 	}
-	return strings.Split(out, "\n"), nil
+	return values, nil
 }
 
 // repoRoot returns the top-level directory of the repository containing dir.

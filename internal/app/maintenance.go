@@ -104,6 +104,11 @@ func (e Env) entryNames(m backup.Manifest) []string {
 // Uninstall removes the GitPersona block from the global Git configuration
 // and deletes the generated files. config.toml and the backups are kept.
 func Uninstall(_ context.Context, e Env, yes bool) error {
+	current, err := readOptional(e.resolvedUserGitConfig())
+	if err != nil {
+		return err
+	}
+	restored := e.removedRules(current)
 	changes, err := e.planUninstall()
 	if err != nil {
 		return err
@@ -117,6 +122,9 @@ func Uninstall(_ context.Context, e Env, yes bool) error {
 	}
 	if err := e.applyChanges(changes, ApplyOptions{Yes: true, Command: "uninstall"}); err != nil {
 		return err
+	}
+	for _, r := range restored {
+		fmt.Fprintf(e.Stdout, "Put back your includeIf rule %q, which GitPersona had taken over.\n", r.condition)
 	}
 	_ = os.Remove(filepath.Join(e.ConfigDir, "profiles")) // only succeeds when empty
 	_ = os.Remove(e.shimDir())
@@ -143,6 +151,7 @@ func (e Env) planUninstall() ([]change, error) {
 		if info, err := os.Stat(gitconfig); err == nil {
 			perm = info.Mode().Perm()
 		}
+		without = withRules(without, e.removedRules(without))
 		// A file that only held the GitPersona block was created by it.
 		changes = append(changes, change{path: gitconfig, content: without, perm: perm, remove: strings.TrimSpace(without) == ""})
 	}
@@ -150,11 +159,84 @@ func (e Env) planUninstall() ([]change, error) {
 		changes = append(changes, change{path: e.ghEntry(), remove: true})
 	}
 	generated, _ := filepath.Glob(filepath.Join(e.ConfigDir, "profiles", "*.gitconfig"))
-	generated = append(generated, filepath.Join(e.ConfigDir, generate.RulesFile))
+	generated = append(generated, filepath.Join(e.ConfigDir, generate.RulesFile), filepath.Join(e.ConfigDir, generate.BaseFile))
 	for _, path := range generated {
 		if _, err := os.Stat(path); err == nil {
 			changes = append(changes, change{path: path, remove: true})
 		}
 	}
 	return changes, nil
+}
+
+// ruleSection is an includeIf section of a Git configuration: its condition
+// and its text (the header and its settings).
+type ruleSection struct {
+	condition, text string
+}
+
+// removedRules returns the includeIf sections that setup or `doctor --fix`
+// removed from the global Git configuration (as their backups record) and
+// that current does not have, newest first.
+func (e Env) removedRules(current string) []ruleSection {
+	infos, err := backup.List(e.backupDir())
+	if err != nil {
+		return nil
+	}
+	have := map[string]bool{}
+	for _, s := range includeIfSections(current) {
+		have[s.condition] = true
+	}
+	var out []ruleSection
+	for _, info := range infos {
+		data, err := os.ReadFile(filepath.Join(info.Dir, removedRulesFile))
+		if err != nil {
+			continue
+		}
+		for _, s := range includeIfSections(string(data)) {
+			if !have[s.condition] {
+				have[s.condition] = true
+				out = append(out, s)
+			}
+		}
+	}
+	return out
+}
+
+// includeIfSections returns the includeIf sections of a Git configuration,
+// each with its header and settings (not the comments around them), keeping
+// each line's own ending.
+func includeIfSections(text string) []ruleSection {
+	var out []ruleSection
+	inside := false
+	for _, line := range strings.SplitAfter(text, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "[") {
+			m := includeIfHeader.FindStringSubmatch(trimmed)
+			inside = m != nil
+			if inside {
+				out = append(out, ruleSection{condition: unescapeSubsection(m[1])})
+			}
+		}
+		if inside && trimmed != "" && !strings.HasPrefix(trimmed, "#") && !strings.HasPrefix(trimmed, ";") {
+			if !strings.HasSuffix(line, "\n") {
+				line += "\n"
+			}
+			out[len(out)-1].text += line
+		}
+	}
+	return out
+}
+
+// withRules appends sections to a Git configuration's text.
+func withRules(text string, sections []ruleSection) string {
+	if len(sections) == 0 {
+		return text
+	}
+	if text != "" && !strings.HasSuffix(text, "\n") {
+		text += "\n"
+	}
+	for _, s := range sections {
+		text += s.text
+	}
+	return text
 }

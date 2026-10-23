@@ -92,8 +92,11 @@ export function leftOutChoices(get, set, redraw) {
       "Choose an account to make one a profile:"),
     h("ul", {}, wizard.unmatched.map((u, k) => h("li", {},
       `${u.name || "(no name)"} <${u.email}> · ${u.dirs.join(", ")} (${u.source})`,
-      h("p", {}, "Your rule keeps applying there.",
-        u.account_from ? ` What it does not set, such as the account for pushes, comes from profile ${u.account_from}.` : ""),
+      u.overridden
+        ? h("p", {}, `GitPersona cannot keep your rule working, because ${u.overridden}, so ` +
+          (u.account_from ? `profile ${u.account_from} replaces it there.` : "Git's own settings apply there."))
+        : h("p", {}, "Your rule keeps applying there.",
+          u.account_from ? ` What it does not set, such as the account for pushes, comes from profile ${u.account_from}.` : ""),
       chosen.length === 0 ? h("p", {}, "Every chosen profile already uses an identity of your setup.")
         : accountSelect(u, chosen, (i) => {
           set(adoptIdentity(get(), k, i));

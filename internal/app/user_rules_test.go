@@ -27,7 +27,8 @@ func TestUserRulesAreReadSoTheyCanBeIncludedFromElsewhere(t *testing.T) {
 	home := w.home
 	want := []generate.UserRule{
 		{Condition: "gitdir:~/oss/", Path: filepath.Join(home, ".gitconfig-oss"), Dir: filepath.Join(home, "oss")},
-		{Condition: "gitdir:" + home + "/rel/**", Path: "/srv/a b/x", Dir: filepath.Join(home, "rel")},
+		// Git resolves ./ against the real directory of the file.
+		{Condition: "gitdir:" + paths.ResolveSymlinks(home) + "/rel/**", Path: "/srv/a b/x", Dir: filepath.Join(paths.ResolveSymlinks(home), "rel")},
 		{Condition: "onbranch:release/**", Path: "~/.gitconfig-release"},
 		{Condition: "gitdir:~/single/repo/.git", Path: "~/.gitconfig-single"},
 	}
@@ -229,5 +230,234 @@ func TestWhoamiDoesNotTakeARepositorysOwnSettingForTheUsersRule(t *testing.T) {
 
 	if err == nil || strings.Contains(out.String(), "your own includeIf rule") {
 		t.Errorf("a worktree setting is not the user's rule: err = %v\n%s", err, out.String())
+	}
+}
+
+func TestRulesInIncludedFilesAndTheXDGConfigAreIncludedToo(t *testing.T) {
+	w := newWorld(t)
+	mustWrite(t, filepath.Join(w.home, ".config", "git", "config"), "[includeIf \"gitdir:~/xdg/\"]\n\tpath = ~/.gc-xdg\n", 0o600)
+	mustWrite(t, filepath.Join(w.home, "dotfiles", "rules"), "[includeIf \"gitdir:~/inc/\"]\n\tpath = inc.gitconfig\n", 0o600)
+	env, _ := w.env(t, w.home)
+
+	got, _ := env.userRules(context.Background(), config.Config{},
+		"[include]\n\tpath = dotfiles/rules\n[include]\n\tpath = ~/.config/gitpersona/rules.gitconfig\n")
+
+	if len(got) != 2 || got[0].Condition != "gitdir:~/xdg/" || got[1].Condition != "gitdir:~/inc/" ||
+		got[1].Path != filepath.Join(w.home, "dotfiles", "inc.gitconfig") {
+		t.Errorf("userRules() = %+v; want ~/.config/git/config's rule first, then the included file's", got)
+	}
+}
+
+func TestUseAddsARuleWhereTheUsersOwnRuleWouldOtherwiseDecide(t *testing.T) {
+	w := newWorld(t)
+	mustWrite(t, filepath.Join(w.home, ".gitconfig"), "[includeIf \"gitdir:~/Projects/acme/xy/\"]\n\tpath = ~/.gitconfig-xy\n", 0o600)
+	mustWrite(t, filepath.Join(w.home, ".gitconfig-xy"), "[user]\n\temail = xy@demo.example\n", 0o600)
+	repo := filepath.Join(w.home, "Projects", "acme", "xy", "z")
+	runGit(t, w.home, "init", "-q", repo)
+	env, _ := w.env(t, repo)
+	if err := Apply(context.Background(), env, ApplyOptions{}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := Use(context.Background(), env, "acme"); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := runGit(t, repo, "config", "user.email"); got != "1000002+acme-alex@users.noreply.github.com" {
+		t.Errorf("after `use acme` the repository commits as %q", got)
+	}
+}
+
+func TestUninstallPutsBackTheRulesSetupTookOver(t *testing.T) {
+	w := newWorld(t)
+	withoutConfig(t, w) // ~/.gitconfig has octo-alex's rule for ~/Projects/personal
+	env, out := w.env(t, w.home)
+	before := runGit(t, w.repos["blog"], "config", "user.email")
+	if err := Setup(context.Background(), env, SetupOptions{Yes: true, NoShell: true}); err != nil {
+		t.Fatal(err)
+	}
+	if got := readFile(t, filepath.Join(w.home, ".gitconfig")); strings.Contains(got, "gitdir:~/Projects/personal/") {
+		t.Fatalf("setup should have taken the rule over:\n%s", got)
+	}
+
+	if err := Uninstall(context.Background(), env, true); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := readFile(t, filepath.Join(w.home, ".gitconfig")); !strings.Contains(got, "[includeIf \"gitdir:~/Projects/personal/\"]") {
+		t.Errorf("uninstall should put the rule back:\n%s", got)
+	}
+	if got := runGit(t, w.repos["blog"], "config", "user.email"); got != before {
+		t.Errorf("after uninstall ~/Projects/personal commits as %q, want %q as before setup", got, before)
+	}
+	if !strings.Contains(out.String(), `Put back your includeIf rule "gitdir:~/Projects/personal/"`) {
+		t.Errorf("uninstall should say what it put back:\n%s", out.String())
+	}
+}
+
+func TestAKeptRuleInAFolderOfASigningProfileWorksAsBefore(t *testing.T) {
+	w := newWorld(t)
+	withoutConfig(t, w)
+	mustWrite(t, filepath.Join(w.home, ".ssh", "sig.pub"), "PUBLIC KEY PLACEHOLDER\n", 0o600)
+	mustWrite(t, filepath.Join(w.home, ".gitconfig"), "[user]\n\tname = Global Demo\n\temail = global@demo.example\n"+
+		"[includeIf \"gitdir:~/sig/\"]\n\tpath = ~/.gc-sig\n[includeIf \"gitdir:~/x509/\"]\n\tpath = ~/.gc-x509\n", 0o600)
+	mustWrite(t, filepath.Join(w.home, ".gc-sig"), "[user]\n\tname = Alex Octo\n\temail = alex.personal@example.com\n"+
+		"\tsigningkey = ~/.ssh/sig.pub\n[gpg]\n\tformat = ssh\n[commit]\n\tgpgsign = true\n"+
+		"[credential \"https://github.com\"]\n\tusername = octo-alex\n", 0o600)
+	// The same identity, signing with x509 only when asked.
+	mustWrite(t, filepath.Join(w.home, ".gc-x509"), "[user]\n\tname = Alex Octo\n\temail = alex.personal@example.com\n"+
+		"\tsigningkey = 0xDEADBEEF\n[gpg]\n\tformat = x509\n", 0o600)
+	repo := filepath.Join(w.home, "x509", "r")
+	runGit(t, w.home, "init", "-q", repo)
+	env, _ := w.env(t, w.home)
+	before := map[string]string{}
+	for _, key := range []string{"gpg.format", "user.signingkey", "commit.gpgsign"} {
+		before[key] = runGit(t, repo, "config", key)
+	}
+
+	if err := Setup(context.Background(), env, SetupOptions{Yes: true, NoShell: true}); err != nil {
+		t.Fatal(err)
+	}
+
+	for key, want := range before {
+		got := runGit(t, repo, "config", key)
+		if key == "commit.gpgsign" && want == "" {
+			want = "false" // unset before; GitPersona writes Git's default
+		}
+		if got != want {
+			t.Errorf("in ~/x509 %s = %q after setup, want %q as before", key, got, want)
+		}
+	}
+}
+
+func TestSetupSaysWhenItCannotKeepARuleWorking(t *testing.T) {
+	w := newWorld(t)
+	withoutConfig(t, w)
+	mustWrite(t, filepath.Join(w.home, ".gitconfig"), "[user]\n\tname = Global Demo\n\temail = global@demo.example\n"+
+		"[includeIf \"gitdir:~/hdr/\"]\n\tpath = ~/.gc-hdr\n", 0o600)
+	mustWrite(t, filepath.Join(w.home, ".gc-hdr"), "[user]\n\temail = hdr@demo.example\n[http]\n\textraHeader = X-Demo: 1\n", 0o600)
+	env, _ := w.env(t, w.home)
+	out := &strings.Builder{}
+	env.Stdout = out
+
+	if err := Setup(context.Background(), env, SetupOptions{Print: false, Yes: true, NoShell: true}); err != nil {
+		t.Fatal(err)
+	}
+
+	if !strings.Contains(out.String(), "Replaced: Global Demo <hdr@demo.example> for ~/hdr") ||
+		!strings.Contains(out.String(), "it sets http.extraheader, which would be added twice, so commits there will use profile") {
+		t.Errorf("setup must not claim the rule keeps working:\n%s", out.String())
+	}
+}
+
+func TestYourOwnRulesKeepTheirOrder(t *testing.T) {
+	w := newWorld(t)
+	mustWrite(t, filepath.Join(w.home, ".gitconfig"), "[includeIf \"onbranch:main\"]\n\tpath = ~/.gc-main\n"+
+		"[includeIf \"gitdir:~/oss/\"]\n\tpath = ~/.gc-oss\n", 0o600)
+	mustWrite(t, filepath.Join(w.home, ".gc-main"), "[user]\n\temail = main@demo.example\n", 0o600)
+	mustWrite(t, filepath.Join(w.home, ".gc-oss"), "[user]\n\temail = oss@demo.example\n", 0o600)
+	repo := filepath.Join(w.home, "oss", "r")
+	runGit(t, w.home, "init", "-q", "-b", "main", repo)
+	before := runGit(t, repo, "config", "user.email")
+	env, _ := w.env(t, w.home)
+
+	if err := Apply(context.Background(), env, ApplyOptions{}); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := runGit(t, repo, "config", "user.email"); before != "oss@demo.example" || got != before {
+		t.Errorf("on main in ~/oss: %q before, %q after; ~/oss comes later in your file, so it wins", before, got)
+	}
+}
+
+func TestARuleThatOnlyRefinesKeepsTheProfilesIdentity(t *testing.T) {
+	w := newWorld(t)
+	mustWrite(t, filepath.Join(w.home, ".gitconfig"), "[user]\n\tname = Global Demo\n\temail = global@demo.example\n"+
+		"[includeIf \"onbranch:main\"]\n\tpath = ~/.gc-main\n", 0o600)
+	mustWrite(t, filepath.Join(w.home, ".gc-main"), "[pull]\n\trebase = true\n", 0o600)
+	repo := w.repos["billing"]
+	runGit(t, repo, "checkout", "-q", "-B", "main")
+	env, _ := w.env(t, w.home)
+	if err := Apply(context.Background(), env, ApplyOptions{}); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := runGit(t, repo, "config", "user.email"); got != "1000002+acme-alex@users.noreply.github.com" {
+		t.Errorf("on main, acme's repository commits as %q; a rule setting only pull.rebase must not bring back the global identity", got)
+	}
+	if got := runGit(t, repo, "config", "pull.rebase"); got != "true" {
+		t.Errorf("the branch rule should still apply: pull.rebase = %q", got)
+	}
+}
+
+func TestAnInnerRuleBuildsOnItsEnclosingRuleAsBefore(t *testing.T) {
+	w := newWorld(t)
+	mustWrite(t, filepath.Join(w.home, ".gitconfig"), "[user]\n\tname = Global Demo\n\temail = global@demo.example\n"+
+		"[includeIf \"gitdir:~/w/team/\"]\n\tpath = ~/.gc-team\n[includeIf \"gitdir:~/w/\"]\n\tpath = ~/.gc-w\n", 0o600)
+	mustWrite(t, filepath.Join(w.home, ".gc-w"), "[user]\n\temail = w@demo.example\n", 0o600)
+	mustWrite(t, filepath.Join(w.home, ".gc-team"), "[core]\n\tsshCommand = ssh -p 2222\n", 0o600)
+	repo := filepath.Join(w.home, "w", "team", "r")
+	runGit(t, w.home, "init", "-q", repo)
+	before := runGit(t, repo, "config", "user.email") + " " + runGit(t, repo, "config", "core.sshCommand")
+	env, _ := w.env(t, w.home)
+
+	if err := Apply(context.Background(), env, ApplyOptions{}); err != nil {
+		t.Fatal(err)
+	}
+
+	if after := runGit(t, repo, "config", "user.email") + " " + runGit(t, repo, "config", "core.sshCommand"); after != before {
+		t.Errorf("in ~/w/team: %q before, %q after", before, after)
+	}
+}
+
+func TestTheGlobalIdentityIsReadFromDotfilesToo(t *testing.T) {
+	w := newWorld(t)
+	t.Setenv("HOME", w.home)
+	mustWrite(t, filepath.Join(w.home, "dot", "identity"), "[user]\n\tname = Dot Demo\n\temail = dot@demo.example\n", 0o600)
+	mustWrite(t, filepath.Join(w.home, ".gitconfig"), "[include]\n\tpath = dot/identity\n"+
+		"[includeIf \"gitdir:~/side/\"]\n\tpath = ~/.gc-side\n", 0o600)
+	mustWrite(t, filepath.Join(w.home, ".gc-side"), "[core]\n\tautocrlf = input\n", 0o600)
+	repo := filepath.Join(w.home, "side", "r")
+	runGit(t, w.home, "init", "-q", repo)
+	env, out := w.env(t, repo)
+	if err := Apply(context.Background(), env, ApplyOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	out.Reset()
+
+	if got := runGit(t, repo, "config", "user.email"); got != "dot@demo.example" {
+		t.Errorf("under your own rule the identity is your global one from the dotfile, got %q", got)
+	}
+	if err := WhoamiWith(context.Background(), env, WhoamiOptions{Check: true}); err != nil ||
+		!strings.Contains(out.String(), "your own global identity, which GitPersona keeps under your own includeIf rule") {
+		t.Errorf("whoami --check under your rule: %v\n%s", err, out.String())
+	}
+}
+
+func TestUninstallPutsBackOnlyWhatGitPersonaRemoved(t *testing.T) {
+	w := newWorld(t)
+	withoutConfig(t, w)
+	gitconfig := filepath.Join(w.home, ".gitconfig")
+	// A rule the user deletes by hand before setup must stay deleted.
+	mustWrite(t, gitconfig, readFile(t, gitconfig)+"[includeIf \"gitdir:~/gone/\"]\r\n\tpath = ~/.gc-gone\r\n", 0o600)
+	env, _ := w.env(t, w.home)
+	if err := Apply(context.Background(), env, ApplyOptions{}); err != nil && !strings.Contains(err.Error(), "configuration") {
+		t.Fatal(err)
+	}
+	mustWrite(t, gitconfig, strings.Replace(readFile(t, gitconfig), "[includeIf \"gitdir:~/gone/\"]\r\n\tpath = ~/.gc-gone\r\n", "", 1), 0o600)
+	if err := Setup(context.Background(), env, SetupOptions{Yes: true, NoShell: true}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := Uninstall(context.Background(), env, true); err != nil {
+		t.Fatal(err)
+	}
+
+	got := readFile(t, gitconfig)
+	if strings.Contains(got, "gitdir:~/gone/") {
+		t.Errorf("a rule the user deleted came back:\n%s", got)
+	}
+	if !strings.Contains(got, "gitdir:~/Projects/personal/") {
+		t.Errorf("the rule setup took over should be back:\n%s", got)
 	}
 }

@@ -62,14 +62,16 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 - `signing = { method = "none" }` now also makes `git commit -S` refuse, instead of signing with a key from your
   global settings or another profile.
-- Your own `includeIf` rules in your global Git configuration keep working in their folders: GitPersona includes them
-  again among its rules, ordered by how specific they are, instead of overriding them with `default` or a less
-  specific rule. Rules setup cannot turn into a profile (an identity no account is tied to, x509 signing, a key used
-  only for tags, extra `ssh` options, `onbranch`, a chain of includes inside the rule's file, single repositories)
-  therefore keep their effect. A rule whose files set settings Git collects as lists (credential helpers, extra HTTP
-  headers, remotes) is not included twice, and `doctor` says that GitPersona's rules override it; so are rules in
-  files your global configuration includes, or in `~/.config/git/config`, which GitPersona does not read yet.
-  `whoami` says when your own rule sets the author.
+- Your own `includeIf` rules (in `~/.config/git/config`, your global configuration and the files it includes) keep
+  working in their folders: GitPersona includes them again in your order, placing its own directory rules between
+  them by how specific they are, and restores your own global settings (identity, signing, SSH command, where a
+  profile changes them) at the start of each folder your rules cover, so the folder works as it did before setup.
+  Rules that only refine (`onbranch`, `hasconfig`) build on the profile around them. Rules setup cannot turn into a profile (an identity no account is tied to, x509 signing, a key used
+  only for tags, extra `ssh` options, `onbranch`, include chains, single repositories) therefore keep their effect;
+  only the account for pushes comes from the profile around them. A rule whose files set settings Git collects as
+  lists (credential helpers, extra HTTP headers, URL rewrites, remotes) is not included twice: setup and `doctor` say
+  that a profile replaces it there, and with which identity. `whoami` shows the author Git really uses and says when
+  your own rule sets it. `uninstall` puts back the rules setup or `doctor --fix` took over.
 - A configuration whose GPG signing key is a file is refused (it made every commit fail); use `method = "ssh"`.
 
 ### Fixed

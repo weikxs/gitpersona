@@ -102,13 +102,20 @@ func (e Env) checkOldRules(ctx context.Context, cfg config.Config) []check {
 	var replaced []string
 	text, _ := readOptional(e.resolvedUserGitConfig())
 	included, skipped := e.userRules(ctx, cfg, text)
+	rules := discover.IdentityRules(ctx, e.Home, e.GlobalGitConfigPath(), e.Run)
+	identities := map[string]discover.Rule{}
+	for _, r := range rules {
+		identities[r.Condition] = r
+	}
+	// Until apply runs, GitPersona's files do not include a rule added by hand.
+	pending := ""
+	if changes, err := planApply(ctx, e); err == nil && len(changes) > 0 {
+		pending = " once you run `gitpersona apply`"
+	}
 	overridden := map[string]bool{}
 	for _, k := range skipped {
 		overridden[k.Condition] = true
-		checks = append(checks, check{warn: true,
-			label: fmt.Sprintf("GitPersona's rules override your includeIf rule %q: %s", k.Condition, k.Why),
-			advice: "GitPersona cannot include it again after its own rules; move those settings out of the rule's file, " +
-				"or give its folder to a profile"})
+		checks = append(checks, e.skippedRuleCheck(k, identities[k.Condition], owners, cfg.Default))
 	}
 	for _, u := range included {
 		if u.Yield {
@@ -118,7 +125,7 @@ func (e Env) checkOldRules(ctx context.Context, cfg config.Config) []check {
 				advice: "remove the rule from " + e.display(e.GlobalGitConfigPath()) + " if you no longer need it"})
 		}
 	}
-	for _, r := range discover.IdentityRules(ctx, e.Home, e.GlobalGitConfigPath(), e.Run) {
+	for _, r := range rules {
 		switch {
 		case overridden[r.Condition]:
 		case e.takenOver(r, owners) && r.Keep == "":
@@ -126,8 +133,8 @@ func (e Env) checkOldRules(ctx context.Context, cfg config.Config) []check {
 		case e.takenOver(r, owners):
 			checks = append(checks, check{ok: true, label: fmt.Sprintf("your includeIf rule for %s stays: %s", r.Dir, r.Keep)})
 		default:
-			checks = append(checks, check{ok: true, label: fmt.Sprintf("your includeIf rule for %s keeps applying there (%s)",
-				r.Dir, author(r.Name, r.Email))})
+			checks = append(checks, check{ok: true, label: fmt.Sprintf("your includeIf rule for %s keeps applying there%s (%s)",
+				r.Dir, pending, author(r.Name, r.Email))})
 		}
 	}
 	if len(replaced) > 0 {
@@ -138,6 +145,35 @@ func (e Env) checkOldRules(ctx context.Context, cfg config.Config) []check {
 			fix:    RemoveOldRules, fixKey: FixOldRules})
 	}
 	return checks
+}
+
+// skippedRuleCheck warns about a rule GitPersona cannot include again: its
+// rules override it there, and when it sets an identity, says which one
+// commits use instead.
+func (e Env) skippedRuleCheck(k skippedRule, id discover.Rule, owners []ruleOwner, defaultID string) check {
+	c := check{warn: true,
+		label: fmt.Sprintf("GitPersona's rules override your includeIf rule %q: %s", k.Condition, k.Why),
+		advice: "GitPersona cannot include it again after its own rules; move those settings out of the rule's file, " +
+			"or give its folder to a profile"}
+	if id.Email == "" {
+		return c
+	}
+	if by, ok := e.overriddenBy(id.Dir, owners, defaultID); ok && !by.sameIdentity(id.Email, id.Name) {
+		c.label += fmt.Sprintf(", so commits in %s use %s instead of %s", id.Dir, author(by.name, by.email), author(id.Name, id.Email))
+	}
+	if coversWith(e.comparisonKey, ownerDirs(owners), id.Dir) {
+		c.advice = "move those settings out of the rule's file, so GitPersona can include it again after its own rules"
+	}
+	return c
+}
+
+// ownerDirs returns every profile directory.
+func ownerDirs(owners []ruleOwner) []string {
+	var dirs []string
+	for _, o := range owners {
+		dirs = append(dirs, o.dirs...)
+	}
+	return dirs
 }
 
 // author writes an identity as Git shows it: Name <email>, or <email>.

@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/weikxs/gitpersona/internal/config"
 	"github.com/weikxs/gitpersona/internal/discover"
 )
 
@@ -49,7 +50,7 @@ func Setup(ctx context.Context, e Env, opts SetupOptions) error {
 		proposal.OldRules = []string{}
 	}
 	if opts.NoDefault {
-		proposal.Default = ""
+		proposal = e.withoutDefault(proposal)
 	}
 	plan := proposal.Plan()
 	if opts.Print {
@@ -118,6 +119,9 @@ func (e Env) printProposal(p SetupProposal) {
 			fmt.Fprintf(w, " instead of %s <%s>", p.Global.Name, p.Global.Email)
 		}
 		fmt.Fprintln(w, " (--no-default to keep your global Git identity).")
+		if def.Signing.Method == config.SigningSSH || def.Signing.Method == config.SigningGPG {
+			fmt.Fprintf(w, "  There, commits will also be signed (%s), as %s signs every commit.\n", def.Signing.Method, def.ID)
+		}
 	}
 	if len(p.OldRules) > 0 {
 		fmt.Fprintf(w, "\n  The profiles take over your includeIf rules for %s; they are removed from your Git configuration (--keep-old-rules to keep them).\n",
@@ -132,12 +136,28 @@ func (e Env) printProposal(p SetupProposal) {
 	}
 	printUnassigned(w, p)
 	for _, u := range p.Unmatched {
-		fmt.Fprintf(w, "\n  Not taken over: %s for %s (from %s); no signed-in account could be tied to it, so your rule keeps "+
-			"applying there. To make it a profile, choose its account with `gitpersona setup --web`.\n",
-			author(u.Name, u.Email), strings.Join(u.Dirs, ", "), u.Source)
-		if u.AccountFrom != "" {
-			fmt.Fprintf(w, "    What your rule does not set, such as the account for pushes, comes from profile %s there.\n", u.AccountFrom)
+		printLeftOut(w, p, u)
+	}
+}
+
+// printLeftOut says what happens in the folder of an identity setup does not
+// take over: its rule keeps working, or a profile replaces it.
+func printLeftOut(w io.Writer, p SetupProposal, u LeftOut) {
+	where := strings.Join(u.Dirs, ", ")
+	if u.Overridden != "" {
+		by := "Git's own settings"
+		if k := slices.IndexFunc(p.Profiles, func(x SetupProfile) bool { return x.ID == u.AccountFrom }); k >= 0 {
+			by = fmt.Sprintf("profile %s (%s)", u.AccountFrom, author(p.Profiles[k].Name, p.Profiles[k].Email))
 		}
+		fmt.Fprintf(w, "\n  ! Replaced: %s for %s (from %s). GitPersona cannot keep your rule working, because %s, so commits "+
+			"there will use %s. To keep it, choose its account with `gitpersona setup --web`, or move those settings out of the rule's file.\n",
+			author(u.Name, u.Email), where, u.Source, u.Overridden, by)
+		return
+	}
+	fmt.Fprintf(w, "\n  Not taken over: %s for %s (from %s); no signed-in account could be tied to it, so your rule keeps "+
+		"applying there. To make it a profile, choose its account with `gitpersona setup --web`.\n", author(u.Name, u.Email), where, u.Source)
+	if u.AccountFrom != "" {
+		fmt.Fprintf(w, "    What your rule does not set, such as the account for pushes, comes from profile %s there.\n", u.AccountFrom)
 	}
 }
 
@@ -207,4 +227,22 @@ func profileID(login string) string {
 		id = id[:32]
 	}
 	return id
+}
+
+// withoutDefault drops the default profile from a proposal, and works out
+// again which profile applies around the identities left out.
+func (e Env) withoutDefault(p SetupProposal) SetupProposal {
+	owners := setupOwners(p.Profiles)
+	unmatched := make([]LeftOut, len(p.Unmatched))
+	for i, u := range p.Unmatched {
+		u.AccountFrom = ""
+		for _, d := range u.Dirs {
+			if by, ok := e.overriddenBy(d, owners, ""); ok && u.AccountFrom == "" {
+				u.AccountFrom = by.id
+			}
+		}
+		unmatched[i] = u
+	}
+	p.Default, p.Unmatched = "", unmatched
+	return p
 }

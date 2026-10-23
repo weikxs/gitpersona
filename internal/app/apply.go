@@ -43,6 +43,35 @@ type ApplyOptions struct {
 	Command string
 }
 
+// removedRulesFile, kept in a backup, holds the includeIf sections the change
+// removed from the global Git configuration, for `gitpersona uninstall`.
+const removedRulesFile = "removed-rules.gitconfig"
+
+// removedSections returns the includeIf sections of the global Git
+// configuration that changes remove, as text.
+func (e Env) removedSections(changes []change) string {
+	path := e.resolvedUserGitConfig()
+	i := slices.IndexFunc(changes, func(c change) bool { return c.path == path && !c.remove })
+	if i < 0 {
+		return ""
+	}
+	current, err := readOptional(path)
+	if err != nil {
+		return ""
+	}
+	keep := map[string]bool{}
+	for _, s := range includeIfSections(changes[i].content) {
+		keep[s.condition] = true
+	}
+	var b strings.Builder
+	for _, s := range includeIfSections(current) {
+		if !keep[s.condition] {
+			b.WriteString(s.text)
+		}
+	}
+	return b.String()
+}
+
 // Apply regenerates every file from the configuration. Only files whose
 // content changes are backed up and written, so running it twice is a no-op.
 // Removing files needs explicit consent.
@@ -85,9 +114,15 @@ func (e Env) applyChanges(changes []change, opts ApplyOptions) error {
 	for i, c := range changes {
 		targets[i] = c.path
 	}
+	removed := e.removedSections(changes)
 	snapshot, err := backup.SnapshotFor(e.backupDir(), e.Now(), cmp.Or(opts.Command, "apply"), targets)
 	if err != nil {
 		return err
+	}
+	if removed != "" {
+		if err := os.WriteFile(filepath.Join(snapshot, removedRulesFile), []byte(removed), fsutil.FilePerm); err != nil {
+			return fmt.Errorf("record the removed rules in the backup: %w", err)
+		}
 	}
 	for _, c := range changes {
 		if err := c.write(); err != nil {
@@ -102,10 +137,12 @@ func (e Env) applyChanges(changes []change, opts ApplyOptions) error {
 	return backup.Prune(e.backupDir(), backupsToKeep)
 }
 
+// removals names the files a change set removes that need the user's
+// confirmation: all but the base settings, which only follow the rules.
 func (e Env) removals(changes []change) []string {
 	var names []string
 	for _, c := range changes {
-		if c.remove {
+		if c.remove && c.path != filepath.Join(e.ConfigDir, generate.BaseFile) {
 			names = append(names, e.display(c.path))
 		}
 	}
@@ -161,7 +198,7 @@ func (e Env) planWith(ctx context.Context, cfg config.Config, edit func(string) 
 			changes = append(changes, c)
 		}
 	}
-	return append(changes, e.staleProfiles(desired)...), nil
+	return append(changes, e.staleGenerated(desired)...), nil
 }
 
 func (e Env) generateOptions(ctx context.Context) (generate.Options, error) {
@@ -183,6 +220,9 @@ func (e Env) generateOptions(ctx context.Context) (generate.Options, error) {
 		"commit.gpgsign":  &opts.FallbackSigning.GPGSign,
 		"user.signingkey": &opts.FallbackSigning.SigningKey,
 		"gpg.format":      &opts.FallbackSigning.Format,
+		"tag.gpgsign":     &opts.FallbackSigning.TagSign,
+		"user.name":       &opts.Global.Name,
+		"user.email":      &opts.Global.Email,
 	} {
 		values, err := e.gitConfigAll(ctx, key)
 		if err != nil {
@@ -305,10 +345,14 @@ func (e Env) gitConfigWithBlock(edit func(string) string) (change, error) {
 	return change{path: path, content: updated, perm: perm}, nil
 }
 
-// staleProfiles returns removals for generated profile files whose profile
-// no longer exists.
-func (e Env) staleProfiles(desired []change) []change {
+// staleGenerated returns removals for generated files no longer generated:
+// those of profiles that no longer exist, and the base settings once no
+// rule of the user's is included again.
+func (e Env) staleGenerated(desired []change) []change {
 	existing, _ := filepath.Glob(filepath.Join(e.ConfigDir, "profiles", "*.gitconfig"))
+	if _, err := os.Stat(filepath.Join(e.ConfigDir, generate.BaseFile)); err == nil {
+		existing = append(existing, filepath.Join(e.ConfigDir, generate.BaseFile))
+	}
 	var stale []change
 	for _, path := range existing {
 		if !slices.ContainsFunc(desired, func(c change) bool { return c.path == path }) {
