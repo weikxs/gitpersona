@@ -54,7 +54,7 @@ func claimIdentities(in inference, ids []discover.Identity, used []bool, repos [
 	}
 	var candidates []candidate
 	for i, id := range ids {
-		if used[i] {
+		if used[i] || forOtherHost(id) {
 			continue
 		}
 		scores := in.claimScores(id, repos, aliases)

@@ -92,7 +92,8 @@ esac
 type world struct {
 	home  string
 	repos map[string]string
-	// pathWithoutGH is PATH without the fake gh, to simulate gh being absent.
+	// pathWithoutGH is a PATH with Git and no gh at all, to simulate gh
+	// being absent.
 	pathWithoutGH string
 }
 
@@ -113,11 +114,23 @@ func newWorld(t *testing.T) world {
 	t.Setenv("GIT_CONFIG_GLOBAL", filepath.Join(home, ".gitconfig"))
 	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
 	originalPath := os.Getenv("PATH")
+	// Without gh, PATH holds Git alone: the real gh must never run.
+	noGH := filepath.Join(root, "bin-without-gh")
+	gitPath, err := exec.LookPath("git")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(noGH, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(gitPath, filepath.Join(noGH, "git")); err != nil {
+		t.Fatal(err)
+	}
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+originalPath)
 	// Commands act on the current directory; never let them see the real one.
 	t.Chdir(home)
 
-	w := world{home: home, repos: map[string]string{}, pathWithoutGH: originalPath}
+	w := world{home: home, repos: map[string]string{}, pathWithoutGH: noGH}
 	for name, rel := range map[string]string{
 		"blog":    "Projects/personal/blog",
 		"billing": "Projects/acme/billing",

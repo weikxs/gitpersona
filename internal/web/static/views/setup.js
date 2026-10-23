@@ -6,7 +6,7 @@ import { api, normalizePath } from "../api.js";
 import { h, replace, badge, field, busy, status, clearStatus } from "../dom.js";
 import { doctorCard, configProblem } from "./overview.js";
 import { diffBlock } from "./apply.js";
-import { quickView, pinChoices, shellChoices, oldRulesChoice, leftOutChoices, profileNotes, pinNeeded, scanLimitNotice, QUICK } from "./setup-quick.js";
+import { quickView, pinChoices, shellChoices, oldRulesChoice, leftOutChoices, profileNotes, pinNeeded, onGitHub, accountLabel, scanLimitNotice, QUICK } from "./setup-quick.js";
 
 const STEPS = ["Identities", "Directories", "Review & apply"];
 
@@ -25,7 +25,7 @@ const EMAIL_HINTS = {
 // through setWizard, which also keeps it for this tab, so a reload or the
 // browser's Back and Forward do not lose the choices.
 const STORE_KEY = "gitpersona-setup";
-const STORE_VERSION = 6; // a wizard stored by an older page is not reused
+const STORE_VERSION = 7; // a wizard stored by an older page is not reused
 let wizard = loadWizard();
 let shownStep = null;
 let shownIn = null; // {body, run} of the steps on screen, for Back and Forward
@@ -85,21 +85,26 @@ export function renderSetup(section, { state, run }) {
 }
 
 function fromProposal(p) {
-  const accountOf = (id) => p.profiles.find((x) => x.id === id)?.account;
+  // Profiles are told apart by key: two can share an account name on
+  // different hosts, and the user may rename their ids.
+  const keyOf = (id) => {
+    const i = p.profiles.findIndex((x) => x.id === id);
+    return i < 0 ? "" : `p${i}`;
+  };
   return {
     version: STORE_VERSION,
     step: QUICK,
-    defaultAccount: accountOf(p.default) ?? "",
+    defaultKey: keyOf(p.default),
     unmatched: p.unmatched,
     global: p.global,
     ownRules: p.own_rules ?? [],
     shadowed: p.shadowed ?? [],
-    profiles: p.profiles.map(({ found = [], ...x }) => ({
-      ...x, include: true,
+    profiles: p.profiles.map(({ found = [], ...x }, i) => ({
+      ...x, key: `p${i}`, include: true,
       dirs: [...x.dirs.map((d) => ({ dir: d, on: true, why: "your existing setup" })),
         ...found.map((f) => ({ dir: f.dir, on: true, why: f.why }))],
     })),
-    pins: p.pins.map((pin) => ({ repo: pin.repo, account: accountOf(pin.profile), why: pin.why, outside: !!pin.outside, on: true })),
+    pins: p.pins.map((pin) => ({ repo: pin.repo, key: keyOf(pin.profile), why: pin.why, outside: !!pin.outside, on: true })),
     shells: p.shells.map((kind) => ({ kind, on: true })),
     oldRules: { dirs: p.old_rules, kept: p.kept_rules, on: true },
     unassigned: p.unassigned,
@@ -108,19 +113,20 @@ function fromProposal(p) {
     scanIncomplete: p.scan_incomplete,
     scanUnfinished: p.scan_unfinished ?? [],
     scanTooDeep: p.scan_too_deep,
+    githubUnavailable: p.github_unavailable ?? "",
   };
 }
 
 // planOf is the configuration the wizard's choices describe.
 function planOf(w) {
   const included = w.profiles.filter((p) => p.include);
-  const idOf = (account) => included.find((p) => p.account === account)?.id;
+  const idOf = (key) => included.find((p) => p.key === key)?.id;
   return {
-    default: idOf(w.defaultAccount) ?? "",
-    profiles: included.map(({ id, account, name, email, ssh_key, signing, dirs }) =>
-      ({ id, account, name, email, ssh_key, signing, dirs: dirs.filter((d) => d.on).map((d) => d.dir) })),
-    pins: w.pins.filter((pin) => pin.on && idOf(pin.account) && pinNeeded(w, pin))
-      .map((pin) => ({ repo: pin.repo, profile: idOf(pin.account) })),
+    default: idOf(w.defaultKey) ?? "",
+    profiles: included.map(({ id, provider, host, account, name, email, ssh_key, signing, dirs }) =>
+      ({ id, provider, host, account, name, email, ssh_key, signing, dirs: dirs.filter((d) => d.on).map((d) => d.dir) })),
+    pins: w.pins.filter((pin) => pin.on && idOf(pin.key) && pinNeeded(w, pin))
+      .map((pin) => ({ repo: pin.repo, profile: idOf(pin.key) })),
     shells: w.shells.filter((sh) => sh.on).map((sh) => sh.kind),
     // Declining every shell offered is remembered, so doctor does not insist.
     no_shell: w.shells.length > 0 && w.shells.every((sh) => !sh.on),
@@ -199,9 +205,9 @@ function identities(body, run) {
       document.querySelector("#status .notice")?.focus();
       return;
     }
-    const keep = wizard.defaultAccount === "" || included.some((p) => p.account === wizard.defaultAccount);
-    const defaultAccount = keep ? wizard.defaultAccount : included[0].account;
-    update({ step: 1, defaultAccount }, body, run);
+    const keep = wizard.defaultKey === "" || included.some((p) => p.key === wizard.defaultKey);
+    const defaultKey = keep ? wizard.defaultKey : included[0].key;
+    update({ step: 1, defaultKey }, body, run);
   });
   return form;
 }
@@ -213,7 +219,7 @@ function identityFields(p, i) {
     return el;
   };
   const include = h("input", { type: "checkbox", checked: p.include });
-  const isDefault = h("input", { type: "radio", name: "default", value: p.account, checked: p.account === wizard.defaultAccount });
+  const isDefault = h("input", { type: "radio", name: "default", value: p.key, checked: p.key === wizard.defaultKey });
   // A fieldset that is disabled is also skipped by form validation, so a
   // profile the user leaves out cannot block Next.
   const fields = h("fieldset", { class: "stack plain", hidden: !p.include, disabled: !p.include },
@@ -226,10 +232,10 @@ function identityFields(p, i) {
     fields.hidden = !include.checked;
     fields.disabled = !include.checked;
   });
-  isDefault.addEventListener("change", () => { setWizard({ ...wizard, defaultAccount: p.account }); });
+  isDefault.addEventListener("change", () => { setWizard({ ...wizard, defaultKey: p.key }); });
   return h("fieldset", {},
-    h("legend", {}, p.account, " ", p.source === "existing" ? badge("info", "From your existing setup") : null),
-    h("label", { class: "check" }, include, `Create a profile for ${p.account}`),
+    h("legend", {}, accountLabel(p), " ", p.source === "existing" ? badge("info", "From your existing setup") : null),
+    h("label", { class: "check" }, include, `Create a profile for ${accountLabel(p)}`),
     fields,
     profileNotes(p));
 }
@@ -237,8 +243,8 @@ function identityFields(p, i) {
 // defaultChoice offers no default, and says what commits outside every
 // directory use today, so making a profile the default is not a surprise.
 function defaultChoice() {
-  const none = h("input", { type: "radio", name: "default", value: "", checked: wizard.defaultAccount === "" });
-  none.addEventListener("change", () => { setWizard({ ...wizard, defaultAccount: "" }); });
+  const none = h("input", { type: "radio", name: "default", value: "", checked: wizard.defaultKey === "" });
+  none.addEventListener("change", () => { setWizard({ ...wizard, defaultKey: "" }); });
   const g = wizard.global ?? {};
   const today = g.email ? `${g.name || "(no name)"} <${g.email}>` : "";
   return h("fieldset", {},
@@ -326,11 +332,11 @@ function withSuggestions(suggestions) {
   const why = (s) => (s.repos !== s.total ? `${s.repos} of ${s.total} repositories there`
     : s.total === 1 ? "its one repository" : `all ${s.total} repositories there`);
   const profiles = wizard.profiles.map((p) => {
-    const found = fresh.filter((s) => s.account && s.account === p.account);
+    const found = fresh.filter((s) => s.account && onGitHub(p) && s.account === p.account);
     return { ...p, dirs: [...p.dirs, ...found.map((s) => ({ dir: s.dir, on: true, why: why(s) }))] };
   });
   const unassigned = [...wizard.unassigned,
-    ...fresh.filter((s) => !profiles.some((p) => p.account === s.account)).map((s) => ({ dir: s.dir, owner: s.owner, why: why(s) }))];
+    ...fresh.filter((s) => !profiles.some((p) => onGitHub(p) && p.account === s.account)).map((s) => ({ dir: s.dir, owner: s.owner, why: why(s) }))];
   return { profiles, unassigned };
 }
 
@@ -342,7 +348,7 @@ function unassignedCard(included, body, run) {
     wizard.unassigned.map((u, k) => {
       const select = h("select", {},
         h("option", { value: "" }, "Leave out"),
-        included.map(([p, i]) => h("option", { value: String(i) }, `${p.id} (${p.account})`)));
+        included.map(([p, i]) => h("option", { value: String(i) }, `${p.id} (${accountLabel(p)})`)));
       select.addEventListener("change", () => {
         if (select.value === "") return;
         const i = Number(select.value);
@@ -387,7 +393,7 @@ function dirFields(p, i, body, run) {
     body.querySelectorAll("fieldset input[type=text]")[included(i)]?.focus();
   }));
   return h("fieldset", {},
-    h("legend", {}, `${p.id} (${p.account})`),
+    h("legend", {}, `${p.id} (${accountLabel(p)})`),
     p.dirs.length === 0 ? h("p", { class: "empty" }, "No directories yet.") : null,
     p.dirs.map((d, j) => {
       const box = h("input", { type: "checkbox", checked: d.on });

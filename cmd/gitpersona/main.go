@@ -39,6 +39,7 @@ Commands:
   list        List profiles, directories and pins
   doctor      Check the setup and explain how to fix problems
   auth        Save or check the token of a GitLab, Bitbucket or other profile
+  check-ssh   Check, when you ask, which account each profile's SSH key signs in as
   shells      Show your default shell, the current shell and installed shells
   install-shell  Add prompt display and gh switching to your shell
   init        Print the shell integration script

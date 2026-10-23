@@ -16,11 +16,15 @@ import (
 
 // SetupProfile is a profile the setup page proposes, or one the user confirmed.
 type SetupProfile struct {
-	ID      string   `json:"id"`
-	Account string   `json:"account"`
-	Name    string   `json:"name"`
-	Email   string   `json:"email"`
-	Dirs    []string `json:"dirs"`
+	ID string `json:"id"`
+	// Provider and Host are empty for GitHub, and set for a profile of
+	// another host, which comes from the existing setup.
+	Provider string   `json:"provider,omitempty"`
+	Host     string   `json:"host,omitempty"`
+	Account  string   `json:"account"`
+	Name     string   `json:"name"`
+	Email    string   `json:"email"`
+	Dirs     []string `json:"dirs"`
 	// Source is "existing" when name, email and directories come from the
 	// user's own includeIf setup, and "gh" when they come from GitHub.
 	Source string `json:"source,omitempty"`
@@ -77,6 +81,9 @@ type SetupProposal struct {
 	ScanIncomplete bool `json:"scan_incomplete"`
 	// ScanUnfinished are the scanned folders it did not finish, with ~.
 	ScanUnfinished []string `json:"scan_unfinished"`
+	// GitHubUnavailable says why no GitHub account is proposed (gh missing,
+	// or no account signed in), when other hosts' profiles are.
+	GitHubUnavailable string `json:"github_unavailable,omitempty"`
 	// ScanTooDeep is set when folders below the depth limit were not looked in.
 	ScanTooDeep bool `json:"scan_too_deep"`
 	// OldRules are the directories of hand-made includeIf rules whose
@@ -121,7 +128,8 @@ type SetupPlan struct {
 	NoShell bool `json:"no_shell"`
 }
 
-// ProposeSetup suggests one profile per account signed in to gh, reusing
+// ProposeSetup suggests one profile per account signed in to gh, and one per
+// existing identity for another host (see hostProfiles), reusing
 // the name, email, directories and keys of a matching existing includeIf
 // setup, and organizes the repositories on disk into directory rules and
 // pins (see organize).
@@ -130,11 +138,11 @@ type SetupPlan struct {
 func ProposeSetup(ctx context.Context, e Env) (SetupProposal, error) {
 	ctx, cancel := context.WithTimeout(ctx, setupTimeout)
 	defer cancel()
-	source, accounts, err := e.signedInAccounts(ctx)
-	if err != nil {
-		return SetupProposal{}, err
-	}
 	existing := e.existingIdentities(ctx)
+	source, accounts, ghErr := e.signedInAccounts(ctx)
+	if ghErr != nil && len(existing) == 0 {
+		return SetupProposal{}, ghErr
+	}
 	used := make([]bool, len(existing))
 	global := e.globalIdentity(ctx)
 
@@ -156,7 +164,17 @@ func ProposeSetup(ctx context.Context, e Env) (SetupProposal, error) {
 		proposal.Profiles = append(proposal.Profiles, p)
 	}
 	proposal.Global = global
-	return e.organize(ctx, proposal, existing, used)
+	proposal, err := e.organize(ctx, proposal, existing, used)
+	if err != nil {
+		return SetupProposal{}, err
+	}
+	if ghErr != nil && len(proposal.Profiles) == 0 {
+		return SetupProposal{}, ghErr
+	}
+	if ghErr != nil {
+		proposal.GitHubUnavailable = ghErr.Error()
+	}
+	return proposal, nil
 }
 
 // globalIdentity reads user.name and user.email from the global Git
@@ -215,7 +233,7 @@ func ghIdentity(ctx context.Context, source provider.GitHub, login string) accou
 func matchIdentity(identities []discover.Identity, used []bool, login, publicEmail string) int {
 	noreply := "+" + strings.ToLower(login) + "@users.noreply.github.com"
 	for i, id := range identities {
-		if used[i] {
+		if used[i] || forOtherHost(id) {
 			continue
 		}
 		email := strings.ToLower(id.Email)
@@ -340,7 +358,11 @@ func renderPlan(plan SetupPlan) string {
 		b.WriteString("shell_integration = false # you chose not to load GitPersona in your shells\n")
 	}
 	for _, p := range plan.Profiles {
-		fmt.Fprintf(&b, "\n[[profile]]\nid      = %q\naccount = %q\nname    = %q\nemail   = %q%s\n", p.ID, p.Account, p.Name, p.Email, emailNote(p.EmailSource))
+		fmt.Fprintf(&b, "\n[[profile]]\nid      = %q\n", p.ID)
+		if !p.onGitHub() {
+			fmt.Fprintf(&b, "provider = %q\nhost    = %q\n", p.Provider, p.Host)
+		}
+		fmt.Fprintf(&b, "account = %q\nname    = %q\nemail   = %q%s\n", p.Account, p.Name, p.Email, emailNote(p.EmailSource))
 		if len(p.Dirs) > 0 {
 			quoted := make([]string, len(p.Dirs))
 			for i, d := range p.Dirs {

@@ -18,6 +18,12 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
   its host and your own credential helper (system keychain, Git Credential Manager) answers with that account's
   token. `gitpersona auth login|logout|status` saves, removes or checks a profile's token there (hidden input, never
   in clear text); `doctor` warns when no helper, or the plain-text `store` helper, would keep them.
+- `gitpersona setup` (and the page) turns existing GitLab, Bitbucket and other-host identities into profiles, also
+  without `gh`: those whose `includeIf` file names the account for the host, or whose repositories all push to one
+  such host as one user. A rule that names accounts for several hosts stays yours.
+- `gitpersona check-ssh` connects to each profile's host with its SSH key (`ssh -T`, batch mode, only that key) and
+  reports which account GitHub, GitLab or Bitbucket says it is. It runs only when you ask; ssh uses the key,
+  GitPersona never opens it.
 - `glab` follows your directories: in a GitLab profile's directory it runs with that account's token, which goes only
   to that one process.
 - One-step setup: `gitpersona setup` and `setup --web` look at what you already have — the accounts signed in to gh,

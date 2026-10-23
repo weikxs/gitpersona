@@ -203,3 +203,9 @@ func LiteralSSHKey(key string) bool {
 	}
 	return false
 }
+
+// ValidAccount reports whether s can be a profile's account.
+func ValidAccount(s string) bool { return accountPattern.MatchString(s) }
+
+// ValidHost reports whether s can be a profile's host (a name, and a port).
+func ValidHost(s string) bool { return hostPattern.MatchString(s) }

@@ -115,11 +115,20 @@ func repoConfig(text string) (url, email string) {
 	return first, email
 }
 
+// hostPort returns the port of host:port, or "".
+func hostPort(h string) string {
+	_, port, _ := strings.Cut(h, ":")
+	return port
+}
+
 // parseRemote returns the host (possibly an SSH alias) and the owner of a
 // remote URL, and the user name of an http(s) URL, or empty strings for
-// local paths. The "git" of git@host is the SSH login, not an account.
+// local paths. The "git" of git@host is the SSH login, not an account. An
+// http(s) host keeps a port other than the default, which Git's credential
+// settings need.
 func parseRemote(url string) (host, owner, user string) {
 	var path string
+	keepPort := false
 	switch {
 	case strings.HasPrefix(url, "file://"):
 		return "", "", ""
@@ -136,6 +145,9 @@ func parseRemote(url string) (host, owner, user string) {
 			h = h[at+1:]
 		}
 		host, path = h, p
+		if port := hostPort(h); strings.HasPrefix(scheme, "http") && port != "443" && port != "80" {
+			keepPort = port != ""
+		}
 	case strings.Contains(url, ":") && !strings.HasPrefix(url, "/"):
 		h, p, _ := strings.Cut(url, ":")
 		if at := strings.LastIndex(h, "@"); at >= 0 {
@@ -145,7 +157,7 @@ func parseRemote(url string) (host, owner, user string) {
 	default:
 		return "", "", ""
 	}
-	if h, _, ok := strings.Cut(host, ":"); ok {
+	if h, _, ok := strings.Cut(host, ":"); ok && !keepPort {
 		host = h // a port
 	}
 	owner, _, _ = strings.Cut(strings.TrimPrefix(path, "/"), "/")

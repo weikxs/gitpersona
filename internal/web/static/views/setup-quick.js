@@ -35,11 +35,12 @@ export function quickView(ctx) {
     h("h3", { tabindex: "-1" }, "Your setup is ready"),
     h("p", { class: "muted" }, foundText(wizard)),
     scanLimitNotice(wizard),
+    githubNotice(wizard),
     wizard.scanTooDeep ? h("p", { class: "muted" }, "Repositories nested more than five folders deep were not looked at; " +
       "add their directories under Adjust step by step.") : null,
     included.length === 0
       ? h("div", { class: "notice warn" }, "No profile is chosen. Use Adjust step by step to choose at least one.")
-      : h("div", { class: "grid" }, included.map((p) => profileSummary(p, p.account === wizard.defaultAccount))),
+      : h("div", { class: "grid" }, included.map((p) => profileSummary(p, p.key === wizard.defaultKey))),
     outsideText(wizard),
     leftOutChoices(ctx.get, ctx.set, () => ctx.update({})),
     wizard.shadowed?.length ? h("div", { class: "notice warn" }, badge("warn"), " These folders change:",
@@ -68,6 +69,7 @@ function profileSummary(p, isDefault) {
   return h("article", { class: "card", "aria-label": `Profile ${p.id}` },
     h("div", { class: "card-head" }, h("h4", {}, p.id), isDefault ? badge("info", "Default") : null),
     h("p", {}, `${p.name} <${p.email}>`),
+    onGitHub(p) ? null : h("p", { class: "muted" }, `Account ${accountLabel(p)}`),
     NAME_NOTES[p.name_source] ? h("p", { class: "muted" }, NAME_NOTES[p.name_source]) : null,
     p.ssh_key ? h("p", { class: "muted" }, "SSH key ", h("span", { class: "mono" }, p.ssh_key)) : null,
     p.signing?.method ? h("p", { class: "muted" }, SIGNING[p.signing.method] ?? p.signing.method) : null,
@@ -94,7 +96,7 @@ export function leftOutChoices(get, set, redraw) {
       "Choose an account to make one a profile:"),
     h("ul", {}, wizard.unmatched.map((u, k) => h("li", {},
       `${u.name || "(no name)"} <${u.email}> · ${u.dirs.join(", ")} (${u.source})`,
-      u.overridden_by || wizard.defaultAccount
+      u.overridden_by || wizard.defaultKey
         ? h("p", {}, `${u.overridden_by ? `Profile ${u.overridden_by}` : "The default profile"} applies there instead, ` +
           "because GitPersona's rules come after yours.")
         : h("p", {}, "Your rule keeps applying there.",
@@ -110,7 +112,7 @@ export function leftOutChoices(get, set, redraw) {
 function accountSelect(u, chosen, onChoose) {
   const select = h("select", { "aria-label": `Account for ${u.email}` },
     h("option", { value: "" }, "Leave it out"),
-    chosen.map(([p, i]) => h("option", { value: String(i) }, `Use it for ${p.account}`)));
+    chosen.map(([p, i]) => h("option", { value: String(i) }, `Use it for ${accountLabel(p)}`)));
   select.addEventListener("change", () => {
     if (select.value !== "") onChoose(Number(select.value));
   });
@@ -140,7 +142,7 @@ function adoptIdentity(w, k, i) {
 
 // outsideText says which identity applies outside every directory.
 function outsideText(wizard) {
-  const chosen = wizard.profiles.find((p) => p.include && p.account === wizard.defaultAccount);
+  const chosen = wizard.profiles.find((p) => p.include && p.key === wizard.defaultKey);
   const g = wizard.global ?? {};
   const today = g.email ? `${g.name || "(no name)"} <${g.email}>` : "";
   if (!chosen) {
@@ -149,6 +151,13 @@ function outsideText(wizard) {
   }
   return h("p", { class: "muted" }, `Outside these directories, commits use ${chosen.id} (${chosen.name} <${chosen.email}>)`,
     today ? ` instead of ${today} (choose "No default" under Adjust to keep it).` : ".");
+}
+
+// githubNotice says why no GitHub profile is proposed, when gh could not
+// be asked but other hosts' profiles are.
+function githubNotice(wizard) {
+  if (!wizard.githubUnavailable) return null;
+  return h("div", { class: "notice warn" }, badge("warn"), ` No GitHub profiles: ${wizard.githubUnavailable}`);
 }
 
 // scanLimitNotice says which folders the scan did not finish, if any.
@@ -163,7 +172,19 @@ export function scanLimitNotice(wizard) {
 // pinNeeded reports whether a pin changes anything: one for a repository
 // outside every directory only matters while its account is not the default.
 export function pinNeeded(w, pin) {
-  return !pin.outside || pin.account !== w.defaultAccount;
+  return !pin.outside || pin.key !== w.defaultKey;
+}
+
+// onGitHub reports whether a profile is for GitHub, where repositories on
+// disk are matched to accounts.
+export function onGitHub(p) {
+  return !p.host || p.host === "github.com";
+}
+
+// accountLabel names a profile's account, with its host when that is not
+// GitHub.
+export function accountLabel(p) {
+  return onGitHub(p) ? p.account : `${p.account} on ${p.host}`;
 }
 
 // pinChoices lists repositories whose own settings name another profile
@@ -177,7 +198,7 @@ export function pinChoices(get, set) {
       if (!pinNeeded(wizard, pin)) return null; // the default already gives it this profile
       const box = h("input", { type: "checkbox", checked: pin.on });
       box.addEventListener("change", () => toggle(get, set, "pins", k, box.checked));
-      const id = wizard.profiles.find((p) => p.account === pin.account)?.id ?? pin.account;
+      const id = wizard.profiles.find((p) => p.key === pin.key)?.id ?? "a profile you left out";
       return h("label", { class: "check" }, box, h("span", {}, "Pin ", h("span", { class: "mono" }, pin.repo), ` to ${id}`),
         h("span", { class: "muted" }, ` · ${pin.why}`));
     }));

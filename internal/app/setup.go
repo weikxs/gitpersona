@@ -113,11 +113,23 @@ func (e Env) agree(question string) bool {
 // printProposal shows what setup found and would configure.
 func (e Env) printProposal(p SetupProposal) {
 	w := e.Stdout
-	fmt.Fprintf(w, "GitPersona found %s", plural(len(p.Profiles), "GitHub account"))
+	github := 0
+	for _, prof := range p.Profiles {
+		if prof.onGitHub() {
+			github++
+		}
+	}
+	fmt.Fprintf(w, "GitPersona found %s", plural(github, "GitHub account"))
+	if other := len(p.Profiles) - github; other > 0 {
+		fmt.Fprintf(w, ", %s for other hosts in your Git settings", plural(other, "account"))
+	}
 	if len(p.Roots) > 0 {
 		fmt.Fprintf(w, " and looked for repositories in %s", strings.Join(p.Roots, ", "))
 	}
 	fmt.Fprintln(w, ":")
+	if p.GitHubUnavailable != "" {
+		fmt.Fprintf(w, "\n  ! No GitHub profiles: %s.\n", strings.TrimSuffix(p.GitHubUnavailable, "."))
+	}
 	if p.ScanIncomplete {
 		fmt.Fprintf(w, "\n  ! Looking for repositories stopped after %s, before it finished %s; repositories it did not reach "+
 			"are not included. Add their folders with `gitpersona use`.\n",
@@ -240,6 +252,9 @@ func printProposedProfile(w io.Writer, p SetupProfile, isDefault bool) {
 		label += " (default)"
 	}
 	fmt.Fprintf(w, "\n  %s: %s <%s>\n", label, p.Name, p.Email)
+	if !p.onGitHub() {
+		fmt.Fprintf(w, "    account %s on %s (%s)\n", p.Account, p.Host, p.Provider)
+	}
 	switch p.NameSource {
 	case "login":
 		fmt.Fprintln(w, "    (the account shows no public name, so the name is its login)")
@@ -266,11 +281,14 @@ func printProposedProfile(w io.Writer, p SetupProfile, isDefault bool) {
 	}
 }
 
+// maxIDLen is the longest profile name the configuration accepts.
+const maxIDLen = 32
+
 // profileID derives a valid profile id from a login.
 func profileID(login string) string {
 	id := strings.Trim(invalidIDChars.ReplaceAllString(strings.ToLower(login), "-"), "-")
-	if len(id) > 32 {
-		id = id[:32]
+	if len(id) > maxIDLen {
+		id = id[:maxIDLen]
 	}
 	return id
 }

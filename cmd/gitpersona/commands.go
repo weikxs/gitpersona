@@ -128,6 +128,19 @@ var commands = map[string]command{
 			}
 		},
 	},
+	"check-ssh": {
+		synopsis: "check-ssh [--profile <profile>]",
+		description: "Connect to each profile's host with its SSH key and check which account the host greets\n" +
+			"(GitHub, GitLab, Bitbucket). It runs only when you ask: ssh uses the key, as for a push, and\n" +
+			"GitPersona never reads it. Exits with status 1 when a key signs in as another account.",
+		bind: func(fs *flag.FlagSet) runFunc {
+			var opts app.CheckSSHOptions
+			fs.StringVar(&opts.Profile, "profile", "", "check only this profile")
+			return func(ctx context.Context, env app.Env, _ []string) int {
+				return fail(env.Stderr, app.CheckSSH(ctx, env, opts))
+			}
+		},
+	},
 	"use": {
 		synopsis:    "use <profile>",
 		description: "Make repositories in the current directory use a profile (moving the directory from\nanother profile if needed), keep your comments in config.toml, and apply the change.",

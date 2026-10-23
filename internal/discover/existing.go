@@ -6,10 +6,12 @@ package discover
 import (
 	"cmp"
 	"context"
+	"maps"
 	"path/filepath"
 	"slices"
 	"strings"
 
+	"github.com/weikxs/gitpersona/internal/config"
 	"github.com/weikxs/gitpersona/internal/provider"
 )
 
@@ -22,6 +24,9 @@ type Identity struct {
 	Source  string   `json:"source"`            // the included file the identity came from
 	SSHKey  string   `json:"ssh_key,omitempty"` // the -i key of core.sshCommand
 	Signing Signing  `json:"signing"`           // commit signing, when the file turns it on
+	// HostAccounts are the accounts it names for hosts other than GitHub
+	// (credential.https://<host>.username), by host.
+	HostAccounts map[string]string `json:"host_accounts,omitempty"`
 }
 
 // Signing is an identity's commit signing: Method is "ssh" or "gpg", or ""
@@ -238,16 +243,17 @@ func readIdentity(ctx context.Context, file string, global globals, run provider
 	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
 		key, value, _ := strings.Cut(line, "=")
 		values[key] = strings.TrimSpace(value)
-		if !replaceable[key] && keep == "" {
+		if _, isAccount := credentialHost(key); !replaceable[key] && !isAccount && keep == "" {
 			keep = "it also sets " + key
 		}
 	}
 	id := Identity{
-		Name:    values["user.name"],
-		Email:   values["user.email"],
-		Account: values["credential.https://github.com.username"],
-		Source:  file,
-		SSHKey:  sshCommandKey(values["core.sshcommand"]),
+		Name:         values["user.name"],
+		Email:        values["user.email"],
+		Account:      githubAccount(values),
+		HostAccounts: hostAccounts(values),
+		Source:       file,
+		SSHKey:       sshCommandKey(values["core.sshcommand"]),
 	}
 	if cmd := values["core.sshcommand"]; cmd != "" && !plainSSHCommand(cmd) && keep == "" {
 		keep = "its core.sshCommand has other options"
@@ -275,7 +281,52 @@ func readIdentity(ctx context.Context, file string, global globals, run provider
 			keep = "it signs with " + format // not a method GitPersona sets
 		}
 	}
+	// A profile names one account, on one host.
+	if n := len(id.HostAccounts); keep == "" && (n > 1 || (n == 1 && id.Account != "")) {
+		keep = "it names accounts for more than one host"
+	}
 	return id, keep
+}
+
+// credentialHost returns the host, in lowercase, when key names the
+// account for a whole host (credential.https://<host>.username), as a
+// profile does. A URL with a path, a user or a wildcard is more than a
+// profile can say, so its rule stays.
+func credentialHost(key string) (string, bool) {
+	rest, ok := strings.CutPrefix(key, "credential.https://")
+	if !ok {
+		return "", false
+	}
+	host, ok := strings.CutSuffix(rest, ".username")
+	if !ok || !config.ValidHost(host) {
+		return "", false
+	}
+	return strings.ToLower(host), true
+}
+
+// githubAccount returns the account the settings name for github.com.
+func githubAccount(values map[string]string) string {
+	for key, v := range values {
+		if host, ok := credentialHost(key); ok && host == config.DefaultGitHubHost {
+			return v
+		}
+	}
+	return ""
+}
+
+// hostAccounts returns the accounts settings name for hosts other than
+// GitHub, by host.
+func hostAccounts(values map[string]string) map[string]string {
+	out := map[string]string{}
+	for key, v := range values {
+		if host, ok := credentialHost(key); ok && v != "" && host != config.DefaultGitHubHost {
+			out[host] = v
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 // gitTrue reports whether a Git boolean is true.
@@ -369,17 +420,37 @@ func shellWords(s string) []string {
 // A file without a name commits with the global name.
 func merge(identities []Identity, id Identity, dir, globalName string) []Identity {
 	name := func(x Identity) string { return cmp.Or(x.Name, globalName) }
-	i := slices.IndexFunc(identities, func(x Identity) bool { return x.Email == id.Email && name(x) == name(id) })
+	i := slices.IndexFunc(identities, func(x Identity) bool {
+		return x.Email == id.Email && name(x) == name(id) && SameAccounts(x, id)
+	})
 	if i < 0 {
 		id.Dirs = []string{dir}
 		return append(identities, id)
 	}
 	out := slices.Clone(identities)
+	out[i] = WithAccounts(out[i], id)
 	out[i].Name = cmp.Or(out[i].Name, id.Name)
 	if !slices.Contains(out[i].Dirs, dir) {
 		out[i].Dirs = append(slices.Clone(out[i].Dirs), dir)
 	}
 	return out
+}
+
+// SameAccounts reports whether two identities with the same email can be
+// one: they name the same accounts, or one names none. One that names its
+// GitHub account and one that names its GitLab account are two, so neither
+// takes the other's folders.
+func SameAccounts(a, b Identity) bool {
+	none := func(x Identity) bool { return x.Account == "" && len(x.HostAccounts) == 0 }
+	return none(a) || none(b) || (strings.EqualFold(a.Account, b.Account) && maps.Equal(a.HostAccounts, b.HostAccounts))
+}
+
+// WithAccounts returns id with the accounts of other when it names none.
+func WithAccounts(id, other Identity) Identity {
+	if id.Account == "" && len(id.HostAccounts) == 0 {
+		id.Account, id.HostAccounts = other.Account, maps.Clone(other.HostAccounts)
+	}
+	return id
 }
 
 // gitdirToDir turns an includeIf condition into the directory it covers, or

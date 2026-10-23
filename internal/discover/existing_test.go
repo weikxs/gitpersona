@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -227,5 +228,83 @@ func TestAnIdentityInheritsGlobalSigningAndName(t *testing.T) {
 	}
 	if got[0].Signing != (Signing{Method: "ssh", Key: "~/.ssh/id_work.pub"}) || got[0].Name != "Demo Worker" || len(got[0].Dirs) != 2 {
 		t.Errorf("Existing() = %+v, want SSH signing from the global settings, the name, and both folders", got[0])
+	}
+}
+
+func TestAnIdentityNamesItsAccountsForOtherHosts(t *testing.T) {
+	home := t.TempDir()
+	write(t, filepath.Join(home, ".gitconfig-lab"), "[user]\n\temail = lab@demo.example\n[credential \"https://gitlab.com\"]\n\tusername = demo-lab\n")
+	write(t, filepath.Join(home, ".gitconfig-both"), "[user]\n\temail = both@demo.example\n"+
+		"[credential \"https://github.com\"]\n\tusername = demo-hub\n[credential \"https://gitlab.com\"]\n\tusername = demo-lab\n")
+	write(t, filepath.Join(home, ".gitconfig"), "[includeIf \"gitdir:~/lab/\"]\n\tpath = ~/.gitconfig-lab\n"+
+		"[includeIf \"gitdir:~/both/\"]\n\tpath = ~/.gitconfig-both\n")
+	config := filepath.Join(home, ".gitconfig")
+
+	ids, err := Existing(context.Background(), home, config, provider.ExecRunner)
+
+	if err != nil || len(ids) != 2 {
+		t.Fatalf("Existing() = %+v, %v", ids, err)
+	}
+	if ids[0].Account != "" || ids[0].HostAccounts["gitlab.com"] != "demo-lab" {
+		t.Errorf("lab = %+v, want demo-lab on gitlab.com", ids[0])
+	}
+	keep := map[string]string{}
+	for _, r := range IdentityRules(context.Background(), home, config, provider.ExecRunner) {
+		keep[r.Dir] = r.Keep
+	}
+	if keep["~/lab"] != "" {
+		t.Errorf("a rule naming one GitLab account can become a profile, got keep %q", keep["~/lab"])
+	}
+	if !strings.Contains(keep["~/both"], "more than one host") {
+		t.Errorf("a rule naming accounts on two hosts must stay, got keep %q", keep["~/both"])
+	}
+}
+
+func TestOnlyAccountsForAWholeHostCanBeReplaced(t *testing.T) {
+	home := t.TempDir()
+	write(t, filepath.Join(home, ".gitconfig-org"), "[user]\n\temail = org@demo.example\n"+
+		"[credential \"https://github.com/demo-org\"]\n\tusername = demo-org-user\n")
+	write(t, filepath.Join(home, ".gitconfig-case"), "[user]\n\temail = case@demo.example\n"+
+		"[credential \"https://GitHub.com\"]\n\tusername = demo-hub\n")
+	write(t, filepath.Join(home, ".gitconfig"), "[includeIf \"gitdir:~/org/\"]\n\tpath = ~/.gitconfig-org\n"+
+		"[includeIf \"gitdir:~/case/\"]\n\tpath = ~/.gitconfig-case\n")
+	config := filepath.Join(home, ".gitconfig")
+
+	keep := map[string]string{}
+	for _, r := range IdentityRules(context.Background(), home, config, provider.ExecRunner) {
+		keep[r.Dir] = r.Keep
+	}
+	ids, _ := Existing(context.Background(), home, config, provider.ExecRunner)
+
+	if !strings.Contains(keep["~/org"], "credential.https://github.com/demo-org.username") {
+		t.Errorf("an account for one organization's URL must stay, got keep %q", keep["~/org"])
+	}
+	if keep["~/case"] != "" || ids[1].Account != "demo-hub" || len(ids[1].HostAccounts) != 0 {
+		t.Errorf("GitHub.com is github.com: keep %q, identity %+v", keep["~/case"], ids[1])
+	}
+}
+
+func TestTheSameEmailForAccountsOnTwoHostsIsTwoIdentities(t *testing.T) {
+	for _, order := range [][2]string{{"hub", "lab"}, {"lab", "hub"}} {
+		home := t.TempDir()
+		write(t, filepath.Join(home, ".gitconfig-hub"), "[user]\n\tname = Demo\n\temail = me@demo.example\n"+
+			"[credential \"https://github.com\"]\n\tusername = demo-hub\n")
+		write(t, filepath.Join(home, ".gitconfig-lab"), "[user]\n\tname = Demo\n\temail = me@demo.example\n"+
+			"[credential \"https://gitlab.com\"]\n\tusername = demo-lab\n")
+		write(t, filepath.Join(home, ".gitconfig-plain"), "[user]\n\tname = Demo\n\temail = me@demo.example\n")
+		write(t, filepath.Join(home, ".gitconfig"), "[includeIf \"gitdir:~/"+order[0]+"/\"]\n\tpath = ~/.gitconfig-"+order[0]+"\n"+
+			"[includeIf \"gitdir:~/"+order[1]+"/\"]\n\tpath = ~/.gitconfig-"+order[1]+"\n"+
+			"[includeIf \"gitdir:~/plain/\"]\n\tpath = ~/.gitconfig-plain\n")
+
+		ids, err := Existing(context.Background(), home, filepath.Join(home, ".gitconfig"), provider.ExecRunner)
+
+		if err != nil || len(ids) != 2 {
+			t.Fatalf("order %v: Existing() = %+v, %v; want two identities", order, ids, err)
+		}
+		for _, id := range ids {
+			if id.Account == "demo-hub" && slices.Contains(id.Dirs, "~/lab") || id.HostAccounts["gitlab.com"] == "demo-lab" && slices.Contains(id.Dirs, "~/hub") {
+				t.Errorf("order %v: one identity took the other host's folder: %+v", order, id)
+			}
+		}
 	}
 }

@@ -66,13 +66,27 @@ func (e Env) organize(ctx context.Context, p SetupProposal, existing []discover.
 		k := slices.IndexFunc(profiles, func(x SetupProfile) bool { return x.Account == claims[i] })
 		profiles[k] = e.adopt(profiles[k], existing[i], p.Global.Name)
 	}
+	hosts, from := e.hostProfiles(profiles, existing, used, repos, aliases, p.Global.Name)
+	profiles = append(profiles, hosts...)
 
 	// A rule that does more than a profile can (x509 signing, extra SSH
 	// options, ...) keeps its folder: a profile there would win and lose it.
 	profiles, kept := e.withoutKeptDirs(ctx, profiles)
+	profiles = withoutEmptyHostProfiles(profiles, from, used)
+	// Repositories are matched to GitHub accounts only; the folders of the
+	// other hosts' profiles are theirs.
+	github := slices.DeleteFunc(slices.Clone(profiles), func(x SetupProfile) bool { return !x.onGitHub() })
 	reserved := append(identityDirs(unused(existing, used)), keptDirs(kept)...)
-	l := inferLayout(profiles, repos, aliases, e.comparisonKey, layoutHints{reserved: reserved, roots: roots.Shown})
+	for _, h := range profiles {
+		if !h.onGitHub() {
+			reserved = append(reserved, h.Dirs...)
+		}
+	}
+	l := inferLayout(github, repos, aliases, e.comparisonKey, layoutHints{reserved: reserved, roots: roots.Shown})
 	for i, prof := range profiles {
+		if !prof.onGitHub() {
+			continue
+		}
 		prof.Found = l.found[prof.Account]
 		if prof.SSHKey == "" {
 			prof.SSHKey = e.aliasKey(prof.Account, aliases, l.aliasAccount)

@@ -51,6 +51,8 @@ func TestParseRemote(t *testing.T) {
 	for url, want := range map[string][3]string{
 		"https://github.com/demo-work/api.git":                 {"github.com", "demo-work", ""},
 		"https://demo-personal@github.com/demo-work/api.git":   {"github.com", "demo-work", "demo-personal"},
+		"https://demo@git.demo.example:8443/team/api.git":      {"git.demo.example:8443", "team", "demo"},
+		"https://demo@git.demo.example:443/team/api.git":       {"git.demo.example", "team", "demo"},
 		"https://demo-personal:secret@github.com/demo/api.git": {"github.com", "demo", "demo-personal"},
 		"ssh://git@github.com:22/demo-work/api.git":            {"github.com", "demo-work", ""},
 		"git@github-work:demo-org/api.git":                     {"github-work", "demo-org", ""},

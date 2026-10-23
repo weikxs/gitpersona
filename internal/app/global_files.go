@@ -218,11 +218,14 @@ func (e Env) existingIdentities(ctx context.Context) []discover.Identity {
 	for _, file := range e.globalFiles() {
 		found, _ := discover.Existing(ctx, e.Home, file, e.Run)
 		for _, id := range found {
-			i := slices.IndexFunc(ids, func(x discover.Identity) bool { return x.Email == id.Email && x.Name == id.Name })
+			i := slices.IndexFunc(ids, func(x discover.Identity) bool {
+				return x.Email == id.Email && x.Name == id.Name && discover.SameAccounts(x, id)
+			})
 			if i < 0 {
 				ids = append(ids, id)
 				continue
 			}
+			ids[i] = discover.WithAccounts(ids[i], id)
 			for _, d := range id.Dirs {
 				if !slices.Contains(ids[i].Dirs, d) {
 					ids[i].Dirs = append(slices.Clone(ids[i].Dirs), d)
