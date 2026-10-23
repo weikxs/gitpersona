@@ -234,7 +234,7 @@ func TestFirstRunSetupInThreeSteps(t *testing.T) {
 	b.open(link)
 
 	// Step 1: identities, with each email's source.
-	b.waitFor("step 1", `document.querySelector("#view h3")?.innerText.startsWith("1.")`)
+	adjustSetup(b)
 	var emails []string
 	b.eval(`return [...document.querySelectorAll("#view input[type=email]")].map((e) => e.value)`, &emails)
 	if len(emails) != 2 || emails[0] != "worker@demo.example" || emails[1] != "person@demo.example" {
@@ -406,4 +406,12 @@ func (s *sandbox) run(args ...string) string {
 	cmd.Env, cmd.Dir = s.env, s.home
 	out, _ := cmd.CombinedOutput()
 	return string(out)
+}
+
+// adjustSetup leaves the ready-to-apply page for the detailed steps.
+func adjustSetup(b *browser) {
+	b.t.Helper()
+	b.waitFor("the ready page", `document.querySelector("#view h3")?.innerText === "Your setup is ready"`)
+	b.eval(`[...document.querySelectorAll("#view button")].find((x) => x.innerText === "Adjust step by step").click()`, nil)
+	b.waitFor("step 1", `document.querySelector("#view h3")?.innerText.startsWith("1.")`)
 }

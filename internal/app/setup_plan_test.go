@@ -126,10 +126,10 @@ func TestPreviewSetupWritesNothingThenApplySetupWritesEverythingInOneBackup(t *t
 		t.Errorf("the default profile should apply outside every rule, got %q", got)
 	}
 	infos, err := backup.List(env.BackupDir())
-	if err != nil || len(infos) != 1 || infos[0].Manifest.Command != "setup (web)" {
-		t.Fatalf("want one backup labelled setup (web), got %+v (%v)", infos, err)
+	if err != nil || len(infos) != 1 || infos[0].Manifest.Command != "setup" {
+		t.Fatalf("want one backup labelled setup, got %+v (%v)", infos, err)
 	}
-	if !strings.Contains(readConfigFile(t, w), "# GitPersona configuration, created on the setup page.") {
+	if !strings.Contains(readConfigFile(t, w), "# GitPersona configuration, created by `gitpersona setup`.") {
 		t.Error("config.toml should say where it came from")
 	}
 }

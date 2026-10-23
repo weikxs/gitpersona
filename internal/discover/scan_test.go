@@ -56,21 +56,15 @@ func TestScanRespectsDepthAndSkipsMissingRoots(t *testing.T) {
 	}
 }
 
-func TestRemoteOwner(t *testing.T) {
-	for url, want := range map[string]string{
-		"https://github.com/octo-alex/blog.git":    "octo-alex",
-		"git@github.com:acme-alex/web.git":         "acme-alex",
-		"ssh://git@github.com/acme-alex/web.git":   "acme-alex",
-		"https://octo-alex@github.com/octo-alex/x": "octo-alex",
-		"https://gitlab.globex.example/globex/app": "",
-		"/srv/git/local.git":                       "",
-	} {
-		if got := remoteOwner(url, "github.com"); got != want {
-			t.Errorf("remoteOwner(%q) = %q, want %q", url, got, want)
-		}
+func TestAFolderThatIsItselfARepositoryIsNotScanned(t *testing.T) {
+	root := t.TempDir()
+	repo(t, root, "https://github.com/octo-alex/everything")
+	repo(t, filepath.Join(root, "nested"), "https://github.com/octo-alex/nested")
+
+	if got := Repos(context.Background(), []string{root}, ScanLimits{MaxDepth: 4, Timeout: time.Second}); len(got) != 0 {
+		t.Fatalf("Repos() = %+v; a root that is a repository would suggest its parent, often the home", got)
 	}
 }
-
 func TestScanReportsDirectoriesOwnedByAnOrganization(t *testing.T) {
 	root := t.TempDir()
 	for _, r := range []struct{ dir, url string }{

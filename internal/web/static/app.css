@@ -391,3 +391,7 @@ fieldset.plain { border: 0; padding: 0; margin: 0; min-width: 0; }
 
 /* Confirmation texts may list files, one per line. */
 #confirm-text { white-space: pre-line; overflow-wrap: anywhere; }
+
+/* Directories on the setup summary. */
+ul.dirs { margin: 0.5rem 0 0; padding-left: 1.1rem; }
+ul.dirs li { overflow-wrap: anywhere; }

@@ -6,6 +6,7 @@ import { api, normalizePath } from "../api.js";
 import { h, replace, badge, field, busy, status, clearStatus } from "../dom.js";
 import { doctorCard, configProblem } from "./overview.js";
 import { diffBlock } from "./apply.js";
+import { quickView, pinChoices, shellChoices, oldRulesChoice, QUICK } from "./setup-quick.js";
 
 const STEPS = ["Identities", "Directories", "Review & apply"];
 
@@ -19,6 +20,7 @@ const EMAIL_HINTS = {
 // through setWizard, which also keeps it for this tab, so a reload or the
 // browser's Back and Forward do not lose the choices.
 const STORE_KEY = "gitpersona-setup";
+const STORE_VERSION = 4; // a wizard stored by an older page is not reused
 let wizard = loadWizard();
 let shownStep = null;
 let shownIn = null; // {body, run} of the steps on screen, for Back and Forward
@@ -35,7 +37,8 @@ function setWizard(next) {
 
 function loadWizard() {
   try {
-    return JSON.parse(sessionStorage.getItem(STORE_KEY) ?? "null");
+    const stored = JSON.parse(sessionStorage.getItem(STORE_KEY) ?? "null");
+    return stored?.version === STORE_VERSION ? stored : null;
   } catch {
     return null;
   }
@@ -67,26 +70,56 @@ export function renderSetup(section, { state, run }) {
     show(body, run);
     return;
   }
-  replace(body, h("p", { "aria-busy": "true" }, "Asking gh which accounts are signed in…"));
+  replace(body, h("p", { "aria-busy": "true" }, "Looking at your accounts, Git settings and repositories…"));
   api.proposeSetup().then(({ data }) => {
     setWizard(fromProposal(data));
-    remember(0, "replace");
+    remember(QUICK, "replace");
     show(body, run);
   }).catch((err) => replace(body, h("div", { class: "notice fail", role: "alert" }, err.message,
     h("p", {}, "Sign in with `gh auth login` for each account, then reload this page."))));
 }
 
 function fromProposal(p) {
+  const accountOf = (id) => p.profiles.find((x) => x.id === id)?.account;
   return {
-    step: 0,
-    defaultAccount: p.profiles.find((x) => x.id === p.default)?.account ?? "",
+    version: STORE_VERSION,
+    step: QUICK,
+    defaultAccount: accountOf(p.default) ?? "",
     unmatched: p.unmatched,
     global: p.global,
-    profiles: p.profiles.map((x) => ({ ...x, include: true, dirs: x.dirs.map((d) => ({ dir: d, on: true, why: "your existing setup" })) })),
-    unassigned: [],
-    roots: "",
-    scanned: false,
+    profiles: p.profiles.map(({ found = [], ...x }) => ({
+      ...x, include: true,
+      dirs: [...x.dirs.map((d) => ({ dir: d, on: true, why: "your existing setup" })),
+        ...found.map((f) => ({ dir: f.dir, on: true, why: f.why }))],
+    })),
+    pins: p.pins.map((pin) => ({ repo: pin.repo, account: accountOf(pin.profile), why: pin.why, on: true })),
+    shells: p.shells.map((kind) => ({ kind, on: true })),
+    oldRules: { dirs: p.old_rules, kept: p.kept_rules, on: true },
+    unassigned: p.unassigned,
+    roots: p.roots.join(", "),
+    scanned: p.roots.length > 0,
   };
+}
+
+// planOf is the configuration the wizard's choices describe.
+function planOf(w) {
+  const included = w.profiles.filter((p) => p.include);
+  const idOf = (account) => included.find((p) => p.account === account)?.id;
+  return {
+    default: idOf(w.defaultAccount) ?? "",
+    profiles: included.map(({ id, account, name, email, ssh_key, signing, dirs }) =>
+      ({ id, account, name, email, ssh_key, signing, dirs: dirs.filter((d) => d.on).map((d) => d.dir) })),
+    pins: w.pins.filter((pin) => pin.on && idOf(pin.account)).map((pin) => ({ repo: pin.repo, profile: idOf(pin.account) })),
+    shells: w.shells.filter((sh) => sh.on).map((sh) => sh.kind),
+    // An old rule goes only while its directory stays with a chosen profile.
+    remove_old_rules: w.oldRules.on ? w.oldRules.dirs.filter((dir) =>
+      included.some((p) => p.dirs.some((d) => d.on && d.dir === dir))) : [],
+  };
+}
+
+// applyPlan writes the setup; afterwards the wizard is done.
+async function applyPlan(run) {
+  if (await run(() => api.setupApply(planOf(wizard)), "GitPersona is set up. Git now uses your profiles.")) setWizard(null);
 }
 
 function update(changes, body, run, { fromHistory = false } = {}) {
@@ -102,6 +135,16 @@ function setProfile(index, changes) {
 }
 
 function show(body, run) {
+  if (wizard.step === QUICK) {
+    replace(body, quickView({
+      get: () => wizard, set: setWizard, planOf, update: (changes) => update(changes, body, run),
+      apply: () => applyPlan(run), unassigned: () => unassignedCard(chosenProfiles(), body, run),
+    }));
+    shownIn = { body, run };
+    if (shownStep !== wizard.step) body.querySelector("h3")?.focus();
+    shownStep = wizard.step;
+    return;
+  }
   const steps = h("ol", { class: "steps" }, STEPS.map((name, i) =>
     h("li", { "aria-current": i === wizard.step ? "step" : null, class: i < wizard.step ? "done" : null },
       h("span", { class: "visually-hidden" }, i < wizard.step ? "Done: " : ""), name)));
@@ -121,7 +164,7 @@ function nav(body, run, { back = true, nextLabel = "Next" }) {
 // goBack follows the browser history when this step was reached through it,
 // so the Back button and the browser's Back stay in step.
 function goBack(body, run) {
-  if (history.state?.setupStep === wizard.step && wizard.step > 0) history.back();
+  if (history.state?.setupStep === wizard.step && wizard.step > QUICK) history.back();
   else update({ step: wizard.step - 1 }, body, run);
 }
 
@@ -134,7 +177,7 @@ function identities(body, run) {
     wizard.profiles.map((p, i) => identityFields(p, i)),
     defaultChoice(),
     wizard.unmatched.length > 0 ? unmatchedNote() : null,
-    nav(body, run, { back: false }));
+    nav(body, run, {}));
   form.addEventListener("submit", (event) => {
     event.preventDefault();
     const included = wizard.profiles.filter((p) => p.include);
@@ -202,13 +245,16 @@ function unmatchedNote() {
 
 // Step 2: which directories each profile covers.
 function directories(body, run) {
-  const included = wizard.profiles.map((p, i) => [p, i]).filter(([p]) => p.include);
+  const included = chosenProfiles();
   const form = h("form", { class: "stack" },
     h("h3", { tabindex: "-1" }, "2. Choose directories"),
     h("p", { class: "muted" }, "Every repository under a chosen directory uses that profile. You can change this later."),
     scanCard(body, run),
     wizard.unassigned.length > 0 ? unassignedCard(included, body, run) : null,
     included.map(([p, i]) => dirFields(p, i, body, run)),
+    pinChoices(() => wizard, setWizard),
+    oldRulesChoice(() => wizard, setWizard),
+    shellChoices(() => wizard, setWizard),
     nav(body, run, {}));
   form.addEventListener("submit", (event) => {
     event.preventDefault();
@@ -266,8 +312,8 @@ function withSuggestions(suggestions) {
   const known = (dir) => wizard.profiles.some((p) => p.dirs.some((d) => d.dir === dir)) ||
     wizard.unassigned.some((u) => u.dir === dir);
   const fresh = suggestions.filter((s) => !known(s.dir));
-  const why = (s) => (s.repos === s.total ? `all ${s.total === 1 ? "1 repository" : `${s.total} repositories`} there`
-    : `${s.repos} of ${s.total} repositories there`);
+  const why = (s) => (s.repos !== s.total ? `${s.repos} of ${s.total} repositories there`
+    : s.total === 1 ? "its one repository" : `all ${s.total} repositories there`);
   const profiles = wizard.profiles.map((p) => {
     const found = fresh.filter((s) => s.account && s.account === p.account);
     return { ...p, dirs: [...p.dirs, ...found.map((s) => ({ dir: s.dir, on: true, why: why(s) }))] };
@@ -292,8 +338,8 @@ function unassignedCard(included, body, run) {
         const dirs = [...wizard.profiles[i].dirs, { dir: u.dir, on: true, why: `${u.why}, owned by ${u.owner}` }];
         update({ profiles: setProfile(i, { dirs }), unassigned: wizard.unassigned.filter((_, j) => j !== k) }, body, run);
         // The step is drawn again; keep focus on the directory just added.
-        [...body.querySelectorAll("label.check")].find((l) => l.textContent.startsWith(u.dir + " ·"))
-          ?.querySelector("input")?.focus();
+        const added = [...body.querySelectorAll("label.check")].find((l) => l.textContent.startsWith(u.dir + " ·"));
+        (added?.querySelector("input") ?? body.querySelector("select") ?? body.querySelector("button.primary"))?.focus();
       });
       return field(`${u.dir} · ${u.owner} · ${u.why}`, select);
     }));
@@ -348,13 +394,14 @@ function included(i) {
   return wizard.profiles.slice(0, i).filter((p) => p.include).length;
 }
 
+// chosenProfiles returns the included profiles with their positions.
+function chosenProfiles() {
+  return wizard.profiles.map((p, i) => [p, i]).filter(([p]) => p.include);
+}
+
 // Step 3: every file the setup writes, then apply.
 function review(body, run) {
-  const plan = {
-    default: wizard.profiles.find((p) => p.include && p.account === wizard.defaultAccount)?.id ?? "",
-    profiles: wizard.profiles.filter((p) => p.include).map(({ id, account, name, email, dirs }) =>
-      ({ id, account, name, email, dirs: dirs.filter((d) => d.on).map((d) => d.dir) })),
-  };
+  const plan = planOf(wizard);
   const result = h("div", { "aria-busy": "true" }, h("p", {}, "Preparing the files…"));
   const form = h("form", { class: "stack" },
     h("h3", { tabindex: "-1" }, "3. Review and apply"),
@@ -376,7 +423,7 @@ function review(body, run) {
   form.addEventListener("submit", (event) => {
     event.preventDefault();
     busy(apply, async () => {
-      if (await run(() => api.setupApply(plan), "GitPersona is set up. Git now uses your profiles.")) setWizard(null);
+      await applyPlan(run);
     });
   });
   return form;

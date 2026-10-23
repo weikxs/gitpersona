@@ -15,7 +15,7 @@ func TestSetupHandlesOrganizationsEnterAndLeftOutProfiles(t *testing.T) {
 	b := startBrowser(t)
 	b.viewport(375, 812, false)
 	b.open(link)
-	b.waitFor("step 1", `document.querySelector("#view h3")?.innerText.startsWith("1.")`)
+	adjustSetup(b)
 
 	// R4-07: a left-out profile with an invalid email must not block Next.
 	b.eval(`const sets = document.querySelectorAll("#view form > fieldset");

@@ -6,7 +6,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -35,35 +34,27 @@ type Suggestion struct {
 // skippedDirs are never descended into.
 var skippedDirs = map[string]bool{"node_modules": true, "vendor": true, ".cache": true, "Library": true}
 
-var remoteURLPattern = regexp.MustCompile(`(?m)^\s*url\s*=\s*(.+?)\s*$`)
-
-// Scan walks roots looking for repositories, reads only the remote URLs in
-// their .git/config, and suggests a rule for each parent directory whose
+// Scan finds the repositories under roots (see Repos) and suggests a rule for each parent directory whose
 // repositories on github.com mostly have one owner.
 func Scan(ctx context.Context, roots, accounts []string, limits ScanLimits) []Suggestion {
-	ctx, cancel := context.WithTimeout(ctx, limits.Timeout)
-	defer cancel()
 
 	type tally struct {
 		total   int
 		byOwner map[string]int
 	}
 	parents := map[string]*tally{}
-	for _, root := range roots {
-		walkRepos(ctx, root, limits.MaxDepth, func(repo string) {
-			owner := repoOwner(repo)
-			if owner == "" {
-				return
-			}
-			parent := filepath.Dir(repo)
-			t := parents[parent]
-			if t == nil {
-				t = &tally{byOwner: map[string]int{}}
-				parents[parent] = t
-			}
-			t.total++
-			t.byOwner[strings.ToLower(owner)]++
-		})
+	for _, r := range Repos(ctx, roots, limits) {
+		if !strings.EqualFold(r.Host, "github.com") || r.Owner == "" {
+			continue
+		}
+		parent := filepath.Dir(r.Dir)
+		t := parents[parent]
+		if t == nil {
+			t = &tally{byOwner: map[string]int{}}
+			parents[parent] = t
+		}
+		t.total++
+		t.byOwner[strings.ToLower(r.Owner)]++
 	}
 
 	var suggestions []Suggestion
@@ -99,6 +90,9 @@ func walkRepos(ctx context.Context, root string, maxDepth int, found func(string
 			return filepath.SkipDir
 		}
 		if _, err := os.Stat(filepath.Join(path, ".git", "config")); err == nil {
+			if path == root {
+				return filepath.SkipAll // a folder to scan that is itself one repository says nothing about folders
+			}
 			found(path)
 			return filepath.SkipDir
 		}
@@ -107,51 +101,6 @@ func walkRepos(ctx context.Context, root string, maxDepth int, found func(string
 		}
 		return nil
 	})
-}
-
-// repoOwner returns the github.com owner of the repository's first remote.
-func repoOwner(repo string) string {
-	data, err := os.ReadFile(filepath.Join(repo, ".git", "config"))
-	if err != nil {
-		return ""
-	}
-	m := remoteURLPattern.FindSubmatch(data)
-	if m == nil {
-		return ""
-	}
-	return remoteOwner(string(m[1]), "github.com")
-}
-
-// remoteOwner extracts the owner from a remote URL on host, or "".
-func remoteOwner(url, host string) string {
-	var path string
-	switch {
-	case strings.Contains(url, "://"):
-		rest := url[strings.Index(url, "://")+3:]
-		at := strings.LastIndex(rest, "@")
-		slash := strings.Index(rest, "/")
-		if at >= 0 && (slash < 0 || at < slash) {
-			rest = rest[at+1:]
-		}
-		h, p, ok := strings.Cut(rest, "/")
-		if !ok || !strings.EqualFold(h, host) {
-			return ""
-		}
-		path = p
-	case strings.Contains(url, ":"):
-		h, p, _ := strings.Cut(url, ":")
-		if _, after, ok := strings.Cut(h, "@"); ok {
-			h = after
-		}
-		if !strings.EqualFold(h, host) {
-			return ""
-		}
-		path = p
-	default:
-		return ""
-	}
-	owner, _, _ := strings.Cut(strings.TrimPrefix(path, "/"), "/")
-	return owner
 }
 
 // accountFor returns the account (as gh spells it) whose login is owner.

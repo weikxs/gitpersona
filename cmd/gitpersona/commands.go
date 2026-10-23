@@ -46,11 +46,19 @@ var commands = map[string]command{
 		},
 	},
 	"setup": {
-		synopsis:    "setup [--print | --web [--no-open]]",
-		description: "Create a first configuration with one profile per GitHub account gh is signed in to, each\naccount's public email (its noreply address when it shows none), and gh's active account as the default. It asks gh for account status\n(no tokens) and for each account's public profile. --print shows it without writing. --web opens\nthe setup steps in your browser, where you also choose directories and review every file first.",
+		synopsis: "setup [--yes] [--no-shell] [--keep-old-rules] [--print | --web [--no-open]]",
+		description: "Find what you already have and set GitPersona up from it in one step: one profile per GitHub\n" +
+			"account gh is signed in to (public name and email, or the noreply address), your existing includeIf\n" +
+			"identities with their SSH keys and signing, directories from the remotes and emails of the\n" +
+			"repositories in your usual code folders, SSH aliases from ~/.ssh/config (keys are never opened),\n" +
+			"pins for repositories that differ from their folder, and your login shell. It shows the result and\n" +
+			"asks before writing; everything is backed up first. --web shows it in your browser instead.",
 		bind: func(fs *flag.FlagSet) runFunc {
 			var opts app.SetupOptions
 			fs.BoolVar(&opts.Print, "print", false, "print the configuration instead of writing it")
+			fs.BoolVar(&opts.Yes, "yes", false, "apply without asking")
+			fs.BoolVar(&opts.NoShell, "no-shell", false, "do not add the shell integration")
+			fs.BoolVar(&opts.KeepOldRules, "keep-old-rules", false, "keep the includeIf rules the profiles take over")
 			web := fs.Bool("web", false, "set up in the browser: confirm identities, choose directories, review, apply")
 			noOpen := fs.Bool("no-open", false, "with --web, print the link without opening a browser")
 			return func(ctx context.Context, env app.Env, _ []string) int {

@@ -5,11 +5,14 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 
 	"github.com/weikxs/gitpersona/internal/config"
 	"github.com/weikxs/gitpersona/internal/discover"
+	"github.com/weikxs/gitpersona/internal/fsutil"
 	"github.com/weikxs/gitpersona/internal/provider"
+	"github.com/weikxs/gitpersona/internal/shell"
 )
 
 // SetupProfile is a profile the setup page proposes, or one the user confirmed.
@@ -28,6 +31,11 @@ type SetupProfile struct {
 	// NameSource is "public" for the name on the GitHub profile, "login"
 	// when the account shows none, or "existing".
 	NameSource string `json:"name_source,omitempty"`
+	// SSHKey and Signing come from the existing setup or an SSH alias.
+	SSHKey  string         `json:"ssh_key,omitempty"`
+	Signing config.Signing `json:"signing"`
+	// Found are directories the repositories on disk suggest (proposal only).
+	Found []DirSuggestion `json:"found,omitempty"`
 }
 
 // GlobalIdentity is the user.name and user.email of the global Git
@@ -47,16 +55,66 @@ type SetupProposal struct {
 	// Global is the identity used outside every rule today, so the page can
 	// say what the default profile replaces.
 	Global GlobalIdentity `json:"global"`
+	// Pins are repositories whose own settings name another profile than
+	// their directory; Unassigned are folders the user must choose for.
+	Pins       []PinSuggestion `json:"pins"`
+	Unassigned []UnassignedDir `json:"unassigned"`
+	// Roots are the folders that were scanned; Shells the shells to set up.
+	Roots  []string `json:"roots"`
+	Shells []string `json:"shells"`
+	// OldRules are the directories of hand-made includeIf rules whose
+	// identities the profiles take over; setup removes those rules.
+	OldRules []string `json:"old_rules"`
+	// KeptRules are those rules that do more than a profile and stay.
+	KeptRules []KeptRule `json:"kept_rules"`
+}
+
+// oldRulesFor returns the directories of the includeIf rules for dirs that
+// the profiles replace, and the rules that stay.
+func (e Env) oldRulesFor(ctx context.Context, dirs []string) ([]string, []KeptRule) {
+	if len(dirs) == 0 {
+		return []string{}, []KeptRule{}
+	}
+	replaced, kept := e.classifyOldRules(ctx, dirs)
+	out := make([]string, len(replaced))
+	for i, r := range replaced {
+		out[i] = r.Dir
+	}
+	return out, kept
+}
+
+// Plan is the proposal accepted as it is: every found directory, pin and
+// shell included, unassigned folders left out.
+func (p SetupProposal) Plan() SetupPlan {
+	plan := SetupPlan{Default: p.Default, Shells: p.Shells, Pins: []ListedPin{}, RemoveOldRules: p.OldRules}
+	for _, prof := range p.Profiles {
+		dirs := slices.Clone(prof.Dirs)
+		for _, f := range prof.Found {
+			dirs = append(dirs, f.Dir)
+		}
+		prof.Dirs, prof.Found = dirs, nil
+		plan.Profiles = append(plan.Profiles, prof)
+	}
+	for _, pin := range p.Pins {
+		plan.Pins = append(plan.Pins, ListedPin{Repo: pin.Repo, Profile: pin.Profile})
+	}
+	return plan
 }
 
 // SetupPlan is the configuration the user confirmed on the setup page.
 type SetupPlan struct {
 	Default  string         `json:"default"`
 	Profiles []SetupProfile `json:"profiles"`
+	Pins     []ListedPin    `json:"pins"`
+	Shells   []string       `json:"shells"` // fish, zsh or bash: add the shell integration too
+	// RemoveOldRules are directories whose hand-made includeIf rules go.
+	RemoveOldRules []string `json:"remove_old_rules"`
 }
 
 // ProposeSetup suggests one profile per account signed in to gh, reusing
-// the name, email and directories of a matching existing includeIf setup.
+// the name, email, directories and keys of a matching existing includeIf
+// setup, and organizes the repositories on disk into directory rules and
+// pins (see organize).
 // It reads no tokens: accounts come from a status query and names from the
 // public user API.
 func ProposeSetup(ctx context.Context, e Env) (SetupProposal, error) {
@@ -68,6 +126,7 @@ func ProposeSetup(ctx context.Context, e Env) (SetupProposal, error) {
 	}
 	existing, _ := discover.Existing(ctx, e.Home, e.GlobalGitConfigPath(), e.Run)
 	used := make([]bool, len(existing))
+	var matched []string // directories of the existing identities the profiles take over
 
 	proposal := SetupProposal{Profiles: []SetupProfile{}, Unmatched: []discover.Identity{}}
 	for _, a := range accounts {
@@ -82,6 +141,8 @@ func ProposeSetup(ctx context.Context, e Env) (SetupProposal, error) {
 			p.Name, p.Email, p.Source = existing[i].Name, existing[i].Email, "existing"
 			p.EmailSource, p.NameSource = "existing", "existing"
 			p.Dirs = append(p.Dirs, existing[i].Dirs...)
+			p.SSHKey, p.Signing = e.existingKeys(existing[i])
+			matched = append(matched, existing[i].Dirs...)
 		}
 		if a.Active {
 			proposal.Default = p.ID
@@ -95,7 +156,8 @@ func ProposeSetup(ctx context.Context, e Env) (SetupProposal, error) {
 		}
 	}
 	proposal.Global = e.globalIdentity(ctx)
-	return proposal, nil
+	proposal.OldRules, proposal.KeptRules = e.oldRulesFor(ctx, matched)
+	return e.organize(ctx, proposal)
 }
 
 // globalIdentity reads user.name and user.email from the global Git
@@ -181,7 +243,7 @@ func ApplySetup(ctx context.Context, e Env, plan SetupPlan) error {
 	if err != nil {
 		return err
 	}
-	return e.applyChanges(changes, ApplyOptions{Yes: true, Command: "setup (web)"})
+	return e.applyChanges(changes, ApplyOptions{Yes: true, Command: "setup"})
 }
 
 func (e Env) setupChanges(ctx context.Context, plan SetupPlan) ([]change, error) {
@@ -199,24 +261,100 @@ func (e Env) setupChanges(ctx context.Context, plan SetupPlan) ([]change, error)
 	if err := cfg.Validate(e.Home, e.CaseInsensitive); err != nil {
 		return nil, err
 	}
+	for _, p := range cfg.Profiles {
+		if err := requireKeyFiles(p, e.Home); err != nil {
+			return nil, fmt.Errorf("profile %s: %w", p.ID, err)
+		}
+	}
 	generated, err := e.planWith(ctx, cfg)
 	if err != nil {
 		return nil, err
 	}
-	return append([]change{{path: e.configFile(), content: text, create: true}}, generated...), nil
+	kinds, err := ParseShells(plan.Shells)
+	if err != nil {
+		return nil, err
+	}
+	shells, err := e.shellChanges(kinds)
+	if err != nil {
+		return nil, err
+	}
+	generated, err = e.retireOldRules(ctx, generated, plan.RemoveOldRules)
+	if err != nil {
+		return nil, err
+	}
+	changes := append([]change{{path: e.configFile(), content: text, create: true}}, generated...)
+	return append(changes, shells...), nil
+}
+
+// retireOldRules removes the hand-made includeIf rules for dirs from the
+// global Git configuration, within the change apply already makes to it, so
+// the whole setup stays one backup.
+func (e Env) retireOldRules(ctx context.Context, changes []change, dirs []string) ([]change, error) {
+	if len(dirs) == 0 {
+		return changes, nil
+	}
+	path := e.resolvedUserGitConfig()
+	out := slices.Clone(changes)
+	i := slices.IndexFunc(out, func(c change) bool { return c.path == path })
+	if i < 0 {
+		// Apply leaves the file alone (it already has GitPersona's include).
+		current, err := readOptional(path)
+		if err != nil {
+			return nil, err
+		}
+		perm := fsutil.FilePerm
+		if info, err := os.Stat(path); err == nil {
+			perm = info.Mode().Perm() // the file belongs to the user; keep its mode
+			if perm&userWritablePerm == 0 {
+				return nil, fmt.Errorf("%s is read-only, so the old includeIf rules cannot be removed; "+
+					"make it writable (chmod u+w) or keep them (--keep-old-rules)", e.display(e.userGitConfig()))
+			}
+		}
+		out, i = append(out, change{path: path, content: current, perm: perm}), len(out)
+	}
+	updated, _, _ := e.withoutOldRules(ctx, out[i].content, dirs)
+	if updated == out[i].content && i == len(changes) {
+		return changes, nil // nothing to remove after all
+	}
+	out[i].content = updated
+	return out, nil
+}
+
+// ParseShells parses shell names such as "zsh".
+func ParseShells(names []string) ([]shell.Kind, error) {
+	kinds := make([]shell.Kind, 0, len(names))
+	for _, name := range names {
+		k, err := shell.Parse(name)
+		if err != nil {
+			return nil, err
+		}
+		kinds = append(kinds, k)
+	}
+	return kinds, nil
+}
+
+// emailNote says where a proposed email came from, as a comment.
+func emailNote(source string) string {
+	switch source {
+	case "public":
+		return " # public email on GitHub"
+	case "noreply":
+		return " # GitHub noreply address; the account shows no public email"
+	}
+	return ""
 }
 
 // renderPlan writes plan as a commented configuration file.
 func renderPlan(plan SetupPlan) string {
 	var b strings.Builder
-	b.WriteString("# GitPersona configuration, created on the setup page.\n")
+	b.WriteString("# GitPersona configuration, created by `gitpersona setup`.\n")
 	b.WriteString("# Change it with `gitpersona ui`, `gitpersona use <profile>`, or by hand; see the README.\n")
 	b.WriteString("version = 1\n")
 	if plan.Default != "" {
 		fmt.Fprintf(&b, "default = %q\n", plan.Default)
 	}
 	for _, p := range plan.Profiles {
-		fmt.Fprintf(&b, "\n[[profile]]\nid      = %q\naccount = %q\nname    = %q\nemail   = %q\n", p.ID, p.Account, p.Name, p.Email)
+		fmt.Fprintf(&b, "\n[[profile]]\nid      = %q\naccount = %q\nname    = %q\nemail   = %q%s\n", p.ID, p.Account, p.Name, p.Email, emailNote(p.EmailSource))
 		if len(p.Dirs) > 0 {
 			quoted := make([]string, len(p.Dirs))
 			for i, d := range p.Dirs {
@@ -224,6 +362,18 @@ func renderPlan(plan SetupPlan) string {
 			}
 			fmt.Fprintf(&b, "dirs    = [%s]\n", strings.Join(quoted, ", "))
 		}
+		if p.SSHKey != "" {
+			fmt.Fprintf(&b, "ssh_key = %q\n", p.SSHKey)
+		}
+		switch p.Signing.Method {
+		case config.SigningSSH, config.SigningGPG:
+			fmt.Fprintf(&b, "signing = { method = %q, key = %q }\n", p.Signing.Method, p.Signing.Key)
+		case config.SigningNone:
+			b.WriteString("signing = { method = \"none\" }\n")
+		}
+	}
+	for _, pin := range plan.Pins {
+		fmt.Fprintf(&b, "\n[[pin]]\nrepo    = %q\nprofile = %q\n", pin.Repo, pin.Profile)
 	}
 	return b.String()
 }

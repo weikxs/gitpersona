@@ -16,16 +16,7 @@ import (
 // that the files are there; it never opens them.
 func missingKeyFiles(p config.Profile, home string) []string {
 	var missing []string
-	exists := func(path string) bool {
-		norm, err := paths.Normalize(path, home)
-		if err != nil {
-			return true // reported by validation instead
-		}
-		// Only a definite "no such file" counts: a folder the user keeps
-		// private (no access) is not looked into.
-		_, err = os.Stat(norm)
-		return !errors.Is(err, os.ErrNotExist)
-	}
+	exists := func(path string) bool { return keyFileExists(path, home, true) }
 	if p.SSHKey != "" && !exists(p.SSHKey) {
 		missing = append(missing, "SSH key "+p.SSHKey)
 	}
@@ -33,6 +24,19 @@ func missingKeyFiles(p config.Profile, home string) []string {
 		missing = append(missing, "signing key "+p.Signing.Key)
 	}
 	return missing
+}
+
+// keyFileExists reports whether a key file is there. It never opens it.
+// Only a definite "no such file" counts as missing: a folder the user keeps
+// private (no access) is not looked into. invalid is the answer for a path
+// that cannot be expanded.
+func keyFileExists(path, home string, invalid bool) bool {
+	norm, err := paths.Normalize(path, home)
+	if err != nil {
+		return invalid
+	}
+	_, err = os.Stat(norm)
+	return !errors.Is(err, os.ErrNotExist)
 }
 
 // requireKeyFiles refuses a profile whose key files do not exist: Git would
@@ -97,9 +101,13 @@ func (e Env) checkOldRules(ctx context.Context) []check {
 	for _, id := range old {
 		dirs = append(dirs, id.Dirs...)
 	}
-	return []check{{warn: true,
+	c := check{warn: true,
 		label: fmt.Sprintf("%s still has includeIf identity rules from before GitPersona (%s)",
 			e.display(e.GlobalGitConfigPath()), strings.Join(dirs, ", ")),
-		advice: "GitPersona's rules come after them and win; `gitpersona doctor --fix` removes them (after a backup)",
-		fix:    func(ctx context.Context, fixer Env) error { return RemoveOldRules(ctx, fixer) }, fixKey: FixOldRules}}
+		advice: "GitPersona's rules come after them and win; they also set other things, so remove them by hand when you no longer need them"}
+	if replaced, _ := e.classifyOldRules(ctx, nil); len(replaced) > 0 {
+		c.advice = "GitPersona's rules come after them and win; `gitpersona doctor --fix` removes those a profile replaces (after a backup)"
+		c.fix, c.fixKey = func(ctx context.Context, fixer Env) error { return RemoveOldRules(ctx, fixer) }, FixOldRules
+	}
+	return []check{c}
 }

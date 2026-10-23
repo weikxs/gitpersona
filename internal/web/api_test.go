@@ -453,3 +453,19 @@ func TestOldRulesAreRemovedFromThePage(t *testing.T) {
 		t.Errorf("the old rule is still there:\n%s", data)
 	}
 }
+
+func TestSetupWithoutProfilesIsRefused(t *testing.T) {
+	w := newAPIWorld(t)
+	if err := os.Remove(filepath.Join(w.home, ".config", "gitpersona", "config.toml")); err != nil {
+		t.Fatal(err)
+	}
+
+	got := w.call(t, "POST", "/api/setup", map[string]any{"profiles": []any{}})
+
+	if got.OK || !strings.Contains(got.Error, "choose at least one profile") {
+		t.Fatalf("an empty plan = %+v, want it refused", got)
+	}
+	if _, err := os.Stat(filepath.Join(w.home, ".config", "gitpersona", "config.toml")); !os.IsNotExist(err) {
+		t.Error("an empty plan wrote a configuration")
+	}
+}

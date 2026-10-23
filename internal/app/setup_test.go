@@ -18,7 +18,7 @@ func TestSetupCreatesAConfigFromSignedInAccounts(t *testing.T) {
 	}
 	env, out := w.env(t, w.home)
 
-	if err := Setup(context.Background(), env, SetupOptions{}); err != nil {
+	if err := Setup(context.Background(), env, SetupOptions{Yes: true}); err != nil {
 		t.Fatalf("Setup() error: %v", err)
 	}
 
@@ -43,7 +43,7 @@ func TestSetupCreatesAConfigFromSignedInAccounts(t *testing.T) {
 	if text := readConfigFile(t, w); !strings.Contains(text, "# public email on GitHub") || !strings.Contains(text, "shows no public email") {
 		t.Errorf("config.toml should say where each email came from:\n%s", text)
 	}
-	if !strings.Contains(out.String(), "gitpersona use") {
+	if !strings.Contains(out.String(), "gitpersona doctor") {
 		t.Errorf("setup should explain the next steps:\n%s", out.String())
 	}
 }
@@ -77,4 +77,51 @@ func readConfigFile(t *testing.T, w world) string {
 	t.Helper()
 	data, _ := os.ReadFile(filepath.Join(w.home, ".config", "gitpersona", "config.toml"))
 	return string(data)
+}
+
+func TestSetupShowsWhatItFoundAndAsksFirst(t *testing.T) {
+	_, env := autoWorld(t)
+	out := &strings.Builder{}
+	env.Stdout = out
+
+	env.Stdin = strings.NewReader("n\n")
+	if err := Setup(context.Background(), env, SetupOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(env.configFile()); !os.IsNotExist(err) {
+		t.Fatal("answering n must write nothing")
+	}
+	for _, want := range []string{
+		"~/code/mine  (its one repository belongs to octo-alex)",
+		"SSH key ~/.ssh/id_acme",
+		"Pin ~/code/acme/side to octo-alex: the repository sets alex@octo.example",
+		"commits will use octo-alex instead of Demo Person <person@demo.example>",
+		"Left out: ~/code/other",
+		"Nothing was written",
+	} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("the summary should say %q:\n%s", want, out.String())
+		}
+	}
+
+	env.Stdin = strings.NewReader("\n") // Enter accepts
+	if err := Setup(context.Background(), env, SetupOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(env.configFile()); err != nil {
+		t.Fatalf("Enter should apply the setup: %v", err)
+	}
+}
+
+func TestSetupWithoutATerminalAsksForYes(t *testing.T) {
+	_, env := autoWorld(t)
+	env.Stdin = strings.NewReader("")
+
+	if err := Setup(context.Background(), env, SetupOptions{}); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := os.Stat(env.configFile()); !os.IsNotExist(err) {
+		t.Fatal("without an answer nothing may be written")
+	}
 }

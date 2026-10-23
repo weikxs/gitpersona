@@ -34,7 +34,14 @@ Git、`gh`、`glab` 都假定只有一个全局的"当前账户"，于是很容�
 ## 快速开始
 
 1. 用 GitHub CLI 登录每一个 GitHub 账户：`gh auth login`（每个账户执行一次）。
-2. 运行 `gitpersona setup --web`：在浏览器里分三步完成——为 `gh` 已登录的每个账户建议一个身份（沿用已有的 `includeIf` 配置），根据仓库的远程地址建议目录，并在写入前展示每个文件。只用终端时，`gitpersona setup` 会生成同样的身份，然后在属于某个账户的目录里运行 `gitpersona use <身份>`。
+2. 运行 `gitpersona setup`（或在浏览器里运行 `gitpersona setup --web`）。它会读取你现有的配置，一步整理好：
+   - 为 `gh` 已登录的每个账户建立身份，使用账户公开的名字和邮箱（没有公开邮箱时用 noreply 地址）；
+   - 接管已有的 `includeIf` 身份，连同其中的 SSH 密钥和签名设置（还设置了其他内容的规则，如 `url.*.insteadOf`，会保留）；
+   - 根据常用代码目录（`~/code`、`~/Projects` 等）中仓库的远程地址和仓库邮箱确定目录归属；
+   - 读取 `~/.ssh/config` 中的主机别名（如 `git@github-work:…`）及其密钥路径（密钥文件本身从不打开）；
+   - 为与所在目录不一致的仓库建议 Pin，并为登录 Shell 加上集成。
+
+   整理结果会先展示出来，确认一次即可；写入前全部备份。无法判断归属的组织目录会列出来让你选择。在浏览器里可以点 "Adjust step by step"（逐步调整）修改任何一项后再应用。
    或者自己描述你的身份：
 
    ```toml
@@ -91,7 +98,7 @@ Git、`gh`、`glab` 都假定只有一个全局的"当前账户"，于是很容�
 | `gitpersona prompt [--format]` | 输出这里 Git 使用的账户，供提示符使用（`{account}`、`{profile}`、`{host}`） |
 | `gitpersona rollback [<名称>\|latest] [--yes]` | 列出备份，或恢复某个备份（恢复前会先备份当前状态） |
 | `gitpersona uninstall [--yes]` | 从 Git 配置中移除 GitPersona；保留 config.toml |
-| `gitpersona setup [--print \| --web]` | 根据 gh 已登录的账户生成第一份配置；`--web` 在浏览器里分三步完成（确认身份、按建议选择目录、检查每个文件后应用） |
+| `gitpersona setup [--yes] [--no-shell] [--keep-old-rules] [--print \| --web]` | 根据现有配置一步完成设置（账户、已有身份、仓库、SSH 别名、Shell）；写入前询问，`--yes` 不询问；`--web` 在浏览器中展示，也可以逐步调整 |
 | `gitpersona ui [--no-open]` | 在浏览器中打开配置页面：身份、目录、Pin、应用前的差异预览、体检、shell 和备份。只监听 127.0.0.1，链接只能用一次，15 分钟无操作自动退出 |
 | `gitpersona help <命令>` | 查看某个命令的参数 |
 

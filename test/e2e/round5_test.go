@@ -15,7 +15,7 @@ func TestSetupStepsFollowBrowserHistoryAndOfferNoDefault(t *testing.T) {
 	b := startBrowser(t)
 	b.viewport(375, 812, false)
 	b.open(link)
-	b.waitFor("step 1", `document.querySelector("#view h3")?.innerText.startsWith("1.")`)
+	adjustSetup(b)
 
 	// R5-05: the identity used outside every directory today is named, and
 	// keeping it is a choice.

@@ -184,3 +184,30 @@ func TestOldRulesAreLeftInAReadOnlyGitConfig(t *testing.T) {
 		t.Error("a read-only file was changed")
 	}
 }
+
+func TestRemovingOldRulesKeepsCommentsAndTheMarkerRightAfterThem(t *testing.T) {
+	text := "[user]\n\tname = Demo\n" +
+		"[includeIf \"gitdir:~/old/\"]\n\tpath = ~/.gitconfig-old\n\n\t# a note inside\n" +
+		"# >>> gitpersona >>>\n[include]\n\tpath = ~/.config/gitpersona/rules.gitconfig\n# <<< gitpersona <<<\n" +
+		"[IncludeIf \"gitdir:~/My \\\"Q\\\"/\"]\r\n\tpath = ~/.gitconfig-q\r\n[core]\n\teditor = vi\n"
+
+	got := withoutIncludeIfSections(text, []string{"gitdir:~/old/", `gitdir:~/My "Q"/`})
+
+	want := "[user]\n\tname = Demo\n" +
+		"\n\t# a note inside\n" +
+		"# >>> gitpersona >>>\n[include]\n\tpath = ~/.config/gitpersona/rules.gitconfig\n# <<< gitpersona <<<\n" +
+		"[core]\n\teditor = vi\n"
+	if got != want {
+		t.Errorf("withoutIncludeIfSections() =\n%q\nwant\n%q", got, want)
+	}
+}
+
+func TestRemovingOldRulesDropsKeysAfterACommentInTheSection(t *testing.T) {
+	text := "[include]\n\tpath = ~/.gitconfig-common\n[includeIf \"gitdir:~/work/\"]\n; work\n\tpath = ~/.gitconfig-work\n[core]\n\teditor = vi\n"
+
+	got := withoutIncludeIfSections(text, []string{"gitdir:~/work/"})
+
+	if want := "[include]\n\tpath = ~/.gitconfig-common\n; work\n[core]\n\teditor = vi\n"; got != want {
+		t.Errorf("withoutIncludeIfSections() =\n%q\nwant\n%q (the work path must not move into [include])", got, want)
+	}
+}

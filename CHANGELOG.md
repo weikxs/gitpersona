@@ -14,6 +14,14 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ### Added
 
+- One-step setup: `gitpersona setup` and `setup --web` look at what you already have — the accounts signed in to gh,
+  existing `includeIf` identities with their SSH keys and signing, the remotes and emails of the repositories in your
+  usual code folders, and SSH host aliases in `~/.ssh/config` (key files are only checked to exist, never opened) — and
+  organize them into profiles, directory rules, pins, the default profile and the login shell's integration. The page
+  opens on the finished proposal ("Your setup is ready"; one click applies it, "Adjust step by step" changes it); the
+  command line shows it and asks once (`--yes`, `--no-shell`, `--keep-old-rules`). The `includeIf` rules the profiles
+  fully replace are removed in the same backup; rules whose files also set other things (such as `url.*.insteadOf`)
+  stay, and setup says why. A first setup takes seconds instead of minutes.
 - `setup --web` and the page's setup steps: confirm one profile per signed-in account (reusing an existing `includeIf`
   setup), choose directories with suggestions from repository remotes, review every file including `config.toml`,
   then apply in one backup and see the health checks.
@@ -61,7 +69,8 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 - The setup steps follow the browser's Back and Forward buttons and survive a reload.
 - Setup step 1 names the identity used outside your directories today and offers "No default" to keep it; a name
   taken from the login (no public name on GitHub) says so.
-- Hand-made `includeIf` identity rules can be removed from the page or with `doctor --fix`, after a backup.
+- Hand-made `includeIf` identity rules can be removed from the page or with `doctor --fix`, after a backup; only
+  rules a profile fully replaces are removed, and comments (including GitPersona's block markers) are kept.
 - `~/.gitconfig` includes the rules as `~/.config/...` instead of an absolute path, so a dotfiles repository works on
   every machine (the next `apply` updates it).
 - Pinning a repository reached through a symlink stores the path as you reached it.

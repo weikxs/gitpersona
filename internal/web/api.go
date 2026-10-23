@@ -24,9 +24,6 @@ import (
 // maxBody bounds request bodies; the page only sends small JSON objects.
 const maxBody = 64 << 10
 
-// defaultRoots are scanned for repositories when the page does not choose.
-var defaultRoots = []string{"~/Projects", "~/projects", "~/code", "~/src", "~/dev", "~/work", "~/repos", "~/git"}
-
 // envelope is every API response: ok with data, or an error; log carries
 // what the command printed.
 type envelope struct {
@@ -165,36 +162,22 @@ func (a api) setup(c call) (any, error) {
 	if err := c.decode(&plan); err != nil {
 		return nil, err
 	}
-	if len(plan.Profiles) == 0 {
-		return nil, app.Setup(c.ctx, c.env, app.SetupOptions{})
-	}
-	return nil, app.ApplySetup(c.ctx, c.env, plan)
+	return nil, app.ApplySetup(c.ctx, c.env, plan) // refuses a plan without profiles
 }
 
 func (a api) discover(c call) (any, error) {
-	roots := defaultRoots
-	if q := c.r.URL.Query().Get("roots"); q != "" {
-		roots = strings.Split(q, ",")
+	chosen := c.r.URL.Query().Get("roots")
+	asked := app.DefaultScanRoots
+	if chosen != "" {
+		asked = strings.Split(chosen, ",")
 	}
-	report := DiscoverReport{Roots: []string{}, Missing: []string{}, Existing: []discover.Identity{}, Suggestions: []discover.Suggestion{}}
-	var abs []string
-	chosen := map[string]string{} // real folder -> the folder as the user wrote it
-	for _, root := range roots {
-		norm, err := paths.Normalize(strings.TrimSpace(root), c.env.Home)
-		if err != nil {
-			return nil, err
-		}
-		// Walk the real folder, so a symlinked ~/code is scanned too.
-		real, err := filepath.EvalSymlinks(norm)
-		if info, statErr := os.Stat(real); err != nil || statErr != nil || !info.IsDir() {
-			if q := c.r.URL.Query().Get("roots"); q != "" {
-				report.Missing = append(report.Missing, c.env.Display(norm))
-			}
-			continue
-		}
-		report.Roots = append(report.Roots, c.env.Display(norm))
-		abs = append(abs, real)
-		chosen[real] = norm
+	roots, err := c.env.ResolveScanRoots(asked)
+	if err != nil {
+		return nil, err
+	}
+	report := DiscoverReport{Roots: roots.Shown, Missing: []string{}, Existing: []discover.Identity{}, Suggestions: []discover.Suggestion{}}
+	if chosen != "" {
+		report.Missing = roots.Missing // the usual folders are only tried
 	}
 	if existing, err := discover.Existing(c.ctx, c.env.Home, c.env.GlobalGitConfigPath(), c.env.Run); err == nil && existing != nil {
 		for _, id := range existing {
@@ -209,8 +192,8 @@ func (a api) discover(c call) (any, error) {
 			logins = append(logins, acc.Login)
 		}
 	}
-	for _, s := range discover.Scan(c.ctx, abs, logins, discover.DefaultScanLimits) {
-		s.Dir = c.env.Display(asChosen(s.Dir, chosen))
+	for _, s := range discover.Scan(c.ctx, roots.Real, logins, discover.DefaultScanLimits) {
+		s.Dir = roots.Written(c.env, s.Dir)
 		report.Suggestions = append(report.Suggestions, s)
 	}
 	return report, nil
@@ -417,15 +400,7 @@ func shellKinds(c call) ([]shell.Kind, error) {
 	if err := c.decode(&req); err != nil {
 		return nil, err
 	}
-	var kinds []shell.Kind
-	for _, name := range req.Shells {
-		k, err := shell.Parse(name)
-		if err != nil {
-			return nil, err
-		}
-		kinds = append(kinds, k)
-	}
-	return kinds, nil
+	return app.ParseShells(req.Shells)
 }
 
 func (a api) close(_ call) (any, error) {
@@ -433,15 +408,4 @@ func (a api) close(_ call) (any, error) {
 		go a.stop()
 	}
 	return nil, nil
-}
-
-// asChosen writes dir under the folder the user chose rather than under the
-// real folder a symlink points to.
-func asChosen(dir string, chosen map[string]string) string {
-	for real, norm := range chosen {
-		if rest, ok := strings.CutPrefix(dir, real); ok && (rest == "" || strings.HasPrefix(rest, string(filepath.Separator))) {
-			return norm + rest
-		}
-	}
-	return dir
 }

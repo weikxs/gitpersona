@@ -1,88 +1,139 @@
 package app
 
 import (
+	"bufio"
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"regexp"
 	"strings"
 	"time"
-
-	"github.com/weikxs/gitpersona/internal/config"
-	"github.com/weikxs/gitpersona/internal/provider"
 )
 
 const setupTimeout = 30 * time.Second
 
 // SetupOptions controls Setup.
 type SetupOptions struct {
-	Print bool // print the configuration instead of writing it
+	Print   bool // print the configuration instead of writing it
+	Yes     bool // apply without asking
+	NoShell bool // leave the shells' startup files alone
+	// KeepOldRules leaves hand-made includeIf rules in ~/.gitconfig even
+	// when the profiles take them over.
+	KeepOldRules bool
 }
 
 var invalidIDChars = regexp.MustCompile(`[^a-z0-9-]+`)
 
-// Setup writes a first configuration with one profile per GitHub account gh
-// is signed in to, the public email of each account (or its noreply address
-// when it shows none), and gh's active account as the default. It asks gh
-// for account status (no tokens) and for each account's public profile.
+// Setup finds everything GitPersona can use (see ProposeSetup), shows the
+// configuration it would create, and after the user agrees writes it, the
+// Git configuration and the shell integration in one backup.
 func Setup(ctx context.Context, e Env, opts SetupOptions) error {
 	if _, err := os.Stat(e.configFile()); err == nil && !opts.Print {
 		return fmt.Errorf("%s already exists; change it on the configuration page (`gitpersona ui`), with `gitpersona use` and `gitpersona pin`, or by hand", e.display(e.configFile()))
 	}
-	ctx, cancel := context.WithTimeout(ctx, setupTimeout)
-	defer cancel()
-
-	source, accounts, err := e.signedInAccounts(ctx)
+	proposal, err := ProposeSetup(ctx, e)
 	if err != nil {
 		return err
 	}
-
-	text := renderSetup(ctx, source, accounts)
-	cfg, err := config.Parse([]byte(text))
-	if err == nil {
-		err = cfg.Validate(e.Home, e.CaseInsensitive)
+	if opts.NoShell {
+		proposal.Shells = []string{}
 	}
-	if err != nil {
-		return fmt.Errorf("generated configuration is not valid (please report this): %w", err)
+	if opts.KeepOldRules {
+		proposal.OldRules = []string{}
 	}
+	plan := proposal.Plan()
 	if opts.Print {
-		fmt.Fprint(e.Stdout, text)
+		fmt.Fprint(e.Stdout, renderPlan(plan))
 		return nil
 	}
-	if err := e.applyChanges([]change{{path: e.configFile(), content: text, create: true}}, ApplyOptions{Command: "setup"}); err != nil {
+	e.printProposal(proposal)
+	if !opts.Yes && !e.agree("Apply this setup? Changed files are backed up first. [Y/n] ") {
+		fmt.Fprintln(e.Stdout, "Nothing was written. Run `gitpersona setup --yes` to apply without asking, "+
+			"or `gitpersona setup --web` to adjust it in your browser.")
+		return nil
+	}
+	if err := ApplySetup(ctx, e, plan); err != nil {
 		return err
 	}
-	fmt.Fprintf(e.Stdout, "\nNext steps:\n"+
-		"  1. Check names and emails in %s.\n"+
-		"  2. In each directory that belongs to an account: gitpersona use <profile> (this also applies it)\n"+
-		"     or, after editing the file yourself: gitpersona apply\n"+
-		"  3. gitpersona install-shell, then gitpersona doctor\n", e.display(e.configFile()))
+	fmt.Fprintln(e.Stdout, "\nGitPersona is set up. Check it with `gitpersona doctor`; change anything with `gitpersona ui`.")
+	if len(plan.Shells) > 0 {
+		fmt.Fprintln(e.Stdout, "Open a new terminal so gh and the prompt follow your directories.")
+	}
 	return nil
 }
 
-func renderSetup(ctx context.Context, source provider.GitHub, accounts []provider.Account) string {
-	var b strings.Builder
-	b.WriteString("# GitPersona configuration, created by `gitpersona setup`.\n")
-	b.WriteString("# Assign directories with `gitpersona use <profile>`; see the README for every option.\n")
-	b.WriteString("version = 1\n")
-	for _, a := range accounts {
-		if a.Active {
-			fmt.Fprintf(&b, "default = %q # gh's active account\n", profileID(a.Login))
-		}
+// agree asks a yes/no question; Enter means yes, and no answer (no
+// terminal) means no.
+func (e Env) agree(question string) bool {
+	fmt.Fprint(e.Stdout, "\n"+question)
+	answer, err := bufio.NewReader(e.Stdin).ReadString('\n')
+	if err != nil && answer == "" {
+		fmt.Fprintln(e.Stdout)
+		return false
 	}
-	for _, a := range accounts {
-		if a.State != "success" {
-			continue
-		}
-		id := ghIdentity(ctx, source, a.Login)
-		note := "public email on GitHub"
-		if id.emailSource == "noreply" {
-			note = "GitHub noreply address; the account shows no public email"
-		}
-		fmt.Fprintf(&b, "\n[[profile]]\nid      = %q\naccount = %q\nname    = %q\nemail   = %q # %s\n",
-			profileID(a.Login), a.Login, id.name, id.email, note)
+	answer = strings.ToLower(strings.TrimSpace(answer))
+	return answer == "" || answer == "y" || answer == "yes"
+}
+
+// printProposal shows what setup found and would configure.
+func (e Env) printProposal(p SetupProposal) {
+	w := e.Stdout
+	fmt.Fprintf(w, "GitPersona found %s", plural(len(p.Profiles), "GitHub account"))
+	if len(p.Roots) > 0 {
+		fmt.Fprintf(w, " and looked for repositories in %s", strings.Join(p.Roots, ", "))
 	}
-	return b.String()
+	fmt.Fprintln(w, ":")
+	for _, prof := range p.Profiles {
+		printProposedProfile(w, prof, prof.ID == p.Default)
+	}
+	for _, pin := range p.Pins {
+		fmt.Fprintf(w, "\n  Pin %s to %s: %s\n", pin.Repo, pin.Profile, pin.Why)
+	}
+	if p.Default != "" && p.Global.Email != "" {
+		fmt.Fprintf(w, "\n  Outside these directories, commits will use %s instead of %s <%s>.\n",
+			p.Default, p.Global.Name, p.Global.Email)
+	}
+	if len(p.OldRules) > 0 {
+		fmt.Fprintf(w, "\n  The profiles take over your includeIf rules for %s; they are removed from your Git configuration (--keep-old-rules to keep them).\n",
+			strings.Join(p.OldRules, ", "))
+	}
+	for _, k := range p.KeptRules {
+		fmt.Fprintf(w, "\n  Kept your includeIf rule for %s: %s.\n", k.Dir, k.Why)
+	}
+	if len(p.Shells) > 0 {
+		fmt.Fprintf(w, "\n  Shell integration for %s, so gh and your prompt follow the directory (--no-shell to skip).\n",
+			strings.Join(p.Shells, ", "))
+	}
+	for _, u := range p.Unassigned {
+		fmt.Fprintf(w, "\n  Left out: %s (%s, owned by %s). Run `gitpersona use <profile>` there to add it.\n", u.Dir, u.Why, u.Owner)
+	}
+	for _, u := range p.Unmatched {
+		fmt.Fprintf(w, "\n  Left out: %s <%s> from %s; no account signed in to gh uses it.\n", u.Name, u.Email, u.Source)
+	}
+}
+
+func printProposedProfile(w io.Writer, p SetupProfile, isDefault bool) {
+	label := p.ID
+	if isDefault {
+		label += " (default)"
+	}
+	fmt.Fprintf(w, "\n  %s: %s <%s>\n", label, p.Name, p.Email)
+	if p.SSHKey != "" {
+		fmt.Fprintf(w, "    SSH key %s\n", p.SSHKey)
+	}
+	if p.Signing.Method != "" {
+		fmt.Fprintf(w, "    signs commits (%s)\n", p.Signing.Method)
+	}
+	for _, d := range p.Dirs {
+		fmt.Fprintf(w, "    %s  (your existing setup)\n", d)
+	}
+	for _, f := range p.Found {
+		fmt.Fprintf(w, "    %s  (%s)\n", f.Dir, f.Why)
+	}
+	if len(p.Dirs)+len(p.Found) == 0 {
+		fmt.Fprintln(w, "    no directories yet")
+	}
 }
 
 // profileID derives a valid profile id from a login.
