@@ -2,16 +2,24 @@
 // signed-in accounts and the health checks.
 
 import { api } from "../api.js";
-import { h, replace, badge, field, busy } from "../dom.js";
+import { h, replace, badge, field, busy, confirm } from "../dom.js";
 
-export function renderOverview(section, { state }) {
+export function renderOverview(section, { state, run }) {
   if (!state.config_exists) {
     section.append(setupCard());
   } else if (state.config_error) {
-    section.append(h("div", { class: "notice fail", role: "alert" },
-      h("strong", {}, "The configuration has a problem. "), state.config_error));
+    section.append(configProblem(state));
   }
-  section.append(resolveCard(), accountsCard(state), doctorCard(state.doctor));
+  section.append(resolveCard(), accountsCard(state), doctorCard(state.doctor, run));
+}
+
+// configProblem explains a configuration that cannot be used and how to get
+// back to a working one.
+export function configProblem(state) {
+  return h("div", { class: "notice fail", role: "alert" },
+    h("strong", {}, "The configuration has a problem. "), state.config_error,
+    h("p", {}, "Fix ", h("span", { class: "mono" }, state.config_path), " in an editor, or ",
+      h("a", { href: "#backups" }, "restore a backup"), ", then reload this page."));
 }
 
 function setupCard() {
@@ -108,14 +116,33 @@ function adviceLink(advice) {
   return null;
 }
 
-export function doctorCard(doctor) {
+// FIXES are the repairs the page runs from a health check.
+const FIXES = {
+  "old-rules": { label: "Remove old rules", run: () => api.removeOldRules(),
+    ask: ["Remove the old includeIf rules?", "GitPersona deletes those [includeIf] sections from your global Git " +
+      "configuration and keeps everything else. The file is backed up first.", "Remove"],
+    done: "Removed the old includeIf rules. The previous file is under Backups." },
+};
+
+export function doctorCard(doctor, run) {
   const warnings = doctor.checks.some((c) => c.status === "warn");
   const summary = !doctor.ok ? badge("fail", "Needs attention")
     : warnings ? badge("warn", "Works, with warnings") : badge("ok", "All checks pass");
   return h("div", { class: "card" },
     h("div", { class: "card-head" }, h("h3", {}, "Health checks"), summary),
     h("ul", { class: "checks" }, doctor.checks.map((c) =>
-      h("li", {}, badge(c.status), h("span", {}, c.label), c.advice ? h("span", { class: "advice" }, c.advice, adviceLink(c.advice)) : null))),
+      h("li", {}, badge(c.status), h("span", {}, c.label), c.advice ? h("span", { class: "advice" }, c.advice, adviceLink(c.advice)) : null,
+        fixButton(c, run)))),
     doctor.ok ? null : h("p", { class: "muted" }, "Run `gitpersona doctor --fix` in a terminal to repair what can be fixed automatically."));
 }
 
+
+function fixButton(check, run) {
+  const fix = FIXES[check.fix];
+  if (!fix || !run) return null;
+  const button = h("button", { type: "button" }, fix.label);
+  button.addEventListener("click", () => busy(button, async () => {
+    if (await confirm(...fix.ask)) await run(fix.run, fix.done);
+  }));
+  return h("div", {}, button);
+}

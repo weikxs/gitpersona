@@ -247,3 +247,32 @@ func TestProfilesWithoutSigningRestoreTheUsersGlobalSigning(t *testing.T) {
 		}
 	}
 }
+
+func TestSigningNoneTurnsSigningOffEvenWhenTheUserSignsGlobally(t *testing.T) {
+	cfg := demoConfig()
+	cfg.Profiles[1].Signing = config.Signing{Method: config.SigningNone}
+	for _, opts := range []Options{demoOptions(), func() Options {
+		o := demoOptions()
+		o.FallbackSigning = Signing{GPGSign: "true", SigningKey: "/tmp/home/.ssh/global.pub", Format: "ssh"}
+		return o
+	}()} {
+		cfg := cfg
+		cfg.Profiles = append([]config.Profile{}, cfg.Profiles...)
+		cfg.Profiles[0].Signing = config.Signing{} // no other profile signs
+
+		files, err := Generate(cfg, opts)
+		if err != nil {
+			t.Fatal(err)
+		}
+		acme := files[0].Content
+
+		for _, want := range []string{"[commit]\n\tgpgsign = false", "[tag]\n\tgpgSign = false"} {
+			if !strings.Contains(acme, want) {
+				t.Errorf("signing \"none\" must write %q:\n%s", want, acme)
+			}
+		}
+		if strings.Contains(acme, "global.pub") {
+			t.Errorf("signing \"none\" must not restore the user's signing:\n%s", acme)
+		}
+	}
+}

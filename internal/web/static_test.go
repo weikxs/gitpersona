@@ -117,6 +117,20 @@ func TestModulesAreServedAsJavaScript(t *testing.T) {
 	}
 }
 
+func TestStaticFoldersAreNotListed(t *testing.T) {
+	s := newTestServer(t)
+	cookie := login(t, s)
+	for _, dir := range []string{"/static/", "/static/views/"} {
+		r := request("GET", dir, nil)
+		r.AddCookie(cookie)
+		w := httptest.NewRecorder()
+		s.ServeHTTP(w, r)
+		if w.Code != http.StatusNotFound {
+			t.Errorf("%s: status %d, want 404 (no directory listing)", dir, w.Code)
+		}
+	}
+}
+
 // tokenPairs are the foreground/background token pairs the page uses for text.
 var tokenPairs = [][2]string{
 	{"text", "bg"}, {"text", "surface"}, {"text", "surface-2"}, {"muted", "bg"}, {"muted", "surface"},

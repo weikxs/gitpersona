@@ -310,7 +310,7 @@ func TestDoctorWarnsWhenGHIsNotRoutedThroughGitPersona(t *testing.T) {
 
 	Doctor(context.Background(), env) // PATH still finds the fake gh before the shim
 
-	if !strings.Contains(out.String(), "! gh in this shell is not GitPersona's") {
+	if !strings.Contains(out.String(), "! gh in the shell that started gitpersona is not GitPersona's") {
 		t.Fatalf("doctor should notice that gh bypasses the shim:\n%s", out.String())
 	}
 }

@@ -25,6 +25,16 @@ type SetupProfile struct {
 	// EmailSource is "public" for the email on the GitHub profile, "noreply"
 	// when the account shows none, or "existing".
 	EmailSource string `json:"email_source,omitempty"`
+	// NameSource is "public" for the name on the GitHub profile, "login"
+	// when the account shows none, or "existing".
+	NameSource string `json:"name_source,omitempty"`
+}
+
+// GlobalIdentity is the user.name and user.email of the global Git
+// configuration: what commits use outside every rule before setup.
+type GlobalIdentity struct {
+	Name  string `json:"name"`
+	Email string `json:"email"`
 }
 
 // SetupProposal is what the setup page starts from.
@@ -34,6 +44,9 @@ type SetupProposal struct {
 	// Unmatched are identities of an existing setup that no signed-in
 	// account claims; the page shows them so nothing is silently dropped.
 	Unmatched []discover.Identity `json:"unmatched"`
+	// Global is the identity used outside every rule today, so the page can
+	// say what the default profile replaces.
+	Global GlobalIdentity `json:"global"`
 }
 
 // SetupPlan is the configuration the user confirmed on the setup page.
@@ -63,10 +76,11 @@ func ProposeSetup(ctx context.Context, e Env) (SetupProposal, error) {
 		}
 		p := SetupProfile{ID: profileID(a.Login), Account: a.Login, Dirs: []string{}, Source: "gh"}
 		gh := ghIdentity(ctx, source, a.Login)
-		p.Name, p.Email, p.EmailSource = gh.name, gh.email, gh.emailSource
+		p.Name, p.Email, p.EmailSource, p.NameSource = gh.name, gh.email, gh.emailSource, gh.nameSource
 		if i := matchIdentity(existing, a.Login, gh.publicEmail); i >= 0 {
 			used[i] = true
-			p.Name, p.Email, p.Source, p.EmailSource = existing[i].Name, existing[i].Email, "existing", "existing"
+			p.Name, p.Email, p.Source = existing[i].Name, existing[i].Email, "existing"
+			p.EmailSource, p.NameSource = "existing", "existing"
 			p.Dirs = append(p.Dirs, existing[i].Dirs...)
 		}
 		if a.Active {
@@ -80,7 +94,18 @@ func ProposeSetup(ctx context.Context, e Env) (SetupProposal, error) {
 			proposal.Unmatched = append(proposal.Unmatched, id)
 		}
 	}
+	proposal.Global = e.globalIdentity(ctx)
 	return proposal, nil
+}
+
+// globalIdentity reads user.name and user.email from the global Git
+// configuration itself, not from files it includes.
+func (e Env) globalIdentity(ctx context.Context) GlobalIdentity {
+	get := func(key string) string {
+		out, _ := e.git(ctx, e.Home, "config", "--file", e.GlobalGitConfigPath(), "--get", key)
+		return out
+	}
+	return GlobalIdentity{Name: get("user.name"), Email: get("user.email")}
 }
 
 func (e Env) signedInAccounts(ctx context.Context) (provider.GitHub, []provider.Account, error) {
@@ -100,19 +125,20 @@ func (e Env) signedInAccounts(ctx context.Context) (provider.GitHub, []provider.
 type accountIdentity struct {
 	name, email string
 	emailSource string // "public" or "noreply"
+	nameSource  string // "public" or "login"
 	publicEmail string // the profile's public email, or ""
 }
 
 // ghIdentity returns the account's public name (or its login) and its public
 // email; an account that shows no email gets its GitHub noreply address.
 func ghIdentity(ctx context.Context, source provider.GitHub, login string) accountIdentity {
-	id := accountIdentity{name: login, email: login + "@users.noreply.github.com", emailSource: "noreply"}
+	id := accountIdentity{name: login, nameSource: "login", email: login + "@users.noreply.github.com", emailSource: "noreply"}
 	u, err := source.User(ctx, config.DefaultGitHubHost, login)
 	if err != nil {
 		return id
 	}
 	if u.Name != "" {
-		id.name = u.Name
+		id.name, id.nameSource = u.Name, "public"
 	}
 	if u.ID > 0 {
 		id.email = fmt.Sprintf("%d+%s@users.noreply.github.com", u.ID, login)

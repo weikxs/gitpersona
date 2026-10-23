@@ -240,6 +240,17 @@ var errGlobalConfigDisabled = fmt.Errorf("the global Git configuration is disabl
 // file read-only and GitPersona must not change it.
 const userWritablePerm os.FileMode = 0o200
 
+// includePath is the rules file as written in the global Git configuration:
+// under the home directory it starts with ~/, which Git expands, so a
+// dotfiles repository that holds ~/.gitconfig works on every machine.
+func (e Env) includePath() string {
+	rules := filepath.Join(e.ConfigDir, generate.RulesFile)
+	if rel, err := filepath.Rel(e.Home, rules); err == nil && !strings.HasPrefix(rel, "..") {
+		return "~/" + filepath.ToSlash(rel)
+	}
+	return rules
+}
+
 func (e Env) gitConfigWithBlock() (change, error) {
 	link := e.userGitConfig()
 	if link == os.DevNull {
@@ -250,7 +261,7 @@ func (e Env) gitConfigWithBlock() (change, error) {
 	if err != nil {
 		return change{}, err
 	}
-	updated, err := block.UpsertLast(current, generate.IncludeBody(filepath.Join(e.ConfigDir, generate.RulesFile)))
+	updated, err := block.UpsertLast(current, generate.IncludeBody(e.includePath()))
 	if err != nil {
 		return change{}, fmt.Errorf("%s: %w. Open the file and keep exactly one pair of the lines %q and %q "+
 			"(or delete both), then run `gitpersona apply` again", e.display(link), err, block.Begin, block.End)
@@ -262,7 +273,7 @@ func (e Env) gitConfigWithBlock() (change, error) {
 		if perm&userWritablePerm == 0 && updated != current {
 			return change{}, fmt.Errorf("%s is read-only; make it writable (chmod u+w), or add these lines at its end "+
 				"yourself (keep the marker lines so GitPersona recognizes them):\n\n%s",
-				e.display(link), block.Render(generate.IncludeBody(filepath.Join(e.ConfigDir, generate.RulesFile))))
+				e.display(link), block.Render(generate.IncludeBody(e.includePath())))
 		}
 	}
 	return change{path: path, content: updated, perm: perm}, nil

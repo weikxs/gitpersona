@@ -193,3 +193,22 @@ func TestProposeSetupUsesThePublicEmailAndMatchesByIt(t *testing.T) {
 		t.Errorf("without an existing setup the public email is proposed, got %+v", octo)
 	}
 }
+
+func TestProposeSetupReportsTheGlobalIdentityAndWhereNamesComeFrom(t *testing.T) {
+	w := newWorld(t)
+	withoutConfig(t, w)
+	mustWrite(t, filepath.Join(w.home, ".gitconfig"), "[user]\n\tname = Demo Person\n\temail = person@demo.example\n", 0o600)
+	env, _ := w.env(t, w.home)
+
+	got, err := ProposeSetup(context.Background(), env)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if got.Global.Name != "Demo Person" || got.Global.Email != "person@demo.example" {
+		t.Errorf("global identity = %+v, want the one in ~/.gitconfig", got.Global)
+	}
+	if acme := got.Profiles[1]; acme.NameSource != "login" {
+		t.Errorf("a name taken from the login should say so, got %+v", acme)
+	}
+}

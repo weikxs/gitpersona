@@ -2,9 +2,9 @@
 // then review every file, apply and check. Nothing is written before the
 // last step.
 
-import { api } from "../api.js";
+import { api, normalizePath } from "../api.js";
 import { h, replace, badge, field, busy, status, clearStatus } from "../dom.js";
-import { doctorCard } from "./overview.js";
+import { doctorCard, configProblem } from "./overview.js";
 import { diffBlock } from "./apply.js";
 
 const STEPS = ["Identities", "Directories", "Review & apply"];
@@ -15,13 +15,50 @@ const EMAIL_HINTS = {
   existing: "The email your Git configuration already uses for this account",
 };
 
-// wizard holds the user's choices; every change replaces it with a new object.
-let wizard = null;
+// wizard holds the user's choices; every change replaces it with a new object
+// through setWizard, which also keeps it for this tab, so a reload or the
+// browser's Back and Forward do not lose the choices.
+const STORE_KEY = "gitpersona-setup";
+let wizard = loadWizard();
 let shownStep = null;
+let shownIn = null; // {body, run} of the steps on screen, for Back and Forward
+
+function setWizard(next) {
+  wizard = next;
+  try {
+    if (next) sessionStorage.setItem(STORE_KEY, JSON.stringify(next));
+    else sessionStorage.removeItem(STORE_KEY);
+  } catch {
+    // Storage may be unavailable; the choices then last until a reload.
+  }
+}
+
+function loadWizard() {
+  try {
+    return JSON.parse(sessionStorage.getItem(STORE_KEY) ?? "null");
+  } catch {
+    return null;
+  }
+}
+
+// remember records a step in the browser history, so Back and Forward move
+// between the steps instead of leaving the page.
+function remember(step, how = "push") {
+  const entry = { setupStep: step };
+  if (how === "replace") history.replaceState(entry, "");
+  else history.pushState(entry, "");
+}
+
+window.addEventListener("popstate", (event) => {
+  const step = event.state?.setupStep;
+  if (!wizard || !shownIn?.body.isConnected || typeof step !== "number") return;
+  update({ step }, shownIn.body, shownIn.run, { fromHistory: true });
+});
 
 export function renderSetup(section, { state, run }) {
   if (state.config_exists) {
-    section.append(finished(state));
+    setWizard(null);
+    section.append(finished(state, run));
     return;
   }
   const body = h("div", {});
@@ -32,7 +69,8 @@ export function renderSetup(section, { state, run }) {
   }
   replace(body, h("p", { "aria-busy": "true" }, "Asking gh which accounts are signed in…"));
   api.proposeSetup().then(({ data }) => {
-    wizard = fromProposal(data);
+    setWizard(fromProposal(data));
+    remember(0, "replace");
     show(body, run);
   }).catch((err) => replace(body, h("div", { class: "notice fail", role: "alert" }, err.message,
     h("p", {}, "Sign in with `gh auth login` for each account, then reload this page."))));
@@ -43,6 +81,7 @@ function fromProposal(p) {
     step: 0,
     defaultAccount: p.profiles.find((x) => x.id === p.default)?.account ?? "",
     unmatched: p.unmatched,
+    global: p.global,
     profiles: p.profiles.map((x) => ({ ...x, include: true, dirs: x.dirs.map((d) => ({ dir: d, on: true, why: "your existing setup" })) })),
     unassigned: [],
     roots: "",
@@ -50,9 +89,11 @@ function fromProposal(p) {
   };
 }
 
-function update(changes, body, run) {
-  if (changes.step !== undefined && changes.step !== wizard.step) clearStatus();
-  wizard = { ...wizard, ...changes };
+function update(changes, body, run, { fromHistory = false } = {}) {
+  const moved = changes.step !== undefined && changes.step !== wizard.step;
+  if (moved) clearStatus();
+  if (moved && !fromHistory) remember(changes.step);
+  setWizard({ ...wizard, ...changes });
   show(body, run);
 }
 
@@ -66,14 +107,22 @@ function show(body, run) {
       h("span", { class: "visually-hidden" }, i < wizard.step ? "Done: " : ""), name)));
   const content = [identities, directories, review][wizard.step](body, run);
   replace(body, steps, content);
+  shownIn = { body, run };
   if (shownStep !== wizard.step) body.querySelector("h3")?.focus();
   shownStep = wizard.step;
 }
 
 function nav(body, run, { back = true, nextLabel = "Next" }) {
   return h("div", { class: "actions" },
-    back ? h("button", { type: "button", onclick: () => update({ step: wizard.step - 1 }, body, run) }, "Back") : null,
+    back ? h("button", { type: "button", onclick: () => goBack(body, run) }, "Back") : null,
     h("button", { type: "submit", class: "primary" }, nextLabel));
+}
+
+// goBack follows the browser history when this step was reached through it,
+// so the Back button and the browser's Back stay in step.
+function goBack(body, run) {
+  if (history.state?.setupStep === wizard.step && wizard.step > 0) history.back();
+  else update({ step: wizard.step - 1 }, body, run);
 }
 
 // Step 1: which accounts become profiles, with their names and emails.
@@ -83,6 +132,7 @@ function identities(body, run) {
     h("p", { class: "muted" }, "One profile for each account signed in to gh, with the name and email shown on its GitHub profile. " +
       "Change them here if your commits should use something else."),
     wizard.profiles.map((p, i) => identityFields(p, i)),
+    defaultChoice(),
     wizard.unmatched.length > 0 ? unmatchedNote() : null,
     nav(body, run, { back: false }));
   form.addEventListener("submit", (event) => {
@@ -92,7 +142,8 @@ function identities(body, run) {
       status("fail", "Choose at least one account.");
       return;
     }
-    const defaultAccount = included.some((p) => p.account === wizard.defaultAccount) ? wizard.defaultAccount : included[0].account;
+    const keep = wizard.defaultAccount === "" || included.some((p) => p.account === wizard.defaultAccount);
+    const defaultAccount = keep ? wizard.defaultAccount : included[0].account;
     update({ step: 1, defaultAccount }, body, run);
   });
   return form;
@@ -101,7 +152,7 @@ function identities(body, run) {
 function identityFields(p, i) {
   const input = (key, attrs = {}) => {
     const el = h("input", { type: "text", value: p[key], required: true, autocomplete: "off", spellcheck: "false", ...attrs });
-    el.addEventListener("change", () => { wizard = { ...wizard, profiles: setProfile(i, { [key]: el.value.trim() }) }; });
+    el.addEventListener("change", () => { setWizard({ ...wizard, profiles: setProfile(i, { [key]: el.value.trim() }) }); });
     return el;
   };
   const include = h("input", { type: "checkbox", checked: p.include });
@@ -110,19 +161,36 @@ function identityFields(p, i) {
   // profile the user leaves out cannot block Next.
   const fields = h("fieldset", { class: "stack plain", hidden: !p.include, disabled: !p.include },
     field("Profile name", input("id", { pattern: "[a-z0-9][a-z0-9\\-]{0,31}", maxlength: 32, title: "Lowercase letters, digits and -, starting with a letter or digit" }), "Lowercase letters, digits and -"),
-    field("Author name", input("name")),
+    field("Author name", input("name"), p.name_source === "login" ? "This account shows no public name, so this is its login" : null),
     field("Author email", input("email", { type: "email" }), EMAIL_HINTS[p.email_source]),
     h("label", { class: "check" }, isDefault, "Use this profile where no directory rule matches (default)"));
   include.addEventListener("change", () => {
-    wizard = { ...wizard, profiles: setProfile(i, { include: include.checked }) };
+    setWizard({ ...wizard, profiles: setProfile(i, { include: include.checked }) });
     fields.hidden = !include.checked;
     fields.disabled = !include.checked;
   });
-  isDefault.addEventListener("change", () => { wizard = { ...wizard, defaultAccount: p.account }; });
+  isDefault.addEventListener("change", () => { setWizard({ ...wizard, defaultAccount: p.account }); });
   return h("fieldset", {},
     h("legend", {}, p.account, " ", p.source === "existing" ? badge("info", "From your existing setup") : null),
     h("label", { class: "check" }, include, `Create a profile for ${p.account}`),
     fields);
+}
+
+// defaultChoice offers no default, and says what commits outside every
+// directory use today, so making a profile the default is not a surprise.
+function defaultChoice() {
+  const none = h("input", { type: "radio", name: "default", value: "", checked: wizard.defaultAccount === "" });
+  none.addEventListener("change", () => { setWizard({ ...wizard, defaultAccount: "" }); });
+  const g = wizard.global ?? {};
+  const today = g.email ? `${g.name || "(no name)"} <${g.email}>` : "";
+  return h("fieldset", {},
+    h("legend", {}, "Outside your directories"),
+    h("p", { class: "muted" }, today
+      ? ["Commits outside every directory use ", h("span", { class: "mono" }, today),
+        " today (your global Git settings). The default profile replaces it."]
+      : "Commits outside every directory use the default profile chosen above."),
+    h("label", { class: "check" }, none,
+      today ? `No default: keep ${today}` : "No default: keep Git's own settings"));
 }
 
 function unmatchedNote() {
@@ -198,7 +266,8 @@ function withSuggestions(suggestions) {
   const known = (dir) => wizard.profiles.some((p) => p.dirs.some((d) => d.dir === dir)) ||
     wizard.unassigned.some((u) => u.dir === dir);
   const fresh = suggestions.filter((s) => !known(s.dir));
-  const why = (s) => `${s.repos} of ${s.total} repositories there`;
+  const why = (s) => (s.repos === s.total ? `all ${s.total === 1 ? "1 repository" : `${s.total} repositories`} there`
+    : `${s.repos} of ${s.total} repositories there`);
   const profiles = wizard.profiles.map((p) => {
     const found = fresh.filter((s) => s.account && s.account === p.account);
     return { ...p, dirs: [...p.dirs, ...found.map((s) => ({ dir: s.dir, on: true, why: why(s) }))] };
@@ -222,6 +291,9 @@ function unassignedCard(included, body, run) {
         const i = Number(select.value);
         const dirs = [...wizard.profiles[i].dirs, { dir: u.dir, on: true, why: `${u.why}, owned by ${u.owner}` }];
         update({ profiles: setProfile(i, { dirs }), unassigned: wizard.unassigned.filter((_, j) => j !== k) }, body, run);
+        // The step is drawn again; keep focus on the directory just added.
+        [...body.querySelectorAll("label.check")].find((l) => l.textContent.startsWith(u.dir + " ·"))
+          ?.querySelector("input")?.focus();
       });
       return field(`${u.dir} · ${u.owner} · ${u.why}`, select);
     }));
@@ -236,14 +308,15 @@ function dirFields(p, i, body, run) {
   const add = h("input", { type: "text", autocomplete: "off", spellcheck: "false", placeholder: "~/code/" + p.id });
   const addButton = h("button", { type: "button" }, "Add");
   onEnter(add, addButton);
-  addButton.addEventListener("click", () => {
-    const dir = cleanDir(add.value.trim());
-    if (!dir) return;
-    if (!dir.startsWith("~/") && !dir.startsWith("/")) {
+  addButton.addEventListener("click", () => busy(addButton, async () => {
+    const typed = cleanDir(add.value.trim());
+    if (!typed) return;
+    if (!typed.startsWith("~/") && !typed.startsWith("/")) {
       status("fail", "Write the directory as an absolute path or one starting with ~/, for example ~/code/work.");
       add.focus();
       return;
     }
+    const dir = await normalizePath(typed);
     const owner = wizard.profiles.find((x) => x.include && x.dirs.some((d) => d.on && cleanDir(d.dir) === dir));
     if (owner) {
       status("fail", owner === wizard.profiles[i] ? `${dir} is already in the list.`
@@ -255,7 +328,7 @@ function dirFields(p, i, body, run) {
     const dirs = [...wizard.profiles[i].dirs, { dir, on: true, why: "added by you" }];
     update({ profiles: setProfile(i, { dirs }) }, body, run);
     body.querySelectorAll("fieldset input[type=text]")[included(i)]?.focus();
-  });
+  }));
   return h("fieldset", {},
     h("legend", {}, `${p.id} (${p.account})`),
     p.dirs.length === 0 ? h("p", { class: "empty" }, "No directories yet.") : null,
@@ -263,7 +336,7 @@ function dirFields(p, i, body, run) {
       const box = h("input", { type: "checkbox", checked: d.on });
       box.addEventListener("change", () => {
         const dirs = wizard.profiles[i].dirs.map((x, k) => (k === j ? { ...x, on: box.checked } : x));
-        wizard = { ...wizard, profiles: setProfile(i, { dirs }) };
+        setWizard({ ...wizard, profiles: setProfile(i, { dirs }) });
       });
       return h("label", { class: "check" }, box, h("span", { class: "mono" }, d.dir), h("span", { class: "muted" }, ` · ${d.why}`));
     }),
@@ -303,17 +376,18 @@ function review(body, run) {
   form.addEventListener("submit", (event) => {
     event.preventDefault();
     busy(apply, async () => {
-      if (await run(() => api.setupApply(plan), "GitPersona is set up. Git now uses your profiles.")) wizard = null;
+      if (await run(() => api.setupApply(plan), "GitPersona is set up. Git now uses your profiles.")) setWizard(null);
     });
   });
   return form;
 }
 
-function finished(state) {
+function finished(state, run) {
+  if (state.config_error) return h("div", {}, configProblem(state));
   return h("div", {},
     h("div", { class: "notice ok" }, badge("ok", "Set up"),
       " Your configuration is in place. Change it any time under Profiles."),
-    doctorCard(state.doctor),
+    doctorCard(state.doctor, run),
     h("div", { class: "card" },
       h("h3", {}, "Next"),
       h("ul", {},

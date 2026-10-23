@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -104,4 +105,82 @@ func backupCount(t *testing.T, env Env) (int, error) {
 	t.Helper()
 	entries, err := filepath.Glob(filepath.Join(env.BackupDir(), "*"))
 	return len(entries), err
+}
+
+func TestOldRulesAreRemovedWithABackupAndOtherSettingsKept(t *testing.T) {
+	w := newWorld(t)
+	gitconfig := filepath.Join(w.home, ".gitconfig")
+	mustWrite(t, gitconfig, "# my settings\n[user]\n\tname = Demo Person\n"+
+		"[includeIf \"gitdir:~/old/\"]\n\tpath = ~/.gitconfig-old\n"+
+		"[includeIf \"hasconfig:remote.*.url:https://example.com/**\"]\n\tpath = ~/.gitconfig-other\n", 0o600)
+	mustWrite(t, filepath.Join(w.home, ".gitconfig-old"), "[user]\n\temail = old@example.com\n", 0o600)
+	env, out := w.env(t, w.home)
+	if err := Apply(context.Background(), env, ApplyOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	before, _ := backupCount(t, env)
+
+	if err := RemoveOldRules(context.Background(), env); err != nil {
+		t.Fatal(err)
+	}
+
+	got := readFile(t, gitconfig)
+	if strings.Contains(got, "~/old/") {
+		t.Errorf("the old identity rule is still there:\n%s", got)
+	}
+	for _, keep := range []string{"# my settings", "name = Demo Person", "hasconfig:remote", "gitpersona"} {
+		if !strings.Contains(got, keep) {
+			t.Errorf("%q should be kept:\n%s", keep, got)
+		}
+	}
+	if after, _ := backupCount(t, env); after != before+1 {
+		t.Errorf("removing old rules should make one backup (%d -> %d)", before, after)
+	}
+	if !strings.Contains(out.String(), "Removed the old includeIf rule for ~/old") {
+		t.Errorf("output should say what was removed:\n%s", out.String())
+	}
+	out.Reset()
+	if err := RemoveOldRules(context.Background(), env); err != nil || !strings.Contains(out.String(), "nothing to change") {
+		t.Errorf("a second run should change nothing: %v\n%s", err, out.String())
+	}
+}
+
+func readFile(t *testing.T, path string) string {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(data)
+}
+
+func TestTheGlobalIncludeIsWrittenRelativeToHome(t *testing.T) {
+	w := newWorld(t)
+	env, _ := w.env(t, w.home)
+	if err := Apply(context.Background(), env, ApplyOptions{}); err != nil {
+		t.Fatal(err)
+	}
+
+	got := readFile(t, filepath.Join(w.home, ".gitconfig"))
+
+	if !strings.Contains(got, "path = ~/.config/gitpersona/rules.gitconfig") || strings.Contains(got, w.home) {
+		t.Errorf("~/.gitconfig should include the rules as ~/..., so dotfiles work on any machine:\n%s", got)
+	}
+}
+
+func TestOldRulesAreLeftInAReadOnlyGitConfig(t *testing.T) {
+	w := newWorld(t)
+	gitconfig := filepath.Join(w.home, ".gitconfig")
+	mustWrite(t, filepath.Join(w.home, ".gitconfig-old"), "[user]\n\temail = old@example.com\n", 0o600)
+	mustWrite(t, gitconfig, "[includeIf \"gitdir:~/old/\"]\n\tpath = ~/.gitconfig-old\n", 0o400)
+	env, _ := w.env(t, w.home)
+
+	err := RemoveOldRules(context.Background(), env)
+
+	if err == nil || !strings.Contains(err.Error(), "read-only") {
+		t.Fatalf("RemoveOldRules() on a read-only file = %v", err)
+	}
+	if !strings.Contains(readFile(t, gitconfig), "~/old/") {
+		t.Error("a read-only file was changed")
+	}
 }

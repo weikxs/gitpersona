@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 
@@ -140,7 +141,22 @@ func (e Env) pinnableRepo(ctx context.Context) (string, error) {
 		return "", fmt.Errorf("%s is a worktree; worktrees follow their main repository (%s), so pin that instead",
 			e.display(root), e.display(strings.TrimSuffix(common, "/.git")))
 	}
-	return e.display(root), nil
+	return e.display(asWritten(e.WorkDir, root)), nil
+}
+
+// asWritten returns the repository root as the user reached it: Git reports
+// the real path, but a repository under a symlink (say ~/code -> ~/real-code)
+// should be stored as ~/code/..., like directory rules are.
+func asWritten(workDir, root string) string {
+	real := paths.ResolveSymlinks(root)
+	for dir := filepath.Clean(workDir); ; dir = filepath.Dir(dir) {
+		if paths.ResolveSymlinks(dir) == real {
+			return dir
+		}
+		if parent := filepath.Dir(dir); parent == dir {
+			return root
+		}
+	}
 }
 
 // saveEdited checks that edited parses to exactly want, backs up the

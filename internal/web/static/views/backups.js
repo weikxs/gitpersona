@@ -4,6 +4,33 @@
 import { api } from "../api.js";
 import { h, replace, busy, confirm } from "../dom.js";
 
+// COMMANDS describes what made a backup in words, not command names; the
+// backup was taken before that change.
+const COMMANDS = [
+  [/^use (.+)$/, (id) => `adding a directory to ${id}`],
+  [/^remove profile (.+)$/, (id) => `removing profile ${id}`],
+  [/^remove old includeIf rules$/, () => "removing old includeIf rules"],
+  [/^remove (.+)$/, (dir) => `removing ${dir}`],
+  [/^pin (.+)$/, (id) => `pinning a repository to ${id}`],
+  [/^unpin$/, () => "unpinning a repository"],
+  [/^add profile (.+)$/, (id) => `adding profile ${id}`],
+  [/^update profile (.+)$/, (id) => `editing profile ${id}`],
+  [/^set default (.*)$/, (id) => (id ? `making ${id} the default` : "removing the default profile")],
+  [/^setup/, () => "setup"],
+  [/^install-shell$/, () => "setting up shells"],
+  [/^uninstall$/, () => "uninstalling"],
+  [/^apply$/, () => "applying the configuration"],
+  [/^rollback/, () => "restoring a backup"],
+];
+
+function describe(command) {
+  for (const [pattern, words] of COMMANDS) {
+    const match = pattern.exec(command);
+    if (match) return words(...match.slice(1));
+  }
+  return command;
+}
+
 const dateFormat = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "medium" });
 
 export function renderBackups(section, { run }) {
@@ -34,14 +61,14 @@ function list(backups, run) {
     const button = h("button", { type: "button", class: "small", "aria-label": `Restore the backup from ${when}` }, "Restore");
     button.addEventListener("click", () => busy(button, async () => {
       const ok = await confirm("Restore this backup?",
-        `This puts back ${b.files.length} file${b.files.length === 1 ? "" : "s"} as they were ${b.command ? `before ${b.command}` : `on ${when}`}. ` +
+        `This puts back ${b.files.length} file${b.files.length === 1 ? "" : "s"} as they were ${b.command ? `before ${describe(b.command)}` : `on ${when}`}. ` +
         "The current files are backed up first, so this can be undone too.", "Restore");
       if (ok) await run(() => api.rollback(b.name), `Restored the backup from ${when}.`);
     }));
     return h("li", {},
       h("div", {},
         h("strong", {}, when), " ",
-        h("span", { class: "muted" }, b.command ? `before ${b.command}` : ""),
+        h("span", { class: "muted" }, b.command ? `before ${describe(b.command)}` : ""),
         h("div", { class: "mono muted" }, b.files.join(", "))),
       button);
   }));

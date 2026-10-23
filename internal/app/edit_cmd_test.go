@@ -367,3 +367,25 @@ func TestUnknownProfileAndInheritedRemoveMessages(t *testing.T) {
 		t.Errorf("Remove() in a covered subdirectory = %v, want it to name the parent rule", err)
 	}
 }
+
+func TestPinKeepsThePathAsWrittenThroughASymlink(t *testing.T) {
+	w := editWorld(t)
+	link := filepath.Join(w.home, "linked")
+	if err := os.Symlink(filepath.Dir(w.repos["scratch"]), link); err != nil {
+		t.Fatal(err)
+	}
+	inLink := filepath.Join(link, filepath.Base(w.repos["scratch"]))
+	env, out := w.env(t, inLink)
+
+	if err := Pin(context.Background(), env, "personal"); err != nil {
+		t.Fatalf("Pin() error: %v", err)
+	}
+
+	want := "~/linked/" + filepath.Base(w.repos["scratch"])
+	if !strings.Contains(readConfig(t, w), `"`+want+`"`) || !strings.Contains(out.String(), want+" is pinned") {
+		t.Errorf("the pin should be stored as %s:\n%s\n%s", want, readConfig(t, w), out.String())
+	}
+	if got := runGit(t, inLink, "config", "user.email"); got != "1000001+octo-alex@users.noreply.github.com" {
+		t.Errorf("pin through the link should take effect, git uses %q", got)
+	}
+}

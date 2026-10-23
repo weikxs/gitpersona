@@ -7,7 +7,7 @@ English | [简体中文](README.zh-CN.md)
 Work in `~/Projects/acme` and you commit, push and open pull requests as your work account.
 Switch to `~/Projects/personal` and you are your personal account again. No commands to run, nothing to remember.
 
-> **Status: early development, not released yet.** GitHub profiles, the command line, shell integration and `gh` switching work; the configuration web page and GitLab/Bitbucket support are in progress.
+> **Status: early development, not released yet.** GitHub profiles, the command line, the configuration web page, shell integration and `gh` switching work; GitLab/Bitbucket support is in progress.
 
 ## Why
 

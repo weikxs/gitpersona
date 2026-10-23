@@ -69,7 +69,7 @@ func TestEverydayEditsConfirmMovesAndRefuseMissingKeys(t *testing.T) {
 	setValue(b, "article.card form.row input", "~/code/fun/")
 	b.eval(`document.querySelector("article.card form.row").requestSubmit()`, nil)
 	b.waitFor("the move question", `document.getElementById("confirm").open`)
-	if q := b.text("#confirm-title"); !strings.Contains(q, "Move ~/code/fun/ to work") {
+	if q := b.text("#confirm-title"); !strings.Contains(q, "Move ~/code/fun to work") {
 		t.Errorf("confirmation = %q", q)
 	}
 	click(b, `#confirm button[value=cancel]`)

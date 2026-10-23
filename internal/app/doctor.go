@@ -47,6 +47,8 @@ type DoctorCheck struct {
 	Status string `json:"status"`
 	Label  string `json:"label"`
 	Advice string `json:"advice,omitempty"`
+	// Fix names the repair the page can run for this check, if any.
+	Fix string `json:"fix,omitempty"`
 }
 
 // Doctor runs every check, prints the results and reports whether all passed.
@@ -104,6 +106,9 @@ func doctorReport(checks []check) DoctorReport {
 			status, report.OK = "fail", false
 		}
 		report.Checks[i] = DoctorCheck{Status: status, Label: c.label, Advice: c.advice}
+		if status != "ok" && c.fixKey == FixOldRules {
+			report.Checks[i].Fix = c.fixKey
+		}
 	}
 	return report
 }

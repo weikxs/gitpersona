@@ -81,6 +81,10 @@ func (e Env) checkDirs(cfg config.Config) []check {
 	return checks
 }
 
+// FixOldRules is the fix that removes old includeIf identity rules; the page
+// offers it as a button.
+const FixOldRules = "old-rules"
+
 // checkOldRules warns about hand-made includeIf identity rules left in the
 // global Git configuration from before GitPersona. GitPersona's rules come
 // last and win, but the old ones are confusing to keep.
@@ -96,5 +100,6 @@ func (e Env) checkOldRules(ctx context.Context) []check {
 	return []check{{warn: true,
 		label: fmt.Sprintf("%s still has includeIf identity rules from before GitPersona (%s)",
 			e.display(e.GlobalGitConfigPath()), strings.Join(dirs, ", ")),
-		advice: "GitPersona's rules come after them and win; remove those [includeIf] sections when you no longer need them"}}
+		advice: "GitPersona's rules come after them and win; `gitpersona doctor --fix` removes them (after a backup)",
+		fix:    func(ctx context.Context, fixer Env) error { return RemoveOldRules(ctx, fixer) }, fixKey: FixOldRules}}
 }

@@ -252,7 +252,7 @@ func TestFirstRunSetupInThreeSteps(t *testing.T) {
 	setValue(b, "#view .card input", "~/code")
 	click(b, "#view .card button")
 	b.waitFor("scan suggestions", `document.getElementById("view").innerText.includes("~/code/work")`)
-	if page := b.text("#view"); !strings.Contains(page, "3 of 3 repositories") || !strings.Contains(page, "~/old/personal") {
+	if page := b.text("#view"); !strings.Contains(page, "all 3 repositories") || !strings.Contains(page, "~/old/personal") {
 		t.Errorf("step 2 should show the existing directory and suggestions with reasons:\n%s", page)
 	}
 	checkFits(b, "setup step 2")
@@ -305,7 +305,7 @@ func TestEditingProfilesDirectoriesPinsAndBackups(t *testing.T) {
 	// Add a directory to the work profile (the first card).
 	setValue(b, "article.card form.row input", "~/old/personal")
 	b.eval(`document.querySelector("article.card form.row").requestSubmit()`, nil)
-	waitStatus(b, "now use work")
+	waitStatus(b, "now uses profile work")
 	if got := s.email("old/personal/notes"); got != "worker@demo.example" {
 		t.Errorf("after adding the directory old/personal/notes commits as %q", got)
 	}

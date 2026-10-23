@@ -32,7 +32,7 @@ func lockUI(configDir string) (func(), error) {
 		}
 		if pid := lockOwner(path); pid > 0 && processRuns(pid) {
 			return nil, fmt.Errorf("the configuration page is already open (process %d); use that page, "+
-				"or close it with Close page or Ctrl-C first", pid)
+				"or close it with Close page or Ctrl-C first. If that tab or terminal is gone, stop it with `kill %d`", pid, pid)
 		}
 		_ = os.Remove(path) // left by a page that did not stop cleanly
 	}

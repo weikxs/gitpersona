@@ -52,18 +52,18 @@ func State(ctx context.Context, e Env) StateReport {
 		Config:     ConfigView{Profiles: []ProfileView{}, Pins: []ListedPin{}},
 		Accounts:   []provider.Account{},
 		Shells:     e.shellsReport(ctx),
-		Doctor:     doctorReport(e.runChecks(ctx)),
+		Doctor:     e.tildeReport(doctorReport(e.runChecks(ctx))),
 	}
 	cfg, err := config.Load(e.configFile())
 	switch {
 	case errors.Is(err, config.ErrNotFound):
 	case err != nil:
-		report.ConfigExists, report.ConfigError = true, err.Error()
+		report.ConfigExists, report.ConfigError = true, e.withTilde(err.Error())
 	default:
 		report.ConfigExists = true
 		report.Config = configView(cfg)
 		if verr := cfg.Validate(e.Home, e.CaseInsensitive); verr != nil {
-			report.ConfigError = verr.Error()
+			report.ConfigError = e.withTilde(verr.Error())
 		}
 	}
 	if gh, err := e.LookPath("gh"); err == nil {
@@ -130,6 +130,17 @@ func (e Env) fileChanges(changes []change) []FileChange {
 		out = append(out, fc)
 	}
 	return out
+}
+
+// WithTilde is withTilde for text the page shows, such as error messages.
+func (e Env) WithTilde(text string) string { return e.withTilde(text) }
+
+func (e Env) tildeReport(r DoctorReport) DoctorReport {
+	checks := make([]DoctorCheck, len(r.Checks))
+	for i, c := range r.Checks {
+		checks[i] = DoctorCheck{Status: c.Status, Label: e.withTilde(c.Label), Advice: e.withTilde(c.Advice), Fix: c.Fix}
+	}
+	return DoctorReport{OK: r.OK, Checks: checks}
 }
 
 // withTilde writes the home directory as ~ in text shown on the page, so

@@ -65,6 +65,7 @@ func API(env app.Env, stop func()) map[string]http.HandlerFunc {
 		"POST /api/setup":           a.handle(a.setup),
 		"GET /api/discover":         a.handle(a.discover),
 		"GET /api/resolve":          a.handle(a.resolve),
+		"POST /api/paths":           a.handle(a.normalizePaths),
 		"POST /api/profiles":        a.handle(a.addProfile),
 		"PATCH /api/profiles/{id}":  a.handle(a.updateProfile),
 		"DELETE /api/profiles/{id}": a.handle(a.removeProfile),
@@ -76,6 +77,8 @@ func API(env app.Env, stop func()) map[string]http.HandlerFunc {
 		"GET /api/backups":          a.handle(a.backups),
 		"POST /api/rollback":        a.handle(a.rollback),
 		"POST /api/shells":          a.handle(a.installShells),
+		"POST /api/shells/preview":  a.handle(a.previewShells),
+		"POST /api/old-rules":       a.handle(a.removeOldRules),
 		"POST /api/close":           a.handle(a.close),
 	}
 }
@@ -102,10 +105,11 @@ func (a api) handle(h handlerFunc) http.HandlerFunc {
 		env := a.env
 		env.Stdout, env.Stderr = log, log
 		data, err := h(call{ctx: r.Context(), r: r, env: env, log: log})
-		resp := envelope{OK: err == nil, Data: data, Log: log.String()}
+		// Messages never show the home path, which often holds the user's name.
+		resp := envelope{OK: err == nil, Data: data, Log: a.env.WithTilde(log.String())}
 		w.Header().Set("Content-Type", "application/json")
 		if err != nil {
-			resp.Error = err.Error()
+			resp.Error = a.env.WithTilde(err.Error())
 			w.WriteHeader(http.StatusBadRequest)
 		}
 		_ = json.NewEncoder(w).Encode(resp)
@@ -283,6 +287,30 @@ type dirRequest struct {
 	Profile string `json:"profile"`
 }
 
+// normalizePaths writes paths the way the configuration stores them (home
+// as ~, no trailing slash), so the page can compare what the user typed with
+// existing directories. A path that is not absolute or ~/ is kept as typed.
+func (a api) normalizePaths(c call) (any, error) {
+	var req struct {
+		Paths []string `json:"paths"`
+	}
+	if err := c.decode(&req); err != nil {
+		return nil, err
+	}
+	out := make([]string, 0, len(req.Paths))
+	for _, p := range req.Paths {
+		if norm, err := paths.Normalize(p, c.env.Home); err == nil {
+			p = c.env.Display(norm)
+		}
+		out = append(out, p)
+	}
+	return out, nil
+}
+
+func (a api) removeOldRules(c call) (any, error) {
+	return nil, app.RemoveOldRules(c.ctx, c.env)
+}
+
 func (a api) addDir(c call) (any, error) {
 	var req dirRequest
 	if err := c.decode(&req); err != nil {
@@ -366,6 +394,23 @@ func (a api) rollback(c call) (any, error) {
 }
 
 func (a api) installShells(c call) (any, error) {
+	kinds, err := shellKinds(c)
+	if err != nil {
+		return nil, err
+	}
+	return nil, app.InstallShell(c.ctx, c.env, kinds, false)
+}
+
+func (a api) previewShells(c call) (any, error) {
+	kinds, err := shellKinds(c)
+	if err != nil {
+		return nil, err
+	}
+	return app.PreviewShells(c.env, kinds)
+}
+
+// shellKinds reads the shells a request names.
+func shellKinds(c call) ([]shell.Kind, error) {
 	var req struct {
 		Shells []string `json:"shells"`
 	}
@@ -380,7 +425,7 @@ func (a api) installShells(c call) (any, error) {
 		}
 		kinds = append(kinds, k)
 	}
-	return nil, app.InstallShell(c.ctx, c.env, kinds, false)
+	return kinds, nil
 }
 
 func (a api) close(_ call) (any, error) {

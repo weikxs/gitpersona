@@ -74,7 +74,14 @@ func New(addr string, h Handlers) (*Server, error) {
 	}
 	s.mux.HandleFunc("GET /{$}", s.index)
 	staticFS, _ := fs.Sub(static, "static")
-	s.mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServerFS(staticFS)))
+	files := http.StripPrefix("/static/", http.FileServerFS(staticFS))
+	s.mux.Handle("GET /static/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/") {
+			http.NotFound(w, r) // files only, no directory listings
+			return
+		}
+		files.ServeHTTP(w, r)
+	}))
 	return s, nil
 }
 

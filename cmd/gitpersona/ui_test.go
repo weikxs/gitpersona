@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -57,7 +58,8 @@ func TestOnlyOnePageRunsAtATime(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err := lockUI(dir); err == nil || !strings.Contains(err.Error(), "already open") {
+	if _, err := lockUI(dir); err == nil || !strings.Contains(err.Error(), "already open") ||
+		!strings.Contains(err.Error(), fmt.Sprintf("kill %d", os.Getpid())) {
 		t.Fatalf("a second page = %v, want it refused", err)
 	}
 	err = runUI(context.Background(), app.Env{Stdout: &lockedBuffer{}, ConfigDir: dir}, false, "")

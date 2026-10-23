@@ -388,3 +388,6 @@ ol.steps li[aria-current="step"] { border-color: var(--accent); color: var(--tex
 a.button { text-decoration: none; }
 a.button.primary { color: var(--accent-text); }
 fieldset.plain { border: 0; padding: 0; margin: 0; min-width: 0; }
+
+/* Confirmation texts may list files, one per line. */
+#confirm-text { white-space: pre-line; overflow-wrap: anywhere; }

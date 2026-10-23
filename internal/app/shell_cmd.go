@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -96,6 +97,40 @@ func (e Env) loginShell(ctx context.Context) shell.Detected {
 	return e.LoginShell(ctx)
 }
 
+// PreviewShells returns the startup files InstallShell would change for the
+// given shells, with their diffs, without writing anything.
+func PreviewShells(e Env, kinds []shell.Kind) ([]FileChange, error) {
+	quiet := e
+	quiet.Stdout = io.Discard
+	changes, err := quiet.shellChanges(kinds)
+	if err != nil {
+		return nil, err
+	}
+	return e.fileChanges(changes), nil
+}
+
+// shellChanges adds the loader block to each startup file of kinds, leaving
+// shells that are set up some other way alone.
+func (e Env) shellChanges(kinds []shell.Kind) ([]change, error) {
+	var changes []change
+	for _, k := range kinds {
+		if path, ok := e.integratedElsewhere(k); ok {
+			fmt.Fprintf(e.Stdout, "%s is already set up in %s; leaving it as it is.\n", k, e.display(path))
+			continue
+		}
+		for _, path := range e.shellFiles(k) {
+			c, err := e.upsertFile(path, loader[k])
+			if err != nil {
+				return nil, err
+			}
+			if c != nil {
+				changes = append(changes, *c)
+			}
+		}
+	}
+	return changes, nil
+}
+
 // InstallShell adds the integration to the given shells, or to the login
 // shell when none are given.
 func InstallShell(ctx context.Context, e Env, kinds []shell.Kind, dryRun bool) error {
@@ -109,21 +144,9 @@ func InstallShell(ctx context.Context, e Env, kinds []shell.Kind, dryRun bool) e
 		e.mentionOtherShells(login.Kind)
 	}
 
-	var changes []change
-	for _, k := range kinds {
-		if path, ok := e.integratedElsewhere(k); ok {
-			fmt.Fprintf(e.Stdout, "%s is already set up in %s; leaving it as it is.\n", k, e.display(path))
-			continue
-		}
-		for _, path := range e.shellFiles(k) {
-			c, err := e.upsertFile(path, loader[k])
-			if err != nil {
-				return err
-			}
-			if c != nil {
-				changes = append(changes, *c)
-			}
-		}
+	changes, err := e.shellChanges(kinds)
+	if err != nil {
+		return err
 	}
 	if err := e.applyChanges(changes, ApplyOptions{DryRun: dryRun, Command: "install-shell"}); err != nil {
 		return err
@@ -247,10 +270,10 @@ func (e Env) checkGHRouting(ctx context.Context) []check {
 	}
 	found, err := e.LookPath("gh")
 	if err == nil && paths.ResolveSymlinks(found) == paths.ResolveSymlinks(e.ghEntry()) {
-		return []check{{ok: true, label: "gh in this shell goes through GitPersona"}}
+		return []check{{ok: true, label: "gh in the shell that started gitpersona goes through GitPersona"}}
 	}
 	return []check{{warn: true,
-		label:  fmt.Sprintf("gh in this shell is not GitPersona's (%s), so gh does not follow your directories here", found),
+		label:  fmt.Sprintf("gh in the shell that started gitpersona is not GitPersona's (%s), so gh does not follow your directories there", found),
 		advice: "open a new terminal; if it persists, something later in your startup files puts another directory before " + e.display(e.shimDir())}}
 }
 

@@ -52,6 +52,25 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ### Fixed
 
+- `signing = { method = "none" }` turns commit and tag signing off even when you sign everything globally; before,
+  it did nothing and commits still tried to sign.
+- The configuration page compares a directory typed as an absolute path with the stored `~/` form: moving a
+  directory from another profile always asks first, duplicates are caught in the setup steps, and messages show `~`.
+- Error messages on the page (for example a `config.toml` that does not parse) show the home directory as `~`; with a
+  broken configuration the page explains how to fix it or restore a backup instead of showing an empty Profiles view.
+- The setup steps follow the browser's Back and Forward buttons and survive a reload.
+- Setup step 1 names the identity used outside your directories today and offers "No default" to keep it; a name
+  taken from the login (no public name on GitHub) says so.
+- Hand-made `includeIf` identity rules can be removed from the page or with `doctor --fix`, after a backup.
+- `~/.gitconfig` includes the rules as `~/.config/...` instead of an absolute path, so a dotfiles repository works on
+  every machine (the next `apply` updates it).
+- Pinning a repository reached through a symlink stores the path as you reached it.
+- The Shells page lists the startup files it changes, with a preview, before writing them.
+- After a failed change caused by an edit outside the page, the page shows the configuration as it now is.
+- Plainer words: backups say what they were taken before ("before adding a directory to work"), success is shown
+  once, and the `gh` check names the shell that started GitPersona. The "already open" message says how to stop a
+  page whose tab or terminal is gone. Buttons on profile cards name their profile for screen readers, and
+  `/static/` no longer lists files.
 - Directory suggestions include folders whose repositories belong to an organization: the setup page lists them
   with their owner so you can choose the profile. Symlinked folders such as `~/code` are scanned, and folders that do
   not exist are named instead of reported as having no suggestions.

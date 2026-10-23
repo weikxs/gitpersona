@@ -2,9 +2,9 @@
 // repositories, the default profile, and a form for a new profile.
 // Every change is saved, applied and backed up at once.
 
-import { api } from "../api.js";
+import { api, normalizePath } from "../api.js";
 import { h, replace, badge, field, busy, confirm } from "../dom.js";
-import { factList } from "./overview.js";
+import { factList, configProblem } from "./overview.js";
 import { profileForm } from "./profile-form.js";
 
 const SIGNING_LABELS = { ssh: "SSH", gpg: "GPG", none: "off" };
@@ -14,6 +14,11 @@ export function renderProfiles(section, ctx) {
   if (!state.config_exists) {
     section.append(h("p", { class: "empty" }, "No configuration yet. Create one from the Overview."));
     return;
+  }
+  if (state.config_error) {
+    section.append(configProblem(state));
+    // A file that does not parse has no profiles to show or change.
+    if (state.config.profiles.length === 0) return;
   }
   const profiles = state.config.profiles;
   section.append(
@@ -70,13 +75,14 @@ function profileCard(p, ctx) {
     addPathForm({
       label: "Add a directory", hint: `Every repository under it uses this profile, e.g. ~/code/${p.id}`,
       button: "Add directory",
-      onAdd: async (dir) => {
+      onAdd: async (typed) => {
+        const dir = await normalizePath(typed);
         const owner = ownerOf(state, dir);
         if (owner && owner !== p.id && !(await confirm(`Move ${dir} to ${p.id}?`,
           `${dir} uses ${owner} now. Moving it makes its repositories use ${p.id} instead.`, "Move"))) {
           return;
         }
-        await run(() => api.addDir(dir, p.id), `Repositories under ${dir} now use ${p.id}.`);
+        await run(() => api.addDir(dir, p.id), null); // the log says what changed
       },
     }),
     pathList({
@@ -88,11 +94,14 @@ function profileCard(p, ctx) {
     }),
     addPathForm({
       label: "Pin a repository", hint: "The repository's top directory", button: "Pin",
-      onAdd: (repo) => run(() => api.addPin(repo, p.id), `${repo} now uses ${p.id}.`),
+      onAdd: async (typed) => {
+        const repo = await normalizePath(typed);
+        await run(() => api.addPin(repo, p.id), `${repo} now uses ${p.id}.`);
+      },
     }),
     h("div", { class: "actions" },
-      h("button", { type: "button", onclick: edit }, "Edit"),
-      h("button", { type: "button", class: "danger", onclick: remove }, "Remove profile")));
+      h("button", { type: "button", onclick: edit, "aria-label": `Edit ${p.id}` }, "Edit"),
+      h("button", { type: "button", class: "danger", onclick: remove, "aria-label": `Remove profile ${p.id}` }, "Remove profile")));
 
   function edit() {
     replace(card, h("h3", { id: `profile-${p.id}` }, `Edit ${p.id}`),

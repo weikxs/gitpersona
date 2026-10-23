@@ -45,14 +45,34 @@ async function run(action, success) {
     const { log } = await action();
     await loadState();
     render();
-    status("ok", NO_CHANGE.test(log.trim()) ? "Nothing to change." : success, log);
+    // Without a message of its own, the command's output is the message.
+    if (NO_CHANGE.test(log.trim())) status("ok", "Nothing to change.", log);
+    else if (success) status("ok", success, log);
+    else status("ok", log.trim() || "Done.");
     focusResult();
     return true;
   } catch (err) {
-    status("fail", err.message, err instanceof ApiError ? err.log : "");
+    const changed = await changedElsewhere();
+    status("fail", changed ? `${err.message}\nThe configuration changed outside this page, so the page now shows it as it is.`
+      : err.message, err instanceof ApiError ? err.log : "");
     focusResult();
     return false;
   }
+}
+
+// changedElsewhere reloads the state after a failed change and redraws the
+// page when the configuration was edited outside it, so it never keeps
+// showing profiles that are gone. An unchanged page keeps what was typed.
+async function changedElsewhere() {
+  const before = JSON.stringify(state?.config);
+  try {
+    await loadState();
+  } catch {
+    return false;
+  }
+  if (JSON.stringify(state.config) === before) return false;
+  render();
+  return true;
 }
 
 function render({ focus = false } = {}) {

@@ -54,6 +54,7 @@ export const api = {
   setupApply: (plan) => request("POST", "/api/setup", plan),
   discover: (roots) => request("GET", "/api/discover" + (roots ? "?roots=" + encodeURIComponent(roots) : "")),
   resolve: (dir) => request("GET", "/api/resolve?dir=" + encodeURIComponent(dir)),
+  normalizePaths: (paths) => request("POST", "/api/paths", { paths }),
   addProfile: (profile) => request("POST", "/api/profiles", profile),
   updateProfile: (id, changes) => request("PATCH", "/api/profiles/" + encodeURIComponent(id), changes),
   removeProfile: (id) => request("DELETE", "/api/profiles/" + encodeURIComponent(id)),
@@ -64,6 +65,19 @@ export const api = {
   removePin: (repo) => request("DELETE", "/api/pins", { repo }),
   backups: () => request("GET", "/api/backups"),
   rollback: (name) => request("POST", "/api/rollback", { name }),
+  removeOldRules: () => request("POST", "/api/old-rules", {}),
+  previewShells: (shells) => request("POST", "/api/shells/preview", { shells }),
   installShells: (shells) => request("POST", "/api/shells", { shells }),
   close: () => request("POST", "/api/close", {}),
 };
+
+// normalizePath writes a path the way the configuration stores it (home as
+// ~, no trailing slash), so what the user typed compares and shows like the
+// stored paths. On failure the path is kept; the change itself reports why.
+export async function normalizePath(path) {
+  try {
+    return (await api.normalizePaths([path])).data[0] ?? path;
+  } catch {
+    return path;
+  }
+}

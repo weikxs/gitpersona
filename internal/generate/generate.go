@@ -118,6 +118,14 @@ func profileSnippet(p config.Profile, u usage, opts Options) (string, error) {
 }
 
 func writeSigning(b *strings.Builder, p config.Profile, u usage, opts Options) error {
+	if p.Signing.Method == config.SigningNone {
+		// "none" means off, even when the user signs everything globally.
+		b.WriteString("[commit]\n")
+		writeKV(b, "gpgsign", "false")
+		b.WriteString("[tag]\n")
+		writeKV(b, "gpgSign", "false")
+		return nil
+	}
 	if !p.Signing.Enabled() {
 		if u.signing {
 			writeFallbackSigning(b, opts.FallbackSigning)

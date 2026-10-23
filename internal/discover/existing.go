@@ -28,12 +28,37 @@ const includeIfPrefix = "includeif."
 // order the rules appear. Rules that are not plain directory rules (such as
 // hasconfig:) are skipped. GitPersona's own include is ignored.
 func Existing(ctx context.Context, home, gitconfig string, run provider.Runner) ([]Identity, error) {
+	var identities []Identity
+	for _, r := range identityRules(ctx, home, gitconfig, run) {
+		identities = merge(identities, r.id, r.dir)
+	}
+	return identities, nil
+}
+
+// IdentityConditions returns the includeIf conditions (such as
+// "gitdir:~/old/") of the rules Existing reads identities from, in order, so
+// they can be removed once GitPersona has taken them over.
+func IdentityConditions(ctx context.Context, home, gitconfig string, run provider.Runner) []string {
+	var conditions []string
+	for _, r := range identityRules(ctx, home, gitconfig, run) {
+		conditions = append(conditions, r.condition)
+	}
+	return conditions
+}
+
+type identityRule struct {
+	condition, dir string
+	id             Identity
+}
+
+// identityRules returns the plain directory includeIf rules whose included
+// file sets an email.
+func identityRules(ctx context.Context, home, gitconfig string, run provider.Runner) []identityRule {
 	out, err := run(ctx, "git", "config", "--file", gitconfig, "--get-regexp", `^includeif\..*\.path$`)
 	if err != nil {
-		return nil, nil // no includeIf rules (or no file): nothing to import
+		return nil // no includeIf rules (or no file): nothing to import
 	}
-
-	var identities []Identity
+	var rules []identityRule
 	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
 		key, path, ok := strings.Cut(line, " ")
 		if !ok {
@@ -44,14 +69,13 @@ func Existing(ctx context.Context, home, gitconfig string, run provider.Runner) 
 		if dir == "" {
 			continue
 		}
-		included := expandHome(strings.TrimSpace(path), home)
-		id := readIdentity(ctx, included, run)
+		id := readIdentity(ctx, expandHome(strings.TrimSpace(path), home), run)
 		if id.Email == "" {
 			continue
 		}
-		identities = merge(identities, id, dir)
+		rules = append(rules, identityRule{condition: condition, dir: dir, id: id})
 	}
-	return identities, nil
+	return rules
 }
 
 func readIdentity(ctx context.Context, file string, run provider.Runner) Identity {

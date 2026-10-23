@@ -357,3 +357,99 @@ func TestDiscoverFollowsSymlinksReportsMissingFoldersAndOrganizations(t *testing
 		t.Errorf("suggestions should use the folder as chosen and name each owner, got %v", byDir)
 	}
 }
+
+func TestPathsAreWrittenTheWayTheConfigurationStoresThem(t *testing.T) {
+	w := newAPIWorld(t)
+
+	var got []string
+	decode(t, w.call(t, "POST", "/api/paths", map[string][]string{
+		"paths": {filepath.Join(w.home, "Projects", "acme") + "/", "~/code/", "/opt/shared", "relative/dir"},
+	}), &got)
+
+	want := []string{"~/Projects/acme", "~/code", "/opt/shared", "relative/dir"}
+	if strings.Join(got, "|") != strings.Join(want, "|") {
+		t.Errorf("paths = %q, want %q", got, want)
+	}
+}
+
+func TestAMalformedConfigurationIsReportedWithoutTheHomePath(t *testing.T) {
+	w := newAPIWorld(t)
+	p := filepath.Join(w.home, ".config", "gitpersona", "config.toml")
+	data, _ := os.ReadFile(p)
+	if err := os.WriteFile(p, append(data, []byte("[[profile]\nid = broken\n")...), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	state := w.call(t, "GET", "/api/state", nil)
+	failed := w.call(t, "POST", "/api/default", map[string]string{"id": "acme"})
+
+	for name, text := range map[string]string{"state": string(mustJSON(t, state.Data)), "error": failed.Error} {
+		if strings.Contains(text, w.home) {
+			t.Errorf("%s shows the home path: %s", name, text)
+		}
+		if !strings.Contains(text, "~/.config/gitpersona/config.toml") {
+			t.Errorf("%s should name the file as ~/.config/gitpersona/config.toml: %s", name, text)
+		}
+	}
+}
+
+func mustJSON(t *testing.T, v any) []byte {
+	t.Helper()
+	data, err := json.Marshal(v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return data
+}
+
+func TestShellChangesArePreviewedWithoutWriting(t *testing.T) {
+	w := newAPIWorld(t)
+
+	var changes []app.FileChange
+	decode(t, w.call(t, "POST", "/api/shells/preview", map[string][]string{"shells": {"zsh"}}), &changes)
+
+	if len(changes) == 0 {
+		t.Fatal("the preview should list the zsh startup files")
+	}
+	for _, c := range changes {
+		if !strings.HasPrefix(c.Path, "~/") || !strings.Contains(c.Diff, "gitpersona") {
+			t.Errorf("change = %+v, want a ~/ path and a diff with the block", c)
+		}
+		if _, err := os.Stat(filepath.Join(w.home, strings.TrimPrefix(c.Path, "~/"))); !os.IsNotExist(err) {
+			t.Errorf("the preview wrote %s", c.Path)
+		}
+	}
+	if got := w.call(t, "POST", "/api/shells/preview", map[string][]string{"shells": {"tcsh"}}); got.OK {
+		t.Error("an unknown shell should be refused")
+	}
+}
+
+func TestOldRulesAreRemovedFromThePage(t *testing.T) {
+	w := newAPIWorld(t)
+	if err := os.WriteFile(filepath.Join(w.home, ".gitconfig"),
+		[]byte("[includeIf \"gitdir:~/old/\"]\n\tpath = ~/.gitconfig-old\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(w.home, ".gitconfig-old"), []byte("[user]\n\temail = old@example.com\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	w.call(t, "POST", "/api/apply", map[string]bool{})
+
+	var state app.StateReport
+	decode(t, w.call(t, "GET", "/api/state", nil), &state)
+	offered := false
+	for _, c := range state.Doctor.Checks {
+		offered = offered || c.Fix == app.FixOldRules
+	}
+	if !offered {
+		t.Fatalf("the health checks should offer to remove the old rules: %+v", state.Doctor.Checks)
+	}
+
+	if got := w.call(t, "POST", "/api/old-rules", map[string]any{}); !got.OK || !strings.Contains(got.Log, "~/old") {
+		t.Fatalf("remove old rules = %+v", got)
+	}
+	data, _ := os.ReadFile(filepath.Join(w.home, ".gitconfig"))
+	if strings.Contains(string(data), "~/old/") {
+		t.Errorf("the old rule is still there:\n%s", data)
+	}
+}
