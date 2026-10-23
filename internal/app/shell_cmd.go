@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/weikxs/gitpersona/internal/block"
+	"github.com/weikxs/gitpersona/internal/config"
 	"github.com/weikxs/gitpersona/internal/paths"
 	"github.com/weikxs/gitpersona/internal/shell"
 )
@@ -212,12 +213,15 @@ func (e Env) removeShellBlocks() ([]change, error) {
 
 // checkShellIntegration warns when the default shell, or the shell in use
 // right now, lacks the integration.
-func (e Env) checkShellIntegration(ctx context.Context) []check {
+// When the configuration turns the integration off, its absence is fine.
+func (e Env) checkShellIntegration(ctx context.Context, cfg config.Config) []check {
 	var checks []check
 	login := e.loginShell(ctx)
 	if login.Kind != shell.Unknown {
 		if path, ok := e.integrated(login.Kind); ok {
 			checks = append(checks, check{ok: true, label: fmt.Sprintf("%s integration is installed (%s)", login.Kind, e.display(path))})
+		} else if cfg.ShellIntegrationOff() {
+			return append(checks, check{ok: true, label: "shell integration is turned off (shell_integration = false in " + e.display(e.configFile()) + ")"})
 		} else {
 			checks = append(checks, check{warn: true,
 				label:  fmt.Sprintf("%s integration is not installed (prompt display and gh switching need it)", login.Kind),

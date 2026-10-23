@@ -29,7 +29,7 @@ Usage:
 
 Commands:
   ui          Open the configuration page in your browser
-  setup       Create a first configuration from your signed-in GitHub accounts
+  setup       Find your accounts, Git settings and repositories, and set them up in one step
   apply       Generate Git configuration from the GitPersona configuration
   whoami      Show which profile applies here and why
   use         Make the current directory use a profile

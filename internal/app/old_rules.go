@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/weikxs/gitpersona/internal/config"
 	"github.com/weikxs/gitpersona/internal/discover"
 	"github.com/weikxs/gitpersona/internal/fsutil"
 )
@@ -15,21 +16,27 @@ import (
 // oldRulesCommand names the backups RemoveOldRules makes.
 const oldRulesCommand = "remove old includeIf rules"
 
-// RemoveOldRules deletes the hand-made includeIf identity rules from the
-// global Git configuration, after a backup. GitPersona's rules already come
-// after them and win, so this only tidies up; every other setting stays.
+// RemoveOldRules deletes from the global Git configuration, after a backup,
+// the hand-made includeIf identity rules a profile takes over: one with the
+// same email covers the rule's directory. GitPersona's rules already come
+// after them and win, so this only tidies up; every other rule and setting
+// stays.
 func RemoveOldRules(ctx context.Context, e Env) error {
+	cfg, err := e.loadConfig()
+	if err != nil {
+		return err
+	}
 	path := e.resolvedUserGitConfig()
 	current, err := readOptional(path)
 	if err != nil {
 		return err
 	}
-	updated, removed, kept := e.withoutOldRules(ctx, current, nil)
+	updated, removed, kept := e.withoutOldRules(ctx, current, ownersOf(cfg), nil)
 	for _, k := range kept {
 		fmt.Fprintf(e.Stdout, "Kept the includeIf rule for %s: %s.\n", k.Dir, k.Why)
 	}
 	if len(removed) == 0 {
-		fmt.Fprintln(e.Stdout, "No old includeIf identity rules that GitPersona replaces; nothing to change.")
+		fmt.Fprintln(e.Stdout, "No old includeIf identity rules that a profile takes over; nothing to change.")
 		return nil
 	}
 	perm := fsutil.FilePerm
@@ -49,12 +56,57 @@ func RemoveOldRules(ctx context.Context, e Env) error {
 	return nil
 }
 
+// ruleOwner is what an old rule is compared with: a profile's id, email and
+// directories.
+type ruleOwner struct {
+	id, email string
+	dirs      []string
+}
+
+func ownersOf(cfg config.Config) []ruleOwner {
+	owners := make([]ruleOwner, len(cfg.Profiles))
+	for i, p := range cfg.Profiles {
+		owners[i] = ruleOwner{id: p.ID, email: p.Email, dirs: p.Dirs}
+	}
+	return owners
+}
+
+// takenOver reports whether a profile with the rule's email covers the
+// rule's directory, so the rule adds nothing.
+func (e Env) takenOver(r discover.Rule, owners []ruleOwner) bool {
+	return slices.ContainsFunc(owners, func(o ruleOwner) bool {
+		return strings.EqualFold(o.email, r.Email) && coversWith(e.comparisonKey, o.dirs, r.Dir)
+	})
+}
+
+// overriddenBy returns the profile that applies in dir instead of an old
+// rule there, because GitPersona's rules come last: the most specific
+// directory that covers it, or else the default. ok is false when none does.
+func (e Env) overriddenBy(dir string, owners []ruleOwner, defaultID string) (ruleOwner, bool) {
+	best, found := -1, -1
+	for i, o := range owners {
+		for _, d := range o.dirs {
+			if coversWith(e.comparisonKey, []string{d}, dir) && len(e.comparisonKey(d)) > best {
+				best, found = len(e.comparisonKey(d)), i
+			}
+		}
+	}
+	if found < 0 {
+		found = slices.IndexFunc(owners, func(o ruleOwner) bool { return o.id == defaultID && defaultID != "" })
+	}
+	if found < 0 {
+		return ruleOwner{}, false
+	}
+	return owners[found], true
+}
+
 // withoutOldRules removes from text, the content of the global Git
-// configuration, the includeIf identity rules for dirs (every one when dirs
-// is nil) that a profile fully replaces. It returns the new text, the
-// directories whose rules went, and the rules that stay with the reason.
-func (e Env) withoutOldRules(ctx context.Context, text string, dirs []string) (string, []string, []KeptRule) {
-	replaced, kept := e.classifyOldRules(ctx, dirs)
+// configuration, the includeIf identity rules that owners take over, only
+// for the directories in only when it is not nil. It returns the new text,
+// the directories whose rules went, and the rules taken over that stay
+// because they do more.
+func (e Env) withoutOldRules(ctx context.Context, text string, owners []ruleOwner, only []string) (string, []string, []KeptRule) {
+	replaced, kept := e.classifyOldRules(ctx, owners, only)
 	conditions, removed := make([]string, len(replaced)), make([]string, len(replaced))
 	for i, r := range replaced {
 		conditions[i], removed[i] = r.Condition, r.Dir
@@ -62,15 +114,15 @@ func (e Env) withoutOldRules(ctx context.Context, text string, dirs []string) (s
 	return withoutIncludeIfSections(text, conditions), removed, kept
 }
 
-// classifyOldRules splits the hand-made includeIf identity rules for dirs
-// (every one when dirs is nil) into those a profile replaces and those that
-// stay because they do more.
-func (e Env) classifyOldRules(ctx context.Context, dirs []string) ([]discover.Rule, []KeptRule) {
+// classifyOldRules returns the hand-made includeIf identity rules that
+// owners take over (only for the directories in only, when it is not nil),
+// split into those that can go and those that stay because they do more.
+func (e Env) classifyOldRules(ctx context.Context, owners []ruleOwner, only []string) ([]discover.Rule, []KeptRule) {
 	var replaced []discover.Rule
 	kept := []KeptRule{}
 	for _, r := range discover.IdentityRules(ctx, e.Home, e.resolvedUserGitConfig(), e.Run) {
 		switch {
-		case dirs != nil && !slices.Contains(dirs, r.Dir):
+		case only != nil && !slices.Contains(only, r.Dir), !e.takenOver(r, owners):
 		case r.Keep != "":
 			kept = append(kept, KeptRule{Dir: r.Dir, Why: r.Keep})
 		default:

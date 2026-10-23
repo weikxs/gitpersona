@@ -40,8 +40,10 @@ func TestDoctorReportsMissingKeysMissingDirectoriesAndOldRules(t *testing.T) {
 	withKey := strings.Replace(demoConfig, `email   = "1000002+acme-alex@users.noreply.github.com"`,
 		`email   = "1000002+acme-alex@users.noreply.github.com"`+"\n"+`signing = { method = "ssh", key = "~/.ssh/acme.pub" }`, 1)
 	mustWrite(t, filepath.Join(w.home, ".config", "gitpersona", "config.toml"), withKey, 0o600)
-	mustWrite(t, filepath.Join(w.home, ".gitconfig"), "[includeIf \"gitdir:~/old/\"]\n\tpath = ~/.gitconfig-old\n", 0o600)
+	mustWrite(t, filepath.Join(w.home, ".gitconfig"), "[includeIf \"gitdir:~/old/\"]\n\tpath = ~/.gitconfig-old\n"+
+		"[includeIf \"gitdir:~/Projects/personal/\"]\n\tpath = ~/.gitconfig-personal\n", 0o600)
 	mustWrite(t, filepath.Join(w.home, ".gitconfig-old"), "[user]\n\temail = old@example.com\n", 0o600)
+	mustWrite(t, filepath.Join(w.home, ".gitconfig-personal"), "[user]\n\temail = 1000001+octo-alex@users.noreply.github.com\n", 0o600)
 	env, out := w.env(t, w.home)
 	if err := Apply(context.Background(), env, ApplyOptions{}); err != nil {
 		t.Fatal(err)
@@ -54,7 +56,9 @@ func TestDoctorReportsMissingKeysMissingDirectoriesAndOldRules(t *testing.T) {
 	for _, want := range []string{
 		"✗ profile acme: signing key ~/.ssh/acme.pub does not exist",
 		"! profile globex: directory ~/Projects/clients/globex does not exist yet",
-		"! ~/.gitconfig still has includeIf identity rules from before GitPersona (~/old)",
+		"! ~/.gitconfig still has includeIf identity rules that your profiles take over (~/Projects/personal)",
+		// No profile has that identity, and the default acme applies there instead.
+		"! profile acme overrides your includeIf rule for ~/old, so commits there do not use old@example.com",
 	} {
 		if !strings.Contains(report, want) {
 			t.Errorf("doctor should report %q:\n%s", want, report)
@@ -111,8 +115,10 @@ func TestOldRulesAreRemovedWithABackupAndOtherSettingsKept(t *testing.T) {
 	w := newWorld(t)
 	gitconfig := filepath.Join(w.home, ".gitconfig")
 	mustWrite(t, gitconfig, "# my settings\n[user]\n\tname = Demo Person\n"+
+		"[includeIf \"gitdir:~/Projects/personal/\"]\n\tpath = ~/.gitconfig-personal\n"+
 		"[includeIf \"gitdir:~/old/\"]\n\tpath = ~/.gitconfig-old\n"+
 		"[includeIf \"hasconfig:remote.*.url:https://example.com/**\"]\n\tpath = ~/.gitconfig-other\n", 0o600)
+	mustWrite(t, filepath.Join(w.home, ".gitconfig-personal"), "[user]\n\temail = 1000001+Octo-Alex@users.noreply.github.com\n", 0o600)
 	mustWrite(t, filepath.Join(w.home, ".gitconfig-old"), "[user]\n\temail = old@example.com\n", 0o600)
 	env, out := w.env(t, w.home)
 	if err := Apply(context.Background(), env, ApplyOptions{}); err != nil {
@@ -125,10 +131,11 @@ func TestOldRulesAreRemovedWithABackupAndOtherSettingsKept(t *testing.T) {
 	}
 
 	got := readFile(t, gitconfig)
-	if strings.Contains(got, "~/old/") {
-		t.Errorf("the old identity rule is still there:\n%s", got)
+	if strings.Contains(got, "~/Projects/personal/") {
+		t.Errorf("the rule profile personal takes over is still there:\n%s", got)
 	}
-	for _, keep := range []string{"# my settings", "name = Demo Person", "hasconfig:remote", "gitpersona"} {
+	// No profile has old@example.com: removing that rule would lose the identity.
+	for _, keep := range []string{"# my settings", "name = Demo Person", "gitdir:~/old/", "hasconfig:remote", "gitpersona"} {
 		if !strings.Contains(got, keep) {
 			t.Errorf("%q should be kept:\n%s", keep, got)
 		}
@@ -136,7 +143,7 @@ func TestOldRulesAreRemovedWithABackupAndOtherSettingsKept(t *testing.T) {
 	if after, _ := backupCount(t, env); after != before+1 {
 		t.Errorf("removing old rules should make one backup (%d -> %d)", before, after)
 	}
-	if !strings.Contains(out.String(), "Removed the old includeIf rule for ~/old") {
+	if !strings.Contains(out.String(), "Removed the old includeIf rule for ~/Projects/personal") {
 		t.Errorf("output should say what was removed:\n%s", out.String())
 	}
 	out.Reset()
@@ -171,8 +178,8 @@ func TestTheGlobalIncludeIsWrittenRelativeToHome(t *testing.T) {
 func TestOldRulesAreLeftInAReadOnlyGitConfig(t *testing.T) {
 	w := newWorld(t)
 	gitconfig := filepath.Join(w.home, ".gitconfig")
-	mustWrite(t, filepath.Join(w.home, ".gitconfig-old"), "[user]\n\temail = old@example.com\n", 0o600)
-	mustWrite(t, gitconfig, "[includeIf \"gitdir:~/old/\"]\n\tpath = ~/.gitconfig-old\n", 0o400)
+	mustWrite(t, filepath.Join(w.home, ".gitconfig-old"), "[user]\n\temail = 1000001+octo-alex@users.noreply.github.com\n", 0o600)
+	mustWrite(t, gitconfig, "[includeIf \"gitdir:~/Projects/personal/old/\"]\n\tpath = ~/.gitconfig-old\n", 0o400)
 	env, _ := w.env(t, w.home)
 
 	err := RemoveOldRules(context.Background(), env)
@@ -180,7 +187,7 @@ func TestOldRulesAreLeftInAReadOnlyGitConfig(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "read-only") {
 		t.Fatalf("RemoveOldRules() on a read-only file = %v", err)
 	}
-	if !strings.Contains(readFile(t, gitconfig), "~/old/") {
+	if !strings.Contains(readFile(t, gitconfig), "~/Projects/personal/old/") {
 		t.Error("a read-only file was changed")
 	}
 }
@@ -209,5 +216,22 @@ func TestRemovingOldRulesDropsKeysAfterACommentInTheSection(t *testing.T) {
 
 	if want := "[include]\n\tpath = ~/.gitconfig-common\n; work\n[core]\n\teditor = vi\n"; got != want {
 		t.Errorf("withoutIncludeIfSections() =\n%q\nwant\n%q (the work path must not move into [include])", got, want)
+	}
+}
+
+func TestAnOldRuleWithTheDefaultsEmailIsNotReportedAsOverridden(t *testing.T) {
+	w := newWorld(t)
+	mustWrite(t, filepath.Join(w.home, ".gitconfig"), "[includeIf \"gitdir:~/elsewhere/\"]\n\tpath = ~/.gitconfig-acme\n", 0o600)
+	mustWrite(t, filepath.Join(w.home, ".gitconfig-acme"), "[user]\n\temail = 1000002+acme-alex@users.noreply.github.com\n", 0o600)
+	env, out := w.env(t, w.home)
+	if err := Apply(context.Background(), env, ApplyOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	out.Reset()
+
+	Doctor(context.Background(), env)
+
+	if strings.Contains(out.String(), "overrides your includeIf rule") {
+		t.Errorf("the default acme has the rule's email, so nothing is lost:\n%s", out.String())
 	}
 }

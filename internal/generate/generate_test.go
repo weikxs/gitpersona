@@ -276,3 +276,31 @@ func TestSigningNoneTurnsSigningOffEvenWhenTheUserSignsGlobally(t *testing.T) {
 		}
 	}
 }
+
+func TestAProfileWithoutSigningNeverInheritsAnotherProfilesKey(t *testing.T) {
+	for name, tc := range map[string]struct {
+		fallback Signing
+		want     []string
+		absent   []string
+	}{
+		"no global signing": {want: []string{"signingkey = alex@globex.example", "format = openpgp", "gpgsign = false"}},
+		"global gpg key":    {fallback: Signing{GPGSign: "true", SigningKey: "ABC123"}, want: []string{"signingkey = ABC123", "format = openpgp", "gpgsign = true"}},
+		"global ssh without a key": {fallback: Signing{GPGSign: "true", Format: "ssh"},
+			want: []string{"format = ssh", "gpgsign = true"}, absent: []string{"signingkey"}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			var b strings.Builder
+			writeFallbackSigning(&b, tc.fallback, "alex@globex.example")
+			for _, want := range tc.want {
+				if !strings.Contains(b.String(), want) {
+					t.Errorf("fallback should contain %q:\n%s", want, b.String())
+				}
+			}
+			for _, absent := range tc.absent {
+				if strings.Contains(b.String(), absent) {
+					t.Errorf("fallback should not contain %q:\n%s", absent, b.String())
+				}
+			}
+		})
+	}
+}

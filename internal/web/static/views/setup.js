@@ -6,7 +6,7 @@ import { api, normalizePath } from "../api.js";
 import { h, replace, badge, field, busy, status, clearStatus } from "../dom.js";
 import { doctorCard, configProblem } from "./overview.js";
 import { diffBlock } from "./apply.js";
-import { quickView, pinChoices, shellChoices, oldRulesChoice, QUICK } from "./setup-quick.js";
+import { quickView, pinChoices, shellChoices, oldRulesChoice, leftOutChoices, profileNotes, pinNeeded, QUICK } from "./setup-quick.js";
 
 const STEPS = ["Identities", "Directories", "Review & apply"];
 
@@ -20,7 +20,7 @@ const EMAIL_HINTS = {
 // through setWizard, which also keeps it for this tab, so a reload or the
 // browser's Back and Forward do not lose the choices.
 const STORE_KEY = "gitpersona-setup";
-const STORE_VERSION = 4; // a wizard stored by an older page is not reused
+const STORE_VERSION = 5; // a wizard stored by an older page is not reused
 let wizard = loadWizard();
 let shownStep = null;
 let shownIn = null; // {body, run} of the steps on screen, for Back and Forward
@@ -92,12 +92,13 @@ function fromProposal(p) {
       dirs: [...x.dirs.map((d) => ({ dir: d, on: true, why: "your existing setup" })),
         ...found.map((f) => ({ dir: f.dir, on: true, why: f.why }))],
     })),
-    pins: p.pins.map((pin) => ({ repo: pin.repo, account: accountOf(pin.profile), why: pin.why, on: true })),
+    pins: p.pins.map((pin) => ({ repo: pin.repo, account: accountOf(pin.profile), why: pin.why, outside: !!pin.outside, on: true })),
     shells: p.shells.map((kind) => ({ kind, on: true })),
     oldRules: { dirs: p.old_rules, kept: p.kept_rules, on: true },
     unassigned: p.unassigned,
     roots: p.roots.join(", "),
     scanned: p.roots.length > 0,
+    scanIncomplete: p.scan_incomplete,
   };
 }
 
@@ -109,11 +110,14 @@ function planOf(w) {
     default: idOf(w.defaultAccount) ?? "",
     profiles: included.map(({ id, account, name, email, ssh_key, signing, dirs }) =>
       ({ id, account, name, email, ssh_key, signing, dirs: dirs.filter((d) => d.on).map((d) => d.dir) })),
-    pins: w.pins.filter((pin) => pin.on && idOf(pin.account)).map((pin) => ({ repo: pin.repo, profile: idOf(pin.account) })),
+    pins: w.pins.filter((pin) => pin.on && idOf(pin.account) && pinNeeded(w, pin))
+      .map((pin) => ({ repo: pin.repo, profile: idOf(pin.account) })),
     shells: w.shells.filter((sh) => sh.on).map((sh) => sh.kind),
-    // An old rule goes only while its directory stays with a chosen profile.
-    remove_old_rules: w.oldRules.on ? w.oldRules.dirs.filter((dir) =>
-      included.some((p) => p.dirs.some((d) => d.on && d.dir === dir))) : [],
+    // Declining every shell offered is remembered, so doctor does not insist.
+    no_shell: w.shells.length > 0 && w.shells.every((sh) => !sh.on),
+    // The server removes a rule only while a chosen profile with its email
+    // covers its directory.
+    remove_old_rules: w.oldRules.on ? w.oldRules.dirs : [],
   };
 }
 
@@ -176,13 +180,14 @@ function identities(body, run) {
       "Change them here if your commits should use something else."),
     wizard.profiles.map((p, i) => identityFields(p, i)),
     defaultChoice(),
-    wizard.unmatched.length > 0 ? unmatchedNote() : null,
+    leftOutChoices(() => wizard, setWizard, () => update({}, body, run)),
     nav(body, run, {}));
   form.addEventListener("submit", (event) => {
     event.preventDefault();
     const included = wizard.profiles.filter((p) => p.include);
     if (included.length === 0) {
       status("fail", "Choose at least one account.");
+      document.querySelector("#status .notice")?.focus();
       return;
     }
     const keep = wizard.defaultAccount === "" || included.some((p) => p.account === wizard.defaultAccount);
@@ -216,7 +221,8 @@ function identityFields(p, i) {
   return h("fieldset", {},
     h("legend", {}, p.account, " ", p.source === "existing" ? badge("info", "From your existing setup") : null),
     h("label", { class: "check" }, include, `Create a profile for ${p.account}`),
-    fields);
+    fields,
+    profileNotes(p));
 }
 
 // defaultChoice offers no default, and says what commits outside every
@@ -234,13 +240,6 @@ function defaultChoice() {
       : "Commits outside every directory use the default profile chosen above."),
     h("label", { class: "check" }, none,
       today ? `No default: keep ${today}` : "No default: keep Git's own settings"));
-}
-
-function unmatchedNote() {
-  return h("div", { class: "notice warn" },
-    h("p", {}, badge("warn"), " These identities in your Git configuration belong to no account signed in to gh, so they are not included:"),
-    h("ul", {}, wizard.unmatched.map((u) => h("li", {}, `${u.name} <${u.email}> · ${u.dirs.join(", ")} (${u.source})`))),
-    h("p", {}, "Sign in to that account with `gh auth login` and reload this page to include it."));
 }
 
 // Step 2: which directories each profile covers.

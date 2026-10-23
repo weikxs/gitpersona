@@ -60,6 +60,27 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ### Fixed
 
+- Setup ties an existing `includeIf` identity that names no account to the right one by what is on disk: the key of
+  that account's SSH alias, or the repositories in its folders or that set its email. The folders of existing rules
+  are scanned too, along with `~/Developer`, `~/workspace` and `~/Documents/GitHub`. An identity it still cannot tie
+  is shown with the profile that would override it, and on the page you can choose its account.
+- Removing old `includeIf` rules (`doctor --fix`, the page's button, setup) only removes a rule when a profile with
+  the same email covers its folder; before, a rule whose identity no profile had could be deleted. `doctor` now warns
+  when a profile overrides such a rule, and reports rules kept on purpose as fine.
+- Setup pins repositories of another account in subfolders without a rule of their own, a scanned folder that is a
+  repository itself, and repositories kept inside other repositories; an https remote that names its user
+  (`https://user@github.com/...`) counts as evidence. Reasons name every SSH alias the repositories use.
+- Setup says when looking for repositories stopped at its time limit (now 10 seconds) instead of silently showing
+  partial counts, and says which keys of an existing setup it left out because their files are missing.
+- Declining the shell integration that setup offers (`setup --no-shell`, or unticking every shell on the page) writes
+  `shell_integration = false`, so `doctor` and `doctor --fix` no longer push it.
+- When some profile signs, a profile without signing resets the signing key and format to your own settings or Git's
+  defaults, so `git commit -S` in a pinned repository no longer signs with another profile's key.
+- Setup no longer trusts weak clues: a single repository an account owns no longer ties an
+  existing identity to that account, the strongest clue wins when two identities point to one account, and a pin for
+  a repository outside every rule follows the default you choose.
+- `includeIf` rules written with the home's absolute path are shown and stored as `~/...`.
+- The preview on the "Your setup is ready" page follows the boxes you tick or untick.
 - `signing = { method = "none" }` turns commit and tag signing off even when you sign everything globally; before,
   it did nothing and commits still tried to sign.
 - The configuration page compares a directory typed as an absolute path with the stored `~/` form: moving a

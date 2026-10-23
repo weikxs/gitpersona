@@ -13,26 +13,31 @@ type Repo struct {
 	Host  string `json:"host"`  // the remote's host as written: github.com or an SSH alias
 	Owner string `json:"owner"` // the remote's owner (user or organization)
 	Email string `json:"email"` // user.email set in the repository itself
+	User  string `json:"user"`  // the user name an https remote names, as in https://user@host/...
+	// Lone is set for a repository whose folder says nothing about other
+	// repositories: it is a scanned folder itself, or sits inside another
+	// repository.
+	Lone bool `json:"lone"`
 }
 
 // Repos finds the repositories under roots and reads, from each .git/config,
-// only the origin remote (or the first remote) and user.email.
-func Repos(ctx context.Context, roots []string, limits ScanLimits) []Repo {
+// only the origin remote (or the first remote) and user.email. complete is
+// false when the scan stopped at the time limit before it saw everything.
+func Repos(ctx context.Context, roots []string, limits ScanLimits) (repos []Repo, complete bool) {
 	ctx, cancel := context.WithTimeout(ctx, limits.Timeout)
 	defer cancel()
-	var repos []Repo
 	for _, root := range roots {
-		walkRepos(ctx, root, limits.MaxDepth, func(dir string) {
+		walkRepos(ctx, root, limits.MaxDepth, func(dir string, lone bool) {
 			data, err := os.ReadFile(filepath.Join(dir, ".git", "config"))
 			if err != nil {
 				return
 			}
 			url, email := repoConfig(string(data))
-			host, owner := parseRemote(url)
-			repos = append(repos, Repo{Dir: dir, Host: host, Owner: owner, Email: email})
+			host, owner, user := parseRemote(url)
+			repos = append(repos, Repo{Dir: dir, Host: host, Owner: owner, Email: email, User: user, Lone: lone})
 		})
 	}
-	return repos
+	return repos, ctx.Err() == nil
 }
 
 // repoConfig returns the origin remote's URL (or the first remote's) and
@@ -69,19 +74,23 @@ func repoConfig(text string) (url, email string) {
 }
 
 // parseRemote returns the host (possibly an SSH alias) and the owner of a
-// remote URL, or empty strings for local paths.
-func parseRemote(url string) (host, owner string) {
+// remote URL, and the user name of an http(s) URL, or empty strings for
+// local paths. The "git" of git@host is the SSH login, not an account.
+func parseRemote(url string) (host, owner, user string) {
 	var path string
 	switch {
 	case strings.HasPrefix(url, "file://"):
-		return "", ""
+		return "", "", ""
 	case strings.Contains(url, "://"):
-		rest := url[strings.Index(url, "://")+3:]
+		scheme, rest, _ := strings.Cut(url, "://")
 		h, p, ok := strings.Cut(rest, "/")
 		if !ok {
-			return "", ""
+			return "", "", ""
 		}
 		if at := strings.LastIndex(h, "@"); at >= 0 {
+			if strings.HasPrefix(scheme, "http") {
+				user, _, _ = strings.Cut(h[:at], ":") // never keep a password
+			}
 			h = h[at+1:]
 		}
 		host, path = h, p
@@ -92,14 +101,14 @@ func parseRemote(url string) (host, owner string) {
 		}
 		host, path = h, p
 	default:
-		return "", ""
+		return "", "", ""
 	}
 	if h, _, ok := strings.Cut(host, ":"); ok {
 		host = h // a port
 	}
 	owner, _, _ = strings.Cut(strings.TrimPrefix(path, "/"), "/")
 	if host == "" || owner == "" {
-		return "", ""
+		return "", "", ""
 	}
-	return host, owner
+	return host, owner, user
 }

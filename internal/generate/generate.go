@@ -128,7 +128,7 @@ func writeSigning(b *strings.Builder, p config.Profile, u usage, opts Options) e
 	}
 	if !p.Signing.Enabled() {
 		if u.signing {
-			writeFallbackSigning(b, opts.FallbackSigning)
+			writeFallbackSigning(b, opts.FallbackSigning, p.Email)
 		}
 		return nil
 	}
@@ -150,16 +150,19 @@ func writeSigning(b *strings.Builder, p config.Profile, u usage, opts Options) e
 }
 
 // writeFallbackSigning puts back the user's own signing settings, which
-// another profile's signing would otherwise override.
-func writeFallbackSigning(b *strings.Builder, s Signing) {
-	if s.SigningKey != "" {
+// another profile's signing would otherwise override. Without a key of their
+// own, the key is the profile's email and the format GPG, which is what Git
+// uses by default, so `git commit -S` never signs with another profile's
+// key. A user who signs with SSH without a key (gpg.ssh.defaultKeyCommand)
+// keeps that: Git cannot unset a key, so none is written.
+func writeFallbackSigning(b *strings.Builder, s Signing, email string) {
+	format := cmp.Or(s.Format, "openpgp")
+	if s.SigningKey != "" || format != "ssh" {
 		b.WriteString("[user]\n")
-		writeKV(b, "signingkey", s.SigningKey)
+		writeKV(b, "signingkey", cmp.Or(s.SigningKey, email))
 	}
-	if s.Format != "" {
-		b.WriteString("[gpg]\n")
-		writeKV(b, "format", s.Format)
-	}
+	b.WriteString("[gpg]\n")
+	writeKV(b, "format", format)
 	b.WriteString("[commit]\n")
 	writeKV(b, "gpgsign", cmp.Or(s.GPGSign, "false"))
 }

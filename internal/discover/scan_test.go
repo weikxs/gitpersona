@@ -56,13 +56,13 @@ func TestScanRespectsDepthAndSkipsMissingRoots(t *testing.T) {
 	}
 }
 
-func TestAFolderThatIsItselfARepositoryIsNotScanned(t *testing.T) {
+func TestAFolderThatIsItselfARepositorySuggestsNoFolder(t *testing.T) {
 	root := t.TempDir()
 	repo(t, root, "https://github.com/octo-alex/everything")
 	repo(t, filepath.Join(root, "nested"), "https://github.com/octo-alex/nested")
 
-	if got := Repos(context.Background(), []string{root}, ScanLimits{MaxDepth: 4, Timeout: time.Second}); len(got) != 0 {
-		t.Fatalf("Repos() = %+v; a root that is a repository would suggest its parent, often the home", got)
+	if got := Scan(context.Background(), []string{root}, []string{"octo-alex"}, ScanLimits{MaxDepth: 4, Timeout: time.Second}); len(got) != 0 {
+		t.Fatalf("Scan() = %+v; a root that is a repository would suggest its parent, often the home", got)
 	}
 }
 func TestScanReportsDirectoriesOwnedByAnOrganization(t *testing.T) {

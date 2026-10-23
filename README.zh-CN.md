@@ -71,6 +71,7 @@ Git、`gh`、`glab` 都假定只有一个全局的"当前账户"，于是很容�
 |---|---|---|
 | `version` | 是 | 固定为 `1` |
 | `default` | 否 | 没有任何规则或 Pin 匹配时使用的身份 |
+| `shell_integration` | 否 | 设为 `false` 表示不在 Shell 中加载 GitPersona，`doctor` 不再建议安装（`setup --no-shell` 会写入） |
 | `[[profile]] id` | 是 | 短名：小写字母、数字、`-` |
 | `provider` | 否 | 默认 `github`；`gitlab`、`bitbucket`、`generic` 目前只设置提交身份和 SSH 密钥 |
 | `host` | 否 | GitHub 默认为 `github.com` |

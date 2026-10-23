@@ -50,6 +50,7 @@ func Existing(ctx context.Context, home, gitconfig string, run provider.Runner) 
 type Rule struct {
 	Condition string
 	Dir       string
+	Email     string // the email the included file sets
 	Keep      string
 }
 
@@ -58,7 +59,7 @@ type Rule struct {
 func IdentityRules(ctx context.Context, home, gitconfig string, run provider.Runner) []Rule {
 	var rules []Rule
 	for _, r := range identityRules(ctx, home, gitconfig, run) {
-		rules = append(rules, Rule{Condition: r.condition, Dir: r.dir, Keep: r.keep})
+		rules = append(rules, Rule{Condition: r.condition, Dir: r.dir, Email: r.id.Email, Keep: r.keep})
 	}
 	return rules
 }
@@ -92,9 +93,9 @@ func identityRules(ctx context.Context, home, gitconfig string, run provider.Run
 	}
 	var rules []identityRule
 	for _, p := range paths {
-		dir := gitdirToDir(p.condition)
-		if dir == "" {
-			continue
+		dir := withTilde(gitdirToDir(p.condition), home, strings.HasPrefix(p.condition, "gitdir/i:"))
+		if dir == "" || dir == "~" {
+			continue // a rule for the whole home is a default, not a directory rule
 		}
 		id, keep := readIdentity(ctx, expandHome(p.path, home), run)
 		if id.Email == "" {
@@ -271,6 +272,33 @@ func gitdirToDir(condition string) string {
 		return ""
 	}
 	return pattern
+}
+
+// withTilde writes a directory under home as ~/..., the way GitPersona
+// shows and stores directories; the home itself is "~". With ignoreCase
+// (gitdir/i: rules) the home may be written in another case.
+func withTilde(dir, home string, ignoreCase bool) string {
+	if dir == "" || home == "" {
+		return dir
+	}
+	for _, h := range []string{home, realPath(home)} {
+		h = strings.TrimSuffix(h, "/")
+		switch {
+		case dir == h || (ignoreCase && strings.EqualFold(dir, h)):
+			return "~"
+		case len(dir) > len(h) && dir[len(h)] == '/' && (dir[:len(h)] == h || (ignoreCase && strings.EqualFold(dir[:len(h)], h))):
+			return "~" + dir[len(h):]
+		}
+	}
+	return dir
+}
+
+// realPath resolves symbolic links in a path, or returns it unchanged.
+func realPath(path string) string {
+	if real, err := filepath.EvalSymlinks(path); err == nil {
+		return real
+	}
+	return path
 }
 
 func expandHome(path, home string) string {

@@ -427,10 +427,11 @@ func TestShellChangesArePreviewedWithoutWriting(t *testing.T) {
 func TestOldRulesAreRemovedFromThePage(t *testing.T) {
 	w := newAPIWorld(t)
 	if err := os.WriteFile(filepath.Join(w.home, ".gitconfig"),
-		[]byte("[includeIf \"gitdir:~/old/\"]\n\tpath = ~/.gitconfig-old\n"), 0o600); err != nil {
+		[]byte("[includeIf \"gitdir:~/Projects/personal/old/\"]\n\tpath = ~/.gitconfig-old\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(w.home, ".gitconfig-old"), []byte("[user]\n\temail = old@example.com\n"), 0o600); err != nil {
+	// Profile personal has this email and covers the folder, so it takes the rule over.
+	if err := os.WriteFile(filepath.Join(w.home, ".gitconfig-old"), []byte("[user]\n\temail = 1000001+octo-alex@users.noreply.github.com\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	w.call(t, "POST", "/api/apply", map[string]bool{})
@@ -445,11 +446,11 @@ func TestOldRulesAreRemovedFromThePage(t *testing.T) {
 		t.Fatalf("the health checks should offer to remove the old rules: %+v", state.Doctor.Checks)
 	}
 
-	if got := w.call(t, "POST", "/api/old-rules", map[string]any{}); !got.OK || !strings.Contains(got.Log, "~/old") {
+	if got := w.call(t, "POST", "/api/old-rules", map[string]any{}); !got.OK || !strings.Contains(got.Log, "~/Projects/personal/old") {
 		t.Fatalf("remove old rules = %+v", got)
 	}
 	data, _ := os.ReadFile(filepath.Join(w.home, ".gitconfig"))
-	if strings.Contains(string(data), "~/old/") {
+	if strings.Contains(string(data), "~/Projects/personal/old/") {
 		t.Errorf("the old rule is still there:\n%s", data)
 	}
 }

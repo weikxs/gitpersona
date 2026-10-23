@@ -3,6 +3,10 @@
 [user]
 	name = Alex (Acme)
 	email = 1000002+acme-alex@users.noreply.github.com
+[user]
+	signingkey = 1000002+acme-alex@users.noreply.github.com
+[gpg]
+	format = openpgp
 [commit]
 	gpgsign = false
 [core]

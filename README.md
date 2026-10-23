@@ -77,6 +77,7 @@ everything else             → acme-alex    (default)
 |---|---|---|
 | `version` | yes | Always `1` |
 | `default` | no | Profile id used where no rule or pin matches |
+| `shell_integration` | no | `false` records that you do not want GitPersona in your shells, so `doctor` does not suggest it (`setup --no-shell` writes it) |
 | `[[profile]] id` | yes | Short name: lowercase letters, digits, `-` |
 | `provider` | no | `github` (default); `gitlab`, `bitbucket`, `generic` set the commit identity and SSH key only, for now |
 | `host` | no | Defaults to `github.com` for GitHub |

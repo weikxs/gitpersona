@@ -9,6 +9,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/weikxs/gitpersona/internal/discover"
 )
 
 const setupTimeout = 30 * time.Second
@@ -37,7 +39,7 @@ func Setup(ctx context.Context, e Env, opts SetupOptions) error {
 		return err
 	}
 	if opts.NoShell {
-		proposal.Shells = []string{}
+		proposal.Shells, proposal.NoShell = []string{}, len(proposal.Shells) > 0 // record only a shell declined
 	}
 	if opts.KeepOldRules {
 		proposal.OldRules = []string{}
@@ -84,11 +86,17 @@ func (e Env) printProposal(p SetupProposal) {
 		fmt.Fprintf(w, " and looked for repositories in %s", strings.Join(p.Roots, ", "))
 	}
 	fmt.Fprintln(w, ":")
+	if p.ScanIncomplete {
+		fmt.Fprintf(w, "\n  ! Looking for repositories stopped after %s; folders it did not reach are not included.\n",
+			discover.DefaultScanLimits.Timeout)
+	}
 	for _, prof := range p.Profiles {
 		printProposedProfile(w, prof, prof.ID == p.Default)
 	}
 	for _, pin := range p.Pins {
-		fmt.Fprintf(w, "\n  Pin %s to %s: %s\n", pin.Repo, pin.Profile, pin.Why)
+		if pin.needed(p.Default) {
+			fmt.Fprintf(w, "\n  Pin %s to %s: %s\n", pin.Repo, pin.Profile, pin.Why)
+		}
 	}
 	if p.Default != "" && p.Global.Email != "" {
 		fmt.Fprintf(w, "\n  Outside these directories, commits will use %s instead of %s <%s>.\n",
@@ -105,11 +113,29 @@ func (e Env) printProposal(p SetupProposal) {
 		fmt.Fprintf(w, "\n  Shell integration for %s, so gh and your prompt follow the directory (--no-shell to skip).\n",
 			strings.Join(p.Shells, ", "))
 	}
-	for _, u := range p.Unassigned {
-		fmt.Fprintf(w, "\n  Left out: %s (%s, owned by %s). Run `gitpersona use <profile>` there to add it.\n", u.Dir, u.Why, u.Owner)
-	}
+	printUnassigned(w, p)
 	for _, u := range p.Unmatched {
-		fmt.Fprintf(w, "\n  Left out: %s <%s> from %s; no account signed in to gh uses it.\n", u.Name, u.Email, u.Source)
+		fmt.Fprintf(w, "\n  ! Left out: %s <%s> for %s (from %s); no signed-in account could be tied to it. "+
+			"To use it, choose its account with `gitpersona setup --web`.\n", u.Name, u.Email, strings.Join(u.Dirs, ", "), u.Source)
+		if u.OverriddenBy != "" {
+			fmt.Fprintf(w, "    Commits there would use profile %s instead, because GitPersona's rules come after yours.\n", u.OverriddenBy)
+		}
+	}
+}
+
+// printUnassigned lists, together, the folders whose repositories belong to
+// someone else, such as an organization.
+func printUnassigned(w io.Writer, p SetupProposal) {
+	if len(p.Unassigned) == 0 {
+		return
+	}
+	applies := "Git's own settings apply"
+	if p.Default != "" {
+		applies = "the default profile " + p.Default + " applies"
+	}
+	fmt.Fprintf(w, "\n  Owned by someone else, so %s there unless you choose (run `gitpersona use <profile>` in the folder):\n", applies)
+	for _, u := range p.Unassigned {
+		fmt.Fprintf(w, "    %s  (%s, owned by %s)\n", u.Dir, u.Why, u.Owner)
 	}
 }
 
@@ -133,6 +159,9 @@ func printProposedProfile(w io.Writer, p SetupProfile, isDefault bool) {
 	}
 	if len(p.Dirs)+len(p.Found) == 0 {
 		fmt.Fprintln(w, "    no directories yet")
+	}
+	for _, n := range p.Notes {
+		fmt.Fprintf(w, "    ! %s\n", n)
 	}
 }
 

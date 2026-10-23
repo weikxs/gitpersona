@@ -3,6 +3,10 @@
 [user]
 	name = Alex
 	email = alex@globex.example
+[user]
+	signingkey = alex@globex.example
+[gpg]
+	format = openpgp
 [commit]
 	gpgsign = false
 [core]

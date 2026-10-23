@@ -43,10 +43,13 @@ var ErrNotFound = errors.New("configuration file not found")
 
 // Config is the whole configuration file.
 type Config struct {
-	Version  int       `toml:"version"`
-	Default  string    `toml:"default,omitempty"`
-	Profiles []Profile `toml:"profile,omitempty"`
-	Pins     []Pin     `toml:"pin,omitempty"`
+	Version int    `toml:"version"`
+	Default string `toml:"default,omitempty"`
+	// ShellIntegration false records that the user chose not to load
+	// GitPersona in their shells, so doctor does not suggest it.
+	ShellIntegration *bool     `toml:"shell_integration,omitempty"`
+	Profiles         []Profile `toml:"profile,omitempty"`
+	Pins             []Pin     `toml:"pin,omitempty"`
 }
 
 // Profile is one identity on one Git hosting service.
@@ -77,6 +80,12 @@ type Pin struct {
 // Enabled reports whether commits should be signed.
 func (s Signing) Enabled() bool {
 	return s.Method == SigningSSH || s.Method == SigningGPG
+}
+
+// ShellIntegrationOff reports whether the user turned the shell
+// integration off.
+func (c Config) ShellIntegrationOff() bool {
+	return c.ShellIntegration != nil && !*c.ShellIntegration
 }
 
 // ProfileByID returns the profile with the given id.

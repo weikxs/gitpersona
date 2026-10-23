@@ -96,7 +96,7 @@ func TestSetupShowsWhatItFoundAndAsksFirst(t *testing.T) {
 		"SSH key ~/.ssh/id_acme",
 		"Pin ~/code/acme/side to octo-alex: the repository sets alex@octo.example",
 		"commits will use octo-alex instead of Demo Person <person@demo.example>",
-		"Left out: ~/code/other",
+		"~/code/other  (its one repository, owned by other-org)",
 		"Nothing was written",
 	} {
 		if !strings.Contains(out.String(), want) {

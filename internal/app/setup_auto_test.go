@@ -46,9 +46,9 @@ func TestInferLayoutUsesOwnersAliasesAndRepositoryEmails(t *testing.T) {
 	wantFound := map[string][]DirSuggestion{
 		"octo-alex": {
 			{Dir: "~/code/mine", Why: "all 2 repositories belong to octo-alex"},
-			{Dir: "~/code/oss", Why: "its one repository sets alex@octo.example"},
+			{Dir: "~/code/oss", Why: "its one repository belongs to octo-alex; it sets alex@octo.example"},
 		},
-		"acme-alex": {{Dir: "~/code/acme", Why: "3 of 4 repositories use the SSH alias github-acme"}},
+		"acme-alex": {{Dir: "~/code/acme", Why: "3 of 4 repositories belong to acme-alex; all use the SSH alias github-acme"}},
 	}
 	if !reflect.DeepEqual(got.found, wantFound) {
 		t.Errorf("found = %+v\nwant  %+v", got.found, wantFound)

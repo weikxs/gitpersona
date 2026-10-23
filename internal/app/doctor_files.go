@@ -89,25 +89,38 @@ func (e Env) checkDirs(cfg config.Config) []check {
 // offers it as a button.
 const FixOldRules = "old-rules"
 
-// checkOldRules warns about hand-made includeIf identity rules left in the
-// global Git configuration from before GitPersona. GitPersona's rules come
-// last and win, but the old ones are confusing to keep.
-func (e Env) checkOldRules(ctx context.Context) []check {
-	old, err := discover.Existing(ctx, e.Home, e.GlobalGitConfigPath(), e.Run)
-	if err != nil || len(old) == 0 {
-		return nil
+// checkOldRules looks at the hand-made includeIf identity rules in the
+// global Git configuration. Rules a profile takes over are a warning with a
+// fix (they are only confusing); rules that stay because they do more are
+// fine; a rule whose identity no profile has is a warning when a profile
+// overrides it, because GitPersona's rules come last.
+func (e Env) checkOldRules(ctx context.Context, cfg config.Config) []check {
+	owners := ownersOf(cfg)
+	var checks []check
+	var replaced []string
+	for _, r := range discover.IdentityRules(ctx, e.Home, e.GlobalGitConfigPath(), e.Run) {
+		by, overridden := e.overriddenBy(r.Dir, owners, cfg.Default)
+		overridden = overridden && !strings.EqualFold(by.email, r.Email) // the same identity is no loss
+		switch {
+		case e.takenOver(r, owners) && r.Keep == "":
+			replaced = append(replaced, r.Dir)
+		case e.takenOver(r, owners):
+			checks = append(checks, check{ok: true, label: fmt.Sprintf("your includeIf rule for %s stays: %s", r.Dir, r.Keep)})
+		case overridden:
+			checks = append(checks, check{warn: true,
+				label: fmt.Sprintf("profile %s overrides your includeIf rule for %s, so commits there do not use %s", by.id, r.Dir, r.Email),
+				advice: fmt.Sprintf("add %s to a profile with that email (or pin its repositories); remove the rule from %s by hand if you no longer need it",
+					r.Dir, e.display(e.GlobalGitConfigPath()))})
+		default:
+			checks = append(checks, check{ok: true, label: fmt.Sprintf("your includeIf rule for %s still applies there (%s)", r.Dir, r.Email)})
+		}
 	}
-	var dirs []string
-	for _, id := range old {
-		dirs = append(dirs, id.Dirs...)
+	if len(replaced) > 0 {
+		checks = append(checks, check{warn: true,
+			label: fmt.Sprintf("%s still has includeIf identity rules that your profiles take over (%s)",
+				e.display(e.GlobalGitConfigPath()), strings.Join(replaced, ", ")),
+			advice: "GitPersona's rules come after them and win; `gitpersona doctor --fix` removes them (after a backup)",
+			fix:    func(ctx context.Context, fixer Env) error { return RemoveOldRules(ctx, fixer) }, fixKey: FixOldRules})
 	}
-	c := check{warn: true,
-		label: fmt.Sprintf("%s still has includeIf identity rules from before GitPersona (%s)",
-			e.display(e.GlobalGitConfigPath()), strings.Join(dirs, ", ")),
-		advice: "GitPersona's rules come after them and win; they also set other things, so remove them by hand when you no longer need them"}
-	if replaced, _ := e.classifyOldRules(ctx, nil); len(replaced) > 0 {
-		c.advice = "GitPersona's rules come after them and win; `gitpersona doctor --fix` removes those a profile replaces (after a backup)"
-		c.fix, c.fixKey = func(ctx context.Context, fixer Env) error { return RemoveOldRules(ctx, fixer) }, FixOldRules
-	}
-	return []check{c}
+	return checks
 }

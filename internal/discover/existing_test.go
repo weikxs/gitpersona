@@ -152,3 +152,34 @@ func TestIdentityRulesSayWhichOnesGitPersonaCanReplace(t *testing.T) {
 		t.Errorf("gpgsign = yes turns signing on, got %+v", ids[0].Signing)
 	}
 }
+
+func TestRulesForFoldersUnderHomeAreWrittenWithTilde(t *testing.T) {
+	home := t.TempDir()
+	write(t, filepath.Join(home, ".gitconfig-dev"), "[user]\n\temail = person@demo.example\n")
+	write(t, filepath.Join(home, ".gitconfig"), "[includeIf \"gitdir:"+home+"/Developer/\"]\n\tpath = ~/.gitconfig-dev\n")
+
+	rules := IdentityRules(context.Background(), home, filepath.Join(home, ".gitconfig"), provider.ExecRunner)
+
+	if len(rules) != 1 || rules[0].Dir != "~/Developer" || rules[0].Email != "person@demo.example" {
+		t.Errorf("IdentityRules() = %+v, want ~/Developer for person@demo.example", rules)
+	}
+}
+
+func TestWithTilde(t *testing.T) {
+	for _, tc := range []struct {
+		dir        string
+		ignoreCase bool
+		want       string
+	}{
+		{"/tmp/home/Developer", false, "~/Developer"},
+		{"/tmp/home", false, "~"},
+		{"/TMP/Home/dev", true, "~/dev"},
+		{"/TMP/Home/dev", false, "/TMP/Home/dev"},
+		{"/tmp/homework", false, "/tmp/homework"},
+		{"~/code", false, "~/code"},
+	} {
+		if got := withTilde(tc.dir, "/tmp/home", tc.ignoreCase); got != tc.want {
+			t.Errorf("withTilde(%q, %v) = %q, want %q", tc.dir, tc.ignoreCase, got, tc.want)
+		}
+	}
+}

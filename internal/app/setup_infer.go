@@ -22,6 +22,7 @@ type layout struct {
 const (
 	byEmail = iota // the repository sets the account's email
 	byAlias        // its remote uses an SSH alias of the account
+	byUser         // its https remote names the account as the user
 	byOwner        // its remote's owner is the account
 )
 
@@ -41,29 +42,56 @@ type inference struct {
 	aliasAccount map[string]string // lowercase SSH alias -> account
 }
 
-// inferLayout works out directory rules and pins from the repositories on
-// disk. Repository directories are written the way the configuration writes
-// them (~/...); key compares them with the profiles' directories.
-func inferLayout(profiles []SetupProfile, repos []discover.Repo, aliases []discover.SSHAlias, key func(string) string) layout {
+// newInference prepares the comparison of profiles with the repositories on
+// disk: which SSH aliases connect to GitHub and whose they are.
+func newInference(profiles []SetupProfile, repos []discover.Repo, aliases []discover.SSHAlias, key func(string) string) inference {
 	in := inference{profiles: profiles, key: key, githubAlias: map[string]bool{}}
 	for _, a := range aliases {
 		in.githubAlias[strings.ToLower(a.Alias)] = true
 	}
 	in.aliasAccount = in.aliasAccounts(repos, aliases)
+	return in
+}
 
+// inferLayout works out directory rules and pins from the repositories on
+// disk. Repository directories are written the way the configuration writes
+// them (~/...); key compares them with the profiles' directories.
+func inferLayout(profiles []SetupProfile, repos []discover.Repo, aliases []discover.SSHAlias, key func(string) string) layout {
+	in := newInference(profiles, repos, aliases, key)
 	out := layout{found: map[string][]DirSuggestion{}, aliasAccount: in.aliasAccount}
 	byParent := map[string][]attribution{}
+	var all []attribution
 	for _, r := range repos {
-		if a, ok := in.attribute(r); ok {
+		a, ok := in.attribute(r)
+		if !ok {
+			continue
+		}
+		all = append(all, a)
+		if !r.Lone { // a lone repository's folder says nothing about others
 			parent := filepath.Dir(r.Dir)
 			byParent[parent] = append(byParent[parent], a)
 		}
 	}
+	folderAccount := map[string]string{} // folder -> the account most of its repositories belong to
 	for _, parent := range slices.Sorted(maps.Keys(byParent)) {
 		in.suggest(&out, parent, byParent[parent])
+		if account, n := majority(accountCounts(byParent[parent])); n*2 > len(byParent[parent]) {
+			folderAccount[in.key(parent)] = account
+		}
 	}
-	out.pins = in.pins(out.found, byParent)
+	out.pins = in.pins(out.found, all, folderAccount)
 	return out
+}
+
+// accountCounts counts repositories per account.
+func accountCounts(repos []attribution) map[string]int {
+	counts := map[string]int{}
+	for _, a := range repos {
+		if a.account != "" {
+			counts[a.account]++
+		}
+	}
+	return counts
 }
 
 // suggest adds a directory rule for parent when most of its repositories
@@ -86,8 +114,7 @@ func (in inference) suggest(out *layout, parent string, repos []attribution) {
 	total := len(repos)
 	if n*2 > total {
 		if !in.covers(profileOf(in.profiles, account).Dirs, parent) {
-			why := countPhrase(n, total) + " " + reason(repos, account, n == 1)
-			out.found[account] = append(out.found[account], DirSuggestion{Dir: parent, Why: why})
+			out.found[account] = append(out.found[account], DirSuggestion{Dir: parent, Why: reason(repos, account, n, total)})
 		}
 		return
 	}
@@ -96,31 +123,42 @@ func (in inference) suggest(out *layout, parent string, repos []attribution) {
 	}
 }
 
-// pins pins repositories whose own email or SSH alias names another account
-// than the rule that would cover them.
-func (in inference) pins(found map[string][]DirSuggestion, byParent map[string][]attribution) []PinSuggestion {
+// pins pins repositories that belong to another account than the one that
+// would apply to them: the most specific directory rule, or else the
+// default. Where no rule applies, the pin is marked Outside, since it is
+// needed only while the default is another profile. An owner alone does not
+// pin a repository against a rule for its own folder, or one whose folder
+// mostly belongs to the rule's account; its own email, SSH alias or remote
+// user still do.
+func (in inference) pins(found map[string][]DirSuggestion, repos []attribution, folderAccount map[string]string) []PinSuggestion {
 	var pins []PinSuggestion
-	for _, parent := range slices.Sorted(maps.Keys(byParent)) {
-		for _, a := range byParent[parent] {
-			if a.account == "" || a.how == byOwner {
-				continue // an owner alone is not enough to override a rule
-			}
-			if ruled := in.ruleAccount(a.repo.Dir, found); ruled != "" && ruled != a.account {
-				p := profileOf(in.profiles, a.account)
-				pins = append(pins, PinSuggestion{Repo: a.repo.Dir, Profile: p.ID, Why: "the repository " + evidence(a)})
-			}
+	for _, a := range repos {
+		if a.account == "" {
+			continue
 		}
+		ruled, ruleDir := in.ruleAccount(a.repo.Dir, found)
+		if ruleDir != "" && ruled == a.account {
+			continue
+		}
+		parent := in.key(filepath.Dir(a.repo.Dir))
+		outvoted := ruleDir != "" && !a.repo.Lone && (parent == in.key(ruleDir) || folderAccount[parent] == ruled)
+		if a.how == byOwner && outvoted {
+			continue
+		}
+		p := profileOf(in.profiles, a.account)
+		pins = append(pins, PinSuggestion{Repo: a.repo.Dir, Profile: p.ID, Why: "the repository " + evidence(a), Outside: ruleDir == ""})
 	}
+	slices.SortFunc(pins, func(x, y PinSuggestion) int { return strings.Compare(x.Repo, y.Repo) })
 	return pins
 }
 
-// ruleAccount returns the account of the most specific directory, existing
-// or suggested, that covers dir.
-func (in inference) ruleAccount(dir string, found map[string][]DirSuggestion) string {
-	best, account := -1, ""
+// ruleAccount returns the account and directory of the most specific
+// directory rule, existing or suggested, that covers dir.
+func (in inference) ruleAccount(dir string, found map[string][]DirSuggestion) (string, string) {
+	best, account, ruleDir := -1, "", ""
 	consider := func(rule, acc string) {
 		if in.covers([]string{rule}, dir) && len(in.key(rule)) > best {
-			best, account = len(in.key(rule)), acc
+			best, account, ruleDir = len(in.key(rule)), acc, rule
 		}
 	}
 	for _, p := range in.profiles {
@@ -131,7 +169,7 @@ func (in inference) ruleAccount(dir string, found map[string][]DirSuggestion) st
 			consider(s.Dir, p.Account)
 		}
 	}
-	return account
+	return account, ruleDir
 }
 
 // aliasAccounts maps each SSH alias for github.com to an account: the one
@@ -185,6 +223,11 @@ func (in inference) attribute(r discover.Repo) (attribution, bool) {
 		return attribution{repo: r, account: account, how: byAlias}, true
 	}
 	for _, p := range in.profiles {
+		if r.User != "" && strings.EqualFold(r.User, p.Account) {
+			return attribution{repo: r, account: p.Account, how: byUser}, true
+		}
+	}
+	for _, p := range in.profiles {
 		if strings.EqualFold(r.Owner, p.Account) {
 			return attribution{repo: r, account: p.Account, how: byOwner}, true
 		}
@@ -193,11 +236,15 @@ func (in inference) attribute(r discover.Repo) (attribution, bool) {
 }
 
 // covers reports whether dir is one of dirs or inside one of them.
-func (in inference) covers(dirs []string, dir string) bool {
-	k := in.key(dir)
+func (in inference) covers(dirs []string, dir string) bool { return coversWith(in.key, dirs, dir) }
+
+// coversWith reports whether dir is one of dirs or inside one of them, with
+// paths compared in the form key gives.
+func coversWith(key func(string) string, dirs []string, dir string) bool {
+	k := key(dir)
 	return slices.ContainsFunc(dirs, func(d string) bool {
-		d = in.key(d)
-		return k == d || strings.HasPrefix(k, d+"/")
+		d = key(d)
+		return k == d || strings.HasPrefix(k, strings.TrimSuffix(d, "/")+"/")
 	})
 }
 
@@ -235,39 +282,65 @@ func countPhrase(n, total int) string {
 	return fmt.Sprintf("%d of %d repositories", n, total)
 }
 
-// reason describes the strongest evidence shared by account's repositories;
-// one selects the verb for a single repository.
-func reason(repos []attribution, account string, one bool) string {
-	verb := func(plural, singular string) string {
-		if one {
-			return singular
-		}
-		return plural
+// reason says why n of a folder's total repositories belong to account,
+// with what their own settings say, such as the SSH aliases they use.
+func reason(repos []attribution, account string, n, total int) string {
+	one := n == 1
+	text := countPhrase(n, total) + " " + verb(one, "belong", "belongs") + " to " + account
+	type group struct {
+		example attribution
+		count   int
 	}
-	strongest := byOwner
-	var example attribution
+	groups := map[string]group{}
 	for _, a := range repos {
-		if a.account == account && a.how <= strongest {
-			strongest, example = a.how, a
+		if a.account == account && a.how != byOwner {
+			k := evidenceOf(a, false)
+			groups[k] = group{example: a, count: groups[k].count + 1}
 		}
 	}
-	switch strongest {
-	case byEmail:
-		return verb("set ", "sets ") + strings.ToLower(example.repo.Email)
-	case byAlias:
-		return verb("use", "uses") + " the SSH alias " + example.repo.Host
-	default:
-		return verb("belong", "belongs") + " to " + account
+	var notes []string
+	for _, k := range slices.Sorted(maps.Keys(groups)) {
+		g := groups[k]
+		switch {
+		case one:
+			notes = append(notes, "it "+evidenceOf(g.example, true))
+		case g.count == n:
+			notes = append(notes, "all "+k)
+		case g.count == 1:
+			notes = append(notes, "1 "+evidenceOf(g.example, true))
+		default:
+			notes = append(notes, fmt.Sprintf("%d %s", g.count, k))
+		}
 	}
+	if len(notes) == 0 {
+		return text
+	}
+	return text + "; " + strings.Join(notes, ", ")
+}
+
+func verb(one bool, plural, singular string) string {
+	if one {
+		return singular
+	}
+	return plural
+}
+
+// evidenceOf says what a repository's own settings say about its account,
+// for one repository ("sets ...") or several ("set ...").
+func evidenceOf(a attribution, one bool) string {
+	switch a.how {
+	case byEmail:
+		return verb(one, "set ", "sets ") + strings.ToLower(a.repo.Email)
+	case byAlias:
+		return verb(one, "use", "uses") + " the SSH alias " + a.repo.Host
+	case byUser:
+		return verb(one, "sign", "signs") + " in as " + a.repo.User
+	}
+	return verb(one, "belong", "belongs") + " to " + a.account
 }
 
 // evidence says in words why a single repository belongs to its account.
-func evidence(a attribution) string {
-	if a.how == byAlias {
-		return "uses the SSH alias " + a.repo.Host
-	}
-	return "sets " + strings.ToLower(a.repo.Email)
-}
+func evidence(a attribution) string { return evidenceOf(a, true) }
 
 // majority returns the key with the highest count (the first by name on a tie).
 func majority(counts map[string]int) (string, int) {

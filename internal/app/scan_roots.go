@@ -10,7 +10,8 @@ import (
 )
 
 // DefaultScanRoots are the usual code folders scanned for repositories.
-var DefaultScanRoots = []string{"~/Projects", "~/projects", "~/code", "~/src", "~/dev", "~/work", "~/repos", "~/git"}
+var DefaultScanRoots = []string{"~/Projects", "~/projects", "~/code", "~/src", "~/dev", "~/Developer", "~/work",
+	"~/workspace", "~/repos", "~/git", "~/Documents/GitHub"}
 
 // ScanRoots are folders to scan, resolved to their real paths so a
 // symlinked ~/code is scanned too.

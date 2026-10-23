@@ -23,8 +23,11 @@ func TestReposReportRemoteHostOwnerAndTheirOwnEmail(t *testing.T) {
 	repo(t, filepath.Join(root, "fun", "game"), "https://github.com/demo-personal/game")
 	repo(t, filepath.Join(root, "local"), "")
 
-	got := Repos(context.Background(), []string{root}, ScanLimits{MaxDepth: 4, Timeout: time.Second})
+	got, complete := Repos(context.Background(), []string{root}, ScanLimits{MaxDepth: 4, Timeout: time.Second})
 
+	if !complete {
+		t.Error("a small scan should complete")
+	}
 	if len(got) != 3 {
 		t.Fatalf("Repos() = %+v, want three repositories", got)
 	}
@@ -44,18 +47,44 @@ func TestReposReportRemoteHostOwnerAndTheirOwnEmail(t *testing.T) {
 }
 
 func TestParseRemote(t *testing.T) {
-	for url, want := range map[string][2]string{
-		"https://github.com/demo-work/api.git":       {"github.com", "demo-work"},
-		"https://token@github.com/demo-work/api.git": {"github.com", "demo-work"},
-		"ssh://git@github.com:22/demo-work/api.git":  {"github.com", "demo-work"},
-		"git@github-work:demo-org/api.git":           {"github-work", "demo-org"},
-		"github-work:demo-org/api.git":               {"github-work", "demo-org"},
-		"/srv/git/api.git":                           {"", ""},
-		"file:///srv/git/api.git":                    {"", ""},
+	for url, want := range map[string][3]string{
+		"https://github.com/demo-work/api.git":                 {"github.com", "demo-work", ""},
+		"https://demo-personal@github.com/demo-work/api.git":   {"github.com", "demo-work", "demo-personal"},
+		"https://demo-personal:secret@github.com/demo/api.git": {"github.com", "demo", "demo-personal"},
+		"ssh://git@github.com:22/demo-work/api.git":            {"github.com", "demo-work", ""},
+		"git@github-work:demo-org/api.git":                     {"github-work", "demo-org", ""},
+		"github-work:demo-org/api.git":                         {"github-work", "demo-org", ""},
+		"/srv/git/api.git":                                     {"", "", ""},
+		"file:///srv/git/api.git":                              {"", "", ""},
 	} {
-		host, owner := parseRemote(url)
-		if host != want[0] || owner != want[1] {
-			t.Errorf("parseRemote(%q) = %q, %q, want %q, %q", url, host, owner, want[0], want[1])
+		host, owner, user := parseRemote(url)
+		if host != want[0] || owner != want[1] || user != want[2] {
+			t.Errorf("parseRemote(%q) = %q, %q, %q, want %q", url, host, owner, user, want)
+		}
+	}
+}
+
+func TestReposInsideRepositoriesAndAScannedRepositoryAreLone(t *testing.T) {
+	root := t.TempDir()
+	repo(t, root, "https://github.com/demo-personal/src")
+	repo(t, filepath.Join(root, "outer"), "https://github.com/demo-personal/outer")
+	repo(t, filepath.Join(root, "outer", "inner"), "git@github-work:demo-work/inner.git")
+	write(t, filepath.Join(root, "outer", "sub", ".git"), "gitdir: ../.git/modules/sub\n") // a submodule
+
+	got, _ := Repos(context.Background(), []string{root}, ScanLimits{MaxDepth: 4, Timeout: time.Second})
+
+	lone := map[string]bool{}
+	for _, r := range got {
+		rel, _ := filepath.Rel(root, r.Dir)
+		lone[rel] = r.Lone
+	}
+	want := map[string]bool{".": true, "outer": true, filepath.Join("outer", "inner"): true}
+	if len(lone) != len(want) {
+		t.Fatalf("Repos() found %v, want %v", lone, want)
+	}
+	for dir, l := range want {
+		if got, ok := lone[dir]; !ok || got != l {
+			t.Errorf("%s: lone = %v (found %v), want %v", dir, got, ok, l)
 		}
 	}
 }
