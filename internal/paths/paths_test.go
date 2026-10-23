@@ -88,15 +88,15 @@ func TestSame(t *testing.T) {
 
 func TestResolveSymlinksFollowsLinks(t *testing.T) {
 	root := t.TempDir()
-	real := filepath.Join(root, "real")
+	realDir := filepath.Join(root, "real")
 	link := filepath.Join(root, "link")
-	if err := os.Mkdir(real, 0o700); err != nil {
+	if err := os.Mkdir(realDir, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Symlink(real, link); err != nil {
+	if err := os.Symlink(realDir, link); err != nil {
 		t.Fatal(err)
 	}
-	wantReal, err := filepath.EvalSymlinks(real)
+	wantReal, err := filepath.EvalSymlinks(realDir)
 	if err != nil {
 		t.Fatal(err)
 	}

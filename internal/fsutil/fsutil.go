@@ -27,14 +27,15 @@ func WriteAtomic(path string, data []byte, perm os.FileMode) error {
 		return fmt.Errorf("create temporary file in %s: %w", dir, err)
 	}
 	tmpName := tmp.Name()
-	defer os.Remove(tmpName) //nolint:errcheck // best-effort cleanup; fails harmlessly after a successful rename
+	// Best-effort cleanup; it fails harmlessly after a successful rename.
+	defer func() { _ = os.Remove(tmpName) }()
 
 	if _, err := tmp.Write(data); err != nil {
-		tmp.Close() //nolint:errcheck,gosec // the write error is the one worth reporting
+		_ = tmp.Close() // the write error is the one worth reporting
 		return fmt.Errorf("write %s: %w", path, err)
 	}
 	if err := tmp.Chmod(perm); err != nil {
-		tmp.Close() //nolint:errcheck,gosec // the chmod error is the one worth reporting
+		_ = tmp.Close() // the chmod error is the one worth reporting
 		return fmt.Errorf("set permissions on %s: %w", path, err)
 	}
 	if err := tmp.Close(); err != nil {

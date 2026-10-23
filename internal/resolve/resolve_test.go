@@ -124,7 +124,7 @@ func expand(p string) string {
 	return strings.Replace(p, "~", home, 1)
 }
 
-func TestResolveGitDirFollowsGitIncludeIfSemantics(t *testing.T) {
+func TestGitDirFollowsGitIncludeIfSemantics(t *testing.T) {
 	tests := []struct {
 		name        string
 		gitDir      string
@@ -140,21 +140,21 @@ func TestResolveGitDirFollowsGitIncludeIfSemantics(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got := ResolveGitDir(demoConfig(), expand(tc.gitDir), Options{Home: home})
+			got := GitDir(demoConfig(), expand(tc.gitDir), Options{Home: home})
 
 			if got.Profile.ID != tc.wantProfile || got.Reason != tc.wantReason {
-				t.Fatalf("ResolveGitDir(%s) = %q/%q, want %q/%q", tc.gitDir, got.Profile.ID, got.Reason, tc.wantProfile, tc.wantReason)
+				t.Fatalf("GitDir(%s) = %q/%q, want %q/%q", tc.gitDir, got.Profile.ID, got.Reason, tc.wantProfile, tc.wantReason)
 			}
 		})
 	}
 }
 
-func TestResolveOutsideRepositoryUsesOnlyTheDefault(t *testing.T) {
+func TestOutsideRepositoryUsesOnlyTheDefault(t *testing.T) {
 	cfg := demoConfig()
 
-	got := ResolveOutsideRepository(cfg)
+	got := OutsideRepository(cfg)
 	cfg.Default = ""
-	none := ResolveOutsideRepository(cfg)
+	none := OutsideRepository(cfg)
 
 	if got.Profile.ID != "acme" || got.Reason != ReasonDefault {
 		t.Errorf("outside a repository = %+v, want the default profile", got)

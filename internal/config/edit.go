@@ -45,7 +45,7 @@ func eol(lines []string) string {
 }
 
 // AddDir appends dir to the dirs of the profile with the given id.
-func AddDir(text, profileID, dir string, o EditOptions) (string, error) {
+func AddDir(text, profileID, dir string, _ EditOptions) (string, error) {
 	lines, nl := splitText(text)
 	b, ok := findProfile(lines, profileID)
 	if !ok {

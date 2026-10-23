@@ -73,7 +73,7 @@ func WhoamiWith(ctx context.Context, e Env, opts WhoamiOptions) error {
 		printWhoami(e, report)
 	}
 	if opts.Check && !report.Consistent {
-		return fmt.Errorf("Git does not use profile %s here: %s", report.Profile, mismatchAdvice(report))
+		return fmt.Errorf("this repository does not use profile %s: %s", report.Profile, mismatchAdvice(report))
 	}
 	return nil
 }
@@ -93,11 +93,11 @@ func (e Env) whoami(ctx context.Context, cfg config.Config) WhoamiReport {
 	report := WhoamiReport{InRepository: inRepo}
 	if inRepo {
 		report.Path = paths.ResolveSymlinks(root)
-		r = resolve.ResolveGitDir(cfg, paths.ResolveSymlinks(gitDir), opts)
+		r = resolve.GitDir(cfg, paths.ResolveSymlinks(gitDir), opts)
 		report.EffectiveEmail, _ = e.git(ctx, root, "config", "user.email")
 	} else {
 		report.Path = paths.ResolveSymlinks(e.WorkDir)
-		r = resolve.ResolveOutsideRepository(cfg)
+		r = resolve.OutsideRepository(cfg)
 		if future := resolve.Resolve(cfg, report.Path, opts); future.Found {
 			report.NewRepositories = &NewRepositories{Profile: future.Profile.ID, Account: future.Profile.Account,
 				Reason: string(future.Reason), Match: future.Match}

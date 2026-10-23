@@ -120,7 +120,7 @@ func (e Env) checkOldRules(ctx context.Context, cfg config.Config) []check {
 			label: fmt.Sprintf("%s still has includeIf identity rules that your profiles take over (%s)",
 				e.display(e.GlobalGitConfigPath()), strings.Join(replaced, ", ")),
 			advice: "GitPersona's rules come after them and win; `gitpersona doctor --fix` removes them (after a backup)",
-			fix:    func(ctx context.Context, fixer Env) error { return RemoveOldRules(ctx, fixer) }, fixKey: FixOldRules})
+			fix:    RemoveOldRules, fixKey: FixOldRules})
 	}
 	return checks
 }

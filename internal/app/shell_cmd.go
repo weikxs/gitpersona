@@ -161,8 +161,8 @@ func InstallShell(ctx context.Context, e Env, kinds []shell.Kind, dryRun bool) e
 // upsertFile returns the change that puts body in the GitPersona block of
 // path (following symlinks, keeping the file's mode), or nil if it is current.
 func (e Env) upsertFile(path, body string) (*change, error) {
-	if real, err := filepath.EvalSymlinks(path); err == nil {
-		path = real
+	if realPath, err := filepath.EvalSymlinks(path); err == nil {
+		path = realPath
 	}
 	current, err := readOptional(path)
 	if err != nil {
@@ -190,8 +190,8 @@ func (e Env) removeShellBlocks() ([]change, error) {
 	var changes []change
 	for _, k := range shell.All {
 		for _, path := range e.startupFiles(k) {
-			if real, err := filepath.EvalSymlinks(path); err == nil {
-				path = real
+			if realPath, err := filepath.EvalSymlinks(path); err == nil {
+				path = realPath
 			}
 			current, err := readOptional(path)
 			if err != nil || !block.Contains(current) {

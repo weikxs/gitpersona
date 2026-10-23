@@ -23,8 +23,9 @@ func lockUI(configDir string) (func(), error) {
 	for attempt := 0; attempt < 2; attempt++ {
 		f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 		if err == nil {
-			fmt.Fprintf(f, "%d\n", os.Getpid())
-			f.Close()
+			// The process id only helps the user find a stale lock.
+			_, _ = fmt.Fprintf(f, "%d\n", os.Getpid())
+			_ = f.Close()
 			return func() { _ = os.Remove(path) }, nil
 		}
 		if !errors.Is(err, os.ErrExist) {

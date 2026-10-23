@@ -136,7 +136,10 @@ func (s *Server) exchangeKey(w http.ResponseWriter, r *http.Request) {
 	s.keyUsed = true
 	session := randomToken()
 	s.sessions = append(s.sessions, session)
-	http.SetCookie(w, &http.Cookie{Name: s.cookieName(), Value: session, Path: "/", HttpOnly: true, SameSite: http.SameSiteStrictMode})
+	// Not Secure: the page is served over plain http on 127.0.0.1 only, where
+	// a Secure cookie would never be sent back.
+	http.SetCookie(w, &http.Cookie{Name: s.cookieName(), Value: session, Path: "/", HttpOnly: true, //nolint:gosec // see above
+		SameSite: http.SameSiteStrictMode})
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 

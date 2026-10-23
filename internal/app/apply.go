@@ -207,8 +207,8 @@ const quickStartURL = "https://github.com/weikxs/gitpersona#quick-start"
 // working when GitPersona writes the global Git configuration.
 func (e Env) resolvedUserGitConfig() string {
 	path := e.userGitConfig()
-	if real, err := filepath.EvalSymlinks(path); err == nil {
-		return real
+	if resolved, err := filepath.EvalSymlinks(path); err == nil {
+		return resolved
 	}
 	// A dangling link (the dotfiles target does not exist yet): follow it the
 	// way Git does when it writes, instead of replacing the link.

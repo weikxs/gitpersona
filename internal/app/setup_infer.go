@@ -274,7 +274,7 @@ func emailOf(email string, p SetupProfile) bool {
 // countPhrase says how many of a folder's repositories something holds for.
 func countPhrase(n, total int) string {
 	switch {
-	case n == total && n == 1:
+	case total == 1:
 		return "its one repository"
 	case n == total:
 		return fmt.Sprintf("all %d repositories", n)

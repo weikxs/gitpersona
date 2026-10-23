@@ -102,11 +102,11 @@ func (e Env) scannedRepos(ctx context.Context, roots ScanRoots) ([]discover.Repo
 	var repos []discover.Repo
 	found, complete := discover.Repos(ctx, roots.Real, discover.DefaultScanLimits)
 	for _, r := range found {
-		real := paths.ResolveSymlinks(r.Dir)
-		if seen[real] {
+		realPath := paths.ResolveSymlinks(r.Dir)
+		if seen[realPath] {
 			continue
 		}
-		seen[real] = true
+		seen[realPath] = true
 		r.Dir = roots.Written(e, r.Dir)
 		repos = append(repos, r)
 	}

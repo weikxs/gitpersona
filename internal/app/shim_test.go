@@ -35,9 +35,10 @@ func shimEnv(t *testing.T, w world, dir string) (Env, *strings.Builder, *execCal
 	return env, &stderr, call
 }
 
-func envValue(environ []string, key string) (string, bool) {
+// ghToken returns the GH_TOKEN a gh call received.
+func ghToken(environ []string) (string, bool) {
 	for _, kv := range environ {
-		if k, v, ok := strings.Cut(kv, "="); ok && k == key {
+		if k, v, ok := strings.Cut(kv, "="); ok && k == "GH_TOKEN" {
 			return v, true
 		}
 	}
@@ -75,7 +76,7 @@ func TestGHShimRunsRealGHWithTheDirectorysAccount(t *testing.T) {
 	if strings.Join(call.argv, " ") != "gh pr create" {
 		t.Fatalf("argv = %v", call.argv)
 	}
-	if token, ok := envValue(call.env, "GH_TOKEN"); !ok || token != "token-for-octo-alex" {
+	if token, ok := ghToken(call.env); !ok || token != "token-for-octo-alex" {
 		t.Fatalf("GH_TOKEN for gh in ~/Projects/acme/oss = %q, want the personal account's token", token)
 	}
 	if strings.Contains(stderr.String(), "token-for-") {
@@ -107,7 +108,7 @@ func TestGHShimLeavesGHAloneWhenItShould(t *testing.T) {
 
 			GHShim(context.Background(), env, []string{"repo", "view"})
 
-			token, _ := envValue(call.env, "GH_TOKEN")
+			token, _ := ghToken(call.env)
 			if strings.HasPrefix(token, "token-for-") {
 				t.Fatalf("GH_TOKEN = %q, want the shim to leave it alone", token)
 			}
@@ -141,7 +142,7 @@ func TestGHShimPassesAuthCommandsThroughUntouched(t *testing.T) {
 	if code != 0 || strings.Join(call.argv, " ") != "gh auth login" {
 		t.Fatalf("gh auth login should run as is (code %d, argv %v)", code, call.argv)
 	}
-	if _, ok := envValue(call.env, "GH_TOKEN"); ok {
+	if _, ok := ghToken(call.env); ok {
 		t.Fatal("gh auth commands must not get a token")
 	}
 	if log, _ := os.ReadFile(os.Getenv("GH_LOG")); strings.Contains(string(log), "auth token") {
@@ -156,7 +157,7 @@ func TestGHShimOutsideARepositoryUsesTheDirectoryRule(t *testing.T) {
 
 	GHShim(context.Background(), env, []string{"repo", "clone", "octo-alex/tool"})
 
-	if token, _ := envValue(call.env, "GH_TOKEN"); token != "token-for-octo-alex" {
+	if token, _ := ghToken(call.env); token != "token-for-octo-alex" {
 		t.Fatalf("gh repo clone in ~/Projects/personal got %q, want the personal account (the clone will be a personal repository)", token)
 	}
 }

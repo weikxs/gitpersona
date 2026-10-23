@@ -326,20 +326,20 @@ func TestSetupWizardThroughTheAPI(t *testing.T) {
 
 func TestDiscoverFollowsSymlinksReportsMissingFoldersAndOrganizations(t *testing.T) {
 	w := newAPIWorld(t)
-	real := filepath.Join(w.home, "real code")
+	realDir := filepath.Join(w.home, "real code")
 	for _, r := range []struct{ dir, url string }{
 		{"work/api", "https://github.com/acme-org/api.git"},
 		{"work/web", "git@github.com:acme-org/web.git"},
 		{"fun/game", "https://github.com/octo-alex/game.git"},
 	} {
-		dir := filepath.Join(real, r.dir)
+		dir := filepath.Join(realDir, r.dir)
 		for _, args := range [][]string{{"init", "-q", dir}, {"-C", dir, "remote", "add", "origin", r.url}} {
 			if out, err := exec.Command("git", args...).CombinedOutput(); err != nil {
 				t.Fatalf("git %v: %v %s", args, err, out)
 			}
 		}
 	}
-	if err := os.Symlink(real, filepath.Join(w.home, "code")); err != nil {
+	if err := os.Symlink(realDir, filepath.Join(w.home, "code")); err != nil {
 		t.Fatal(err)
 	}
 

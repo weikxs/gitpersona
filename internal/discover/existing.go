@@ -295,8 +295,8 @@ func withTilde(dir, home string, ignoreCase bool) string {
 
 // realPath resolves symbolic links in a path, or returns it unchanged.
 func realPath(path string) string {
-	if real, err := filepath.EvalSymlinks(path); err == nil {
-		return real
+	if resolved, err := filepath.EvalSymlinks(path); err == nil {
+		return resolved
 	}
 	return path
 }

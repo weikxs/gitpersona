@@ -132,7 +132,7 @@ func (s *sandbox) git(dir string, args ...string) string {
 	cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
 	cmd.Env = s.env
 	out, err := cmd.CombinedOutput()
-	if err != nil && !(len(args) > 0 && args[0] == "config") {
+	if err != nil && (len(args) == 0 || args[0] != "config") {
 		s.t.Fatalf("git %v: %v\n%s", args, err, out)
 	}
 	return strings.TrimSpace(string(out))

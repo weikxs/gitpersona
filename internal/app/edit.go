@@ -148,9 +148,9 @@ func (e Env) pinnableRepo(ctx context.Context) (string, error) {
 // the real path, but a repository under a symlink (say ~/code -> ~/real-code)
 // should be stored as ~/code/..., like directory rules are.
 func asWritten(workDir, root string) string {
-	real := paths.ResolveSymlinks(root)
+	realPath := paths.ResolveSymlinks(root)
 	for dir := filepath.Clean(workDir); ; dir = filepath.Dir(dir) {
-		if paths.ResolveSymlinks(dir) == real {
+		if paths.ResolveSymlinks(dir) == realPath {
 			return dir
 		}
 		if parent := filepath.Dir(dir); parent == dir {

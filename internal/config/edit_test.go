@@ -330,7 +330,7 @@ func TestSetProfileSigning(t *testing.T) {
 		t.Fatalf("removing signing: %v\n%s", err, off)
 	}
 	table := commented + "\n[profile.signing]\nmethod = \"ssh\"\n"
-	if _, err := SetProfileSigning(strings.Replace(table, "", "", 1), "ghost", Signing{}); err == nil {
+	if _, err := SetProfileSigning(table, "ghost", Signing{}); err == nil {
 		t.Fatal("unknown profile accepted")
 	}
 }

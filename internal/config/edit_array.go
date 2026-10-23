@@ -29,13 +29,13 @@ func parseArray(lines []string, k int) (array, error) {
 	for ln, col := k, loc[1]+1; ln < len(lines); ln, col = ln+1, 0 {
 		s := lines[ln]
 		for col < len(s) {
-			switch c := s[col]; {
-			case c == ']':
+			switch s[col] {
+			case ']':
 				arr.closeLine, arr.closeCol = ln, col
 				return arr, nil
-			case c == '#':
+			case '#':
 				col = len(s)
-			case c == '"' || c == '\'':
+			case '"', '\'':
 				v, end, err := scanString(s, col)
 				if err != nil {
 					return array{}, err

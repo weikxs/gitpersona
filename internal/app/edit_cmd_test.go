@@ -310,7 +310,11 @@ func TestRollbackToAnOlderBackupKeepsGitWorking(t *testing.T) {
 	olderBackup := filepath.Base(infos[0])
 	// Remove the globex profile and its pin, deleting its generated file.
 	text := readConfigFile(t, w)
-	text = text[:strings.Index(text, "[[profile]]\nid       = \"globex\"")]
+	globex := strings.Index(text, "[[profile]]\nid       = \"globex\"")
+	if globex < 0 {
+		t.Fatalf("no globex profile in:\n%s", text)
+	}
+	text = text[:globex]
 	mustWrite(t, filepath.Join(w.home, ".config", "gitpersona", "config.toml"), text, 0o600)
 	if err := Apply(context.Background(), env, ApplyOptions{Yes: true}); err != nil {
 		t.Fatal(err)

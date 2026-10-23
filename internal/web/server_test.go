@@ -190,10 +190,15 @@ func TestServeOnARealLoopbackPort(t *testing.T) {
 
 	jar, _ := cookiejar.New(nil)
 	client := &http.Client{Jar: jar, Timeout: 5 * time.Second}
-	if resp, err := client.Get(s.URL()); err != nil || resp.StatusCode != http.StatusOK {
-		t.Fatalf("open launch URL: %v, %v", resp, err)
+	resp, err := client.Get(s.URL())
+	if err != nil {
+		t.Fatalf("open launch URL: %v", err)
 	}
-	resp, err := client.Get("http://" + ln.Addr().String() + "/api/ping")
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("open launch URL: %v", resp.Status)
+	}
+	resp, err = client.Get("http://" + ln.Addr().String() + "/api/ping")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -31,8 +31,8 @@ func (e Env) ResolveScanRoots(roots []string) (ScanRoots, error) {
 		if err != nil {
 			return ScanRoots{}, err
 		}
-		real, err := filepath.EvalSymlinks(norm)
-		info, statErr := os.Stat(real)
+		realDir, err := filepath.EvalSymlinks(norm)
+		info, statErr := os.Stat(realDir)
 		if err != nil || statErr != nil || !info.IsDir() {
 			out.Missing = append(out.Missing, e.display(norm))
 			continue
@@ -42,8 +42,8 @@ func (e Env) ResolveScanRoots(roots []string) (ScanRoots, error) {
 		}
 		seen = append(seen, info)
 		out.Shown = append(out.Shown, e.display(norm))
-		out.Real = append(out.Real, real)
-		out.written[real] = norm
+		out.Real = append(out.Real, realDir)
+		out.written[realDir] = norm
 	}
 	return out, nil
 }
@@ -52,9 +52,9 @@ func (e Env) ResolveScanRoots(roots []string) (ScanRoots, error) {
 // wrote it, then writes the home as ~. When roots overlap, the first one in
 // order wins, so a repository always gets the same name.
 func (r ScanRoots) Written(e Env, dir string) string {
-	for _, real := range r.Real {
-		if rest, ok := strings.CutPrefix(dir, real); ok && (rest == "" || strings.HasPrefix(rest, string(filepath.Separator))) {
-			return e.display(r.written[real] + rest)
+	for _, realDir := range r.Real {
+		if rest, ok := strings.CutPrefix(dir, realDir); ok && (rest == "" || strings.HasPrefix(rest, string(filepath.Separator))) {
+			return e.display(r.written[realDir] + rest)
 		}
 	}
 	return e.display(dir)

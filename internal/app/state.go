@@ -149,8 +149,8 @@ func (e Env) tildeReport(r DoctorReport) DoctorReport {
 func (e Env) withTilde(text string) string {
 	sep := string(filepath.Separator)
 	homes := []string{e.Home}
-	if real, err := filepath.EvalSymlinks(e.Home); err == nil && real != e.Home {
-		homes = append([]string{real}, homes...)
+	if realHome, err := filepath.EvalSymlinks(e.Home); err == nil && realHome != e.Home {
+		homes = append([]string{realHome}, homes...)
 	}
 	for _, home := range homes {
 		text = strings.ReplaceAll(text, home+sep, "~"+sep)

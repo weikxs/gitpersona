@@ -243,8 +243,8 @@ func (o Options) pathForms(dir string) []string {
 	if o.Canonicalize == nil {
 		return []string{dir}
 	}
-	if real := o.Canonicalize(dir); real != dir {
-		return []string{dir, real}
+	if canonical := o.Canonicalize(dir); canonical != dir {
+		return []string{dir, canonical}
 	}
 	return []string{dir}
 }

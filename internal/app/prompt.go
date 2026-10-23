@@ -24,9 +24,9 @@ func Prompt(e Env, format string) {
 	}
 	opts := resolve.Options{Home: e.Home, CaseInsensitive: e.CaseInsensitive, Canonicalize: paths.ResolveSymlinks}
 
-	r := resolve.ResolveOutsideRepository(cfg)
+	r := resolve.OutsideRepository(cfg)
 	if gitDir, ok := findGitDir(e.WorkDir); ok {
-		r = resolve.ResolveGitDir(cfg, paths.ResolveSymlinks(gitDir), opts)
+		r = resolve.GitDir(cfg, paths.ResolveSymlinks(gitDir), opts)
 	}
 	if !r.Found {
 		return

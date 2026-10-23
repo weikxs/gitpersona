@@ -7,7 +7,7 @@ import (
 )
 
 func runner(outputs map[string]string) Runner {
-	return func(_ context.Context, name string, args ...string) ([]byte, error) {
+	return func(_ context.Context, name string, _ ...string) ([]byte, error) {
 		if out, ok := outputs[name]; ok {
 			return []byte(out), nil
 		}

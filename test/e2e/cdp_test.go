@@ -358,6 +358,7 @@ func dialWebSocket(rawURL string) (*wsConn, error) {
 		conn.Close()
 		return nil, err
 	}
+	_ = resp.Body.Close() // a 101 response has no body; the connection stays open
 	sum := sha1.Sum([]byte(key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"))
 	if resp.StatusCode != http.StatusSwitchingProtocols ||
 		resp.Header.Get("Sec-WebSocket-Accept") != base64.StdEncoding.EncodeToString(sum[:]) {
@@ -440,9 +441,9 @@ func (c *wsConn) ReadMessage() ([]byte, error) {
 // programs report.
 func sandboxPath(t *testing.T, path string) string {
 	t.Helper()
-	real, err := filepath.EvalSymlinks(path)
+	realPath, err := filepath.EvalSymlinks(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return real
+	return realPath
 }

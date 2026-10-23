@@ -82,7 +82,7 @@ func (e Env) ghTarget() (string, string, bool) {
 	// (clone, create) makes repositories that will belong to that profile.
 	r := resolve.Resolve(cfg, paths.ResolveSymlinks(e.WorkDir), opts)
 	if gitDir, ok := findGitDir(e.WorkDir); ok {
-		r = resolve.ResolveGitDir(cfg, paths.ResolveSymlinks(gitDir), opts)
+		r = resolve.GitDir(cfg, paths.ResolveSymlinks(gitDir), opts)
 	}
 	if !r.Found || r.Profile.Provider != config.ProviderGitHub {
 		return "", "", false
@@ -103,7 +103,7 @@ func (e Env) realGH() (string, error) {
 			continue
 		}
 		candidate := filepath.Join(dir, ghCommand)
-		info, err := os.Stat(candidate)
+		info, err := os.Stat(candidate) //nolint:gosec // only stats the user's own PATH entries to find the real gh
 		if err != nil || info.IsDir() || info.Mode()&0o111 == 0 {
 			continue
 		}

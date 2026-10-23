@@ -124,12 +124,12 @@ const (
 	worktreesDir = "/.git/worktrees"
 )
 
-// ResolveGitDir returns the profile Git itself applies to the repository
+// GitDir returns the profile Git itself applies to the repository
 // whose Git directory is gitDir, mirroring the generated includeIf rules:
 // directory rules match when the Git directory lies inside the rule
 // directory, so a worktree follows its main repository; pins match the
 // pinned repository's .git directory and its worktrees.
-func ResolveGitDir(cfg config.Config, gitDir string, opts Options) Result {
+func GitDir(cfg config.Config, gitDir string, opts Options) Result {
 	dir := opts.canonical(gitDir)
 
 	for _, pin := range cfg.Pins {
@@ -146,12 +146,12 @@ func ResolveGitDir(cfg config.Config, gitDir string, opts Options) Result {
 	if r, ok := matchRule(cfg, dir, opts); ok {
 		return r
 	}
-	return ResolveOutsideRepository(cfg)
+	return OutsideRepository(cfg)
 }
 
-// ResolveOutsideRepository returns what Git uses outside any repository,
+// OutsideRepository returns what Git uses outside any repository,
 // where includeIf "gitdir:" never applies: only the default profile.
-func ResolveOutsideRepository(cfg config.Config) Result {
+func OutsideRepository(cfg config.Config) Result {
 	if p, ok := cfg.ProfileByID(cfg.Default); ok {
 		return Result{Found: true, Profile: p, Reason: ReasonDefault}
 	}

@@ -380,25 +380,25 @@ func TestBrokenMarkersErrorTellsHowToFix(t *testing.T) {
 
 func TestStableExecutablePrefersTheCommandOnPath(t *testing.T) {
 	cellar := filepath.Join(t.TempDir(), "Cellar", "gitpersona", "0.1.0", "bin")
-	real := filepath.Join(cellar, "gitpersona")
-	mustWrite(t, real, "#!/bin/sh\n", 0o700)
+	realPath := filepath.Join(cellar, "gitpersona")
+	mustWrite(t, realPath, "#!/bin/sh\n", 0o700)
 	brewBin := t.TempDir()
 	link := filepath.Join(brewBin, "gitpersona")
-	if err := os.Symlink(real, link); err != nil {
+	if err := os.Symlink(realPath, link); err != nil {
 		t.Fatal(err)
 	}
 	onPath := func(string) (string, error) { return link, nil }
 	notOnPath := func(string) (string, error) { return "", errors.New("not found") }
 	otherOnPath := func(string) (string, error) { return filepath.Join(brewBin, "missing"), nil }
 
-	if got := stableExecutable(real, onPath); got != link {
+	if got := stableExecutable(realPath, onPath); got != link {
 		t.Errorf("stableExecutable() = %s, want the PATH entry %s that survives upgrades", got, link)
 	}
-	if got := stableExecutable(real, notOnPath); got != real {
-		t.Errorf("stableExecutable() without a PATH entry = %s, want %s", got, real)
+	if got := stableExecutable(realPath, notOnPath); got != realPath {
+		t.Errorf("stableExecutable() without a PATH entry = %s, want %s", got, realPath)
 	}
-	if got := stableExecutable(real, otherOnPath); got != real {
-		t.Errorf("stableExecutable() with a different gitpersona on PATH = %s, want %s", got, real)
+	if got := stableExecutable(realPath, otherOnPath); got != realPath {
+		t.Errorf("stableExecutable() with a different gitpersona on PATH = %s, want %s", got, realPath)
 	}
 }
 
@@ -499,7 +499,11 @@ func TestReadOnlyAdviceCanBePastedAndIsRecognized(t *testing.T) {
 		t.Fatal("expected a read-only refusal")
 	}
 	msg := err.Error()
-	snippet := msg[strings.Index(msg, block.Begin):]
+	start := strings.Index(msg, block.Begin)
+	if start < 0 {
+		t.Fatalf("the error should include the block to paste:\n%s", msg)
+	}
+	snippet := msg[start:]
 
 	// The user follows the advice on their read-only file (for example in a Nix-managed config).
 	if err := os.Chmod(path, 0o644); err != nil {

@@ -25,7 +25,7 @@ func TestPromptShowsWhatGitUses(t *testing.T) {
 	for dir, want := range map[string]string{
 		w.repos["sdk"]:                        "octo-alex",   // nested rule
 		filepath.Join(w.repos["sdk"], ".git"): "octo-alex",   // inside .git
-		filepath.Join(w.repos["billing"]):     "acme-alex",   // rule
+		w.repos["billing"]:                    "acme-alex",   // rule
 		w.repos["hotfix"]:                     "globex-alex", // pin
 		wt:                                    "octo-alex",   // worktree follows its main repository
 		notes:                                 "acme-alex",   // not a repository: the default applies
@@ -65,7 +65,7 @@ func TestPromptIsSilentWhenNothingAppliesOrConfigIsBroken(t *testing.T) {
 
 func TestPromptIsFast(t *testing.T) {
 	w := newWorld(t)
-	env, _ := w.env(t, filepath.Join(w.repos["sdk"]))
+	env, _ := w.env(t, w.repos["sdk"])
 	const runs = 50
 
 	start := time.Now()

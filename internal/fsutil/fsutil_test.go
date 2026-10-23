@@ -85,7 +85,7 @@ func TestWriteAtomicFailsInReadOnlyDirectory(t *testing.T) {
 func TestWriteAtomicFailsWhenTargetIsADirectoryAndLeavesNoTempFile(t *testing.T) {
 	dir := t.TempDir()
 	target := filepath.Join(dir, "occupied")
-	if err := os.Mkdir(filepath.Join(target), 0o700); err != nil {
+	if err := os.Mkdir(target, 0o700); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(target, "keep"), nil, 0o600); err != nil {
