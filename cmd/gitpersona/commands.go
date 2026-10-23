@@ -104,6 +104,30 @@ var commands = map[string]command{
 			}
 		},
 	},
+	"auth": {
+		synopsis: "auth login|logout|status [--profile <profile>]",
+		description: "Manage the tokens of profiles on hosts other than GitHub (GitLab, Bitbucket, others), one per\n" +
+			"account, like gh does for GitHub. login saves a token in your own credential store (the system\n" +
+			"keychain or Git Credential Manager; never a file in clear text); logout removes it; status says\n" +
+			"which profiles have one. GitPersona keeps no copy. Without --profile, the current directory's\n" +
+			"profile is used. login reads the token hidden from the terminal, or from standard input.",
+		maxArgs: 1,
+		bind: func(fs *flag.FlagSet) runFunc {
+			var opts app.AuthOptions
+			fs.StringVar(&opts.Profile, "profile", "", "the profile (default: the current directory's)")
+			return func(ctx context.Context, env app.Env, args []string) int {
+				switch firstArg(args) {
+				case "login":
+					return fail(env.Stderr, app.AuthLogin(ctx, env, opts))
+				case "logout":
+					return fail(env.Stderr, app.AuthLogout(ctx, env, opts))
+				case "status", "":
+					return fail(env.Stderr, app.AuthStatus(ctx, env))
+				}
+				return fail(env.Stderr, fmt.Errorf("%w: auth takes login, logout or status", errUsage))
+			}
+		},
+	},
 	"use": {
 		synopsis:    "use <profile>",
 		description: "Make repositories in the current directory use a profile (moving the directory from\nanother profile if needed), keep your comments in config.toml, and apply the change.",

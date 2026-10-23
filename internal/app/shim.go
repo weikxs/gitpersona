@@ -73,37 +73,57 @@ func (e Env) ghTarget() (string, string, bool) {
 	if os.Getenv("GH_TOKEN") != "" || os.Getenv("GITHUB_TOKEN") != "" {
 		return "", "", false // the user chose a token explicitly
 	}
-	cfg, err := config.Load(e.configFile())
-	if err != nil {
+	p, ok := e.shimProfile(config.ProviderGitHub)
+	if !ok {
 		return "", "", false
 	}
+	if host := os.Getenv("GH_HOST"); host != "" && !strings.EqualFold(host, p.Host) {
+		return "", "", false
+	}
+	return p.Account, p.Host, true
+}
+
+// shimProfile returns the profile of the current directory when it is on
+// provider: the repository's, or outside a repository the directory rule's
+// (what gh or glab does there, such as clone, makes repositories that will
+// belong to that profile).
+func (e Env) shimProfile(provider string) (config.Profile, bool) {
+	cfg, err := config.Load(e.configFile())
+	if err != nil {
+		return config.Profile{}, false
+	}
 	opts := resolve.Options{Home: e.Home, CaseInsensitive: e.CaseInsensitive, Canonicalize: paths.ResolveSymlinks}
-	// Outside a repository, follow the directory rule: what gh does there
-	// (clone, create) makes repositories that will belong to that profile.
 	r := resolve.Resolve(cfg, paths.ResolveSymlinks(e.WorkDir), opts)
 	if gitDir, ok := findGitDir(e.WorkDir); ok {
 		r = resolve.GitDir(cfg, paths.ResolveSymlinks(gitDir), opts)
 	}
-	if !r.Found || r.Profile.Provider != config.ProviderGitHub {
-		return "", "", false
+	if !r.Found || r.Profile.Provider != provider {
+		return config.Profile{}, false
 	}
-	if host := os.Getenv("GH_HOST"); host != "" && !strings.EqualFold(host, r.Profile.Host) {
-		return "", "", false
-	}
-	return r.Profile.Account, r.Profile.Host, true
+	return r.Profile, true
 }
 
 // realGH finds gh on PATH, skipping the shim directory and anything that is
 // gitpersona itself, so the shim never calls itself.
 func (e Env) realGH() (string, error) {
+	path, err := e.realTool(ghCommand)
+	if err != nil {
+		return "", fmt.Errorf("%w; install it from https://cli.github.com", err)
+	}
+	return path, nil
+}
+
+// realTool finds a program on PATH, skipping the shim directory and
+// anything that is gitpersona itself.
+func (e Env) realTool(name string) (string, error) {
 	shim := paths.ResolveSymlinks(e.shimDir())
 	self, selfErr := os.Stat(e.Executable)
 	for _, dir := range filepath.SplitList(os.Getenv("PATH")) {
 		if dir == "" || paths.ResolveSymlinks(dir) == shim {
 			continue
 		}
-		candidate := filepath.Join(dir, ghCommand)
-		info, err := os.Stat(candidate) //nolint:gosec // only stats the user's own PATH entries to find the real gh
+		candidate := filepath.Join(dir, name)
+		info, err := os.Stat(candidate) //nolint:gosec // only stats the user's own PATH entries to find the real tool
 		if err != nil || info.IsDir() || info.Mode()&0o111 == 0 {
 			continue
 		}
@@ -112,5 +132,5 @@ func (e Env) realGH() (string, error) {
 		}
 		return candidate, nil
 	}
-	return "", fmt.Errorf("could not find the real gh on PATH (outside %s); install it from https://cli.github.com", e.display(e.shimDir()))
+	return "", fmt.Errorf("could not find the real %s on PATH (outside %s)", name, e.display(e.shimDir()))
 }

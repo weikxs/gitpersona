@@ -7,7 +7,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"os/exec"
+	"strings"
 )
 
 // Runner runs a program and returns its standard output.
@@ -102,4 +104,22 @@ func (g GitHub) User(ctx context.Context, host, login string) (User, error) {
 		return User{}, fmt.Errorf("parse GitHub user %s: %w", login, err)
 	}
 	return u, nil
+}
+
+// InputRunner runs a program with input on standard input and extra
+// environment variables, and returns its standard output.
+type InputRunner func(ctx context.Context, input string, env []string, name string, args ...string) ([]byte, error)
+
+// ExecInputRunner runs a real program with input. Standard error is
+// discarded, as with ExecRunner, so tool messages never mix with secrets.
+func ExecInputRunner(ctx context.Context, input string, env []string, name string, args ...string) ([]byte, error) {
+	var stdout bytes.Buffer
+	cmd := exec.CommandContext(ctx, name, args...)
+	cmd.Stdin = strings.NewReader(input)
+	cmd.Stdout = &stdout
+	cmd.Env = append(os.Environ(), env...)
+	if err := cmd.Run(); err != nil {
+		return nil, err
+	}
+	return stdout.Bytes(), nil
 }

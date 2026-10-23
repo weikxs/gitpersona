@@ -38,6 +38,7 @@ Commands:
   unpin       Remove the pin of the current repository
   list        List profiles, directories and pins
   doctor      Check the setup and explain how to fix problems
+  auth        Save or check the token of a GitLab, Bitbucket or other profile
   shells      Show your default shell, the current shell and installed shells
   install-shell  Add prompt display and gh switching to your shell
   init        Print the shell integration script
@@ -55,20 +56,23 @@ Git runs "gitpersona credential" itself; you do not need to call it.
 var errUsage = errors.New("usage error")
 
 func main() {
-	// Installed as `gh` in the shim directory, gitpersona runs the real gh
-	// with the account of the current directory.
-	if filepath.Base(os.Args[0]) == "gh" {
-		os.Exit(runGHShim(os.Args[1:]))
+	// Installed as `gh` or `glab` in the shim directory, gitpersona runs the
+	// real tool with the account of the current directory.
+	switch filepath.Base(os.Args[0]) {
+	case "gh":
+		os.Exit(runShim(app.GHShim, os.Args[1:]))
+	case "glab":
+		os.Exit(runShim(app.GlabShim, os.Args[1:]))
 	}
 	os.Exit(run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr))
 }
 
-func runGHShim(args []string) int {
+func runShim(shim func(context.Context, app.Env, []string) int, args []string) int {
 	env, err := app.FromOS(os.Stdin, os.Stdout, os.Stderr)
 	if err != nil {
 		return fail(os.Stderr, err)
 	}
-	return app.GHShim(context.Background(), env, args)
+	return shim(context.Background(), env, args)
 }
 
 // run is main without process side effects, so it can be tested directly.

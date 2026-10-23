@@ -204,6 +204,9 @@ func (e Env) planWith(ctx context.Context, cfg config.Config, edit func(string) 
 	if link, ok := e.ghEntryChange(cfg); ok {
 		changes = append(changes, link)
 	}
+	if link, ok := e.glabEntryChange(cfg); ok {
+		changes = append(changes, link)
+	}
 	for _, c := range desired {
 		current, err := readOptional(c.path)
 		if err != nil {

@@ -157,8 +157,10 @@ func (e Env) planUninstall() ([]change, error) {
 		// A file that only held the GitPersona block was created by it.
 		changes = append(changes, change{path: gitconfig, content: without, perm: perm, remove: strings.TrimSpace(without) == ""})
 	}
-	if _, err := os.Lstat(e.ghEntry()); err == nil {
-		changes = append(changes, change{path: e.ghEntry(), remove: true})
+	for _, entry := range []string{e.ghEntry(), e.glabEntry()} {
+		if _, err := os.Lstat(entry); err == nil {
+			changes = append(changes, change{path: entry, remove: true})
+		}
 	}
 	generated, _ := filepath.Glob(filepath.Join(e.ConfigDir, "profiles", "*.gitconfig"))
 	generated = append(generated, filepath.Join(e.ConfigDir, generate.RulesFile))

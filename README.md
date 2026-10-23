@@ -79,7 +79,7 @@ everything else             → acme-alex    (default)
 | `default` | no | Profile id used where no rule or pin matches |
 | `shell_integration` | no | `false` records that you do not want GitPersona in your shells, so `doctor` does not suggest it (`setup --no-shell` writes it) |
 | `[[profile]] id` | yes | Short name: lowercase letters, digits, `-` |
-| `provider` | no | `github` (default); `gitlab`, `bitbucket`, `generic` set the commit identity and SSH key only, for now |
+| `provider` | no | `github` (default), `gitlab`, `bitbucket` or `generic`; tokens for the last three live in your own credential store, one per account (`gitpersona auth login`) |
 | `host` | no | Defaults to `github.com` for GitHub |
 | `account`, `name`, `email` | yes | Account on the host, commit author name and email |
 | `dirs` | no | Directories whose repositories use this profile; the most specific directory wins |
@@ -100,6 +100,7 @@ Paths must be absolute or start with `~/`.
 | `gitpersona pin <profile>` / `unpin` | Bind the current repository to a profile, or remove the pin |
 | `gitpersona list [--json]` | List profiles, directories and pins |
 | `gitpersona doctor [--fix] [--json]` | Check the setup and explain how to fix problems; `--fix` repairs what it safely can |
+| `gitpersona auth login\|logout\|status [--profile <id>]` | Save, remove or check the token of a GitLab, Bitbucket or other profile in your own credential store (the system keychain or Git Credential Manager), one per account |
 | `gitpersona shells [--json]` | Show your default shell, the shell you use right now, and installed shells |
 | `gitpersona install-shell [--shell fish,zsh,bash]` | Add prompt display (and gh switching) to your shells; defaults to your login shell |
 | `gitpersona prompt [--format]` | Print the account Git uses here, for prompts (`{account}`, `{profile}`, `{host}`) |
@@ -129,11 +130,16 @@ Prompt and plugin-manager setups (tide, Powerlevel10k, Starship, fisher, oh-my-z
   `doctor` says which of your rules a profile overrides.
 - **Credentials:** for GitHub profiles, GitPersona is the only credential helper for that host and borrows the
   token `gh` already holds, so no other helper stores a copy. If an account is not signed in to `gh`, Git asks
-  for a password; `gitpersona doctor` tells you which account to sign in.
+  for a password; `gitpersona doctor` tells you which account to sign in. For GitLab, Bitbucket and other hosts, your
+  own credential helper (the system keychain, Git Credential Manager) keeps one token per account and host, as `gh`
+  does for GitHub: `gitpersona auth login` saves it there (hidden input; never a file in clear text), and each
+  profile only names its account, so the right token answers. GitPersona keeps no copy.
 - **gh follows your directories too:** with the shell integration, running `gh` in a profile's directory uses that
   profile's account. GitPersona puts the account's token only into the environment of that one `gh` process; it is
   not printed or stored. It leaves `gh` alone when you set `GH_TOKEN`/`GITHUB_TOKEN`, use `GH_HOST` for another host,
-  or no GitHub profile applies.
+  or no GitHub profile applies. `glab` follows your directories the same way: in a GitLab profile's directory it runs
+  with that account's token from your credential store (`GITLAB_TOKEN`, only for that process), unless you set a token
+  or another host yourself.
 - **Shells:** your default shell is read from the system user record (not `$SHELL`, which terminals, IDEs and
   tools often change), the shell you use right now from the process tree, and installed shells from `/etc/shells`.
   fish gets its own file in `conf.d`; zsh uses `~/.zshenv`; bash uses `~/.bashrc`. In tide add the

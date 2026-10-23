@@ -14,6 +14,12 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ### Added
 
+- GitLab, Bitbucket and other hosts with several accounts each, like `gh` on GitHub: a profile names its account for
+  its host and your own credential helper (system keychain, Git Credential Manager) answers with that account's
+  token. `gitpersona auth login|logout|status` saves, removes or checks a profile's token there (hidden input, never
+  in clear text); `doctor` warns when no helper, or the plain-text `store` helper, would keep them.
+- `glab` follows your directories: in a GitLab profile's directory it runs with that account's token, which goes only
+  to that one process.
 - One-step setup: `gitpersona setup` and `setup --web` look at what you already have — the accounts signed in to gh,
   existing `includeIf` identities with their SSH keys and signing, the remotes and emails of the repositories in your
   usual code folders, and SSH host aliases in `~/.ssh/config` (key files are only checked to exist, never opened) — and

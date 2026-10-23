@@ -171,14 +171,18 @@ func writeSSH(b *strings.Builder, p config.Profile, opts Options) error {
 	return nil
 }
 
-// writeCredential makes GitPersona the only credential helper for the
+// writeCredential makes GitPersona the only credential helper for a GitHub
 // profile's host. The user's own helpers are deliberately not chained after
 // it: Git asks every helper to store a credential that worked, so a chained
-// keychain or store helper would keep a copy of the gh token. Providers
-// GitPersona does not handle yet get no credential section at all, so the
-// user's helpers keep working for them.
+// keychain or store helper would keep a copy of the gh token. Other
+// providers keep the user's helpers and only name the account.
 func writeCredential(b *strings.Builder, p config.Profile, opts Options) {
 	if p.Provider != config.ProviderGitHub {
+		// Other hosts keep the user's own helpers (a keychain, Git Credential
+		// Manager), which hold one token per account and host; the profile
+		// only names the account, so the right one answers.
+		fmt.Fprintf(b, "[credential %s]\n", quoteSubsection("https://"+p.Host))
+		writeKV(b, "username", p.Account)
 		return
 	}
 	helper := fmt.Sprintf("!%s credential --provider %s --host %s --account %s",

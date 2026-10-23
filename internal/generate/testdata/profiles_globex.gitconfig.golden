@@ -5,3 +5,5 @@
 	email = alex@globex.example
 [core]
 	sshCommand = ssh -i '/tmp/home/.ssh/id_ed25519_globex' -o IdentitiesOnly=yes
+[credential "https://gitlab.globex.example"]
+	username = globex-alex

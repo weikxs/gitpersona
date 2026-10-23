@@ -220,8 +220,8 @@ func TestGenerateCredentialOnlyForGitHubAndWithoutOtherHelpers(t *testing.T) {
 	if strings.Count(acme, "helper = ") != 2 || !strings.Contains(acme, `helper = ""`) {
 		t.Errorf("GitHub profile must reset helpers and add only GitPersona:\n%s", acme)
 	}
-	if strings.Contains(globex, "[credential") {
-		t.Errorf("GitLab profile must leave credential helpers alone until GitLab is supported:\n%s", globex)
+	if strings.Contains(globex, "helper") || !strings.Contains(globex, "[credential \"https://gitlab.globex.example\"]\n\tusername = globex-alex") {
+		t.Errorf("a GitLab profile keeps the user's helpers and names the account for its host:\n%s", globex)
 	}
 }
 

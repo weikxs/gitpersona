@@ -138,6 +138,7 @@ func (e Env) runChecks(ctx context.Context) []check {
 		checks = append(checks, e.checkShellIntegration(ctx, cfg)...)
 		checks = append(checks, e.checkGHRouting(ctx)...)
 		checks = append(checks, e.checkGitHubAccounts(ctx, cfg)...)
+		checks = append(checks, e.checkHelpers(ctx, cfg)...)
 	}
 
 	return checks

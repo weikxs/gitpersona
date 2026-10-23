@@ -40,6 +40,8 @@ type Env struct {
 	Now      func() time.Time
 	LookPath func(string) (string, error)
 	Run      provider.Runner
+	// RunInput runs a program with input (nil: provider.ExecInputRunner).
+	RunInput provider.InputRunner
 	// LoginShell detects the user's default (login) shell; nil means unknown.
 	LoginShell func(context.Context) shell.Detected
 	// CurrentShell detects the shell running gitpersona right now; nil means unknown.
