@@ -91,50 +91,49 @@ func (e Env) checkDirs(cfg config.Config) []check {
 const FixOldRules = "old-rules"
 
 // checkOldRules looks at the hand-made includeIf identity rules in the
-// global Git configuration. GitPersona includes them again among its rules,
-// so they keep applying in their folders. Rules a profile takes over are a
-// warning with a fix (they are only confusing); the others are fine.
-// Rules GitPersona cannot include again, or that yield to a profile given
-// their folder, are a warning: GitPersona's rules replace them there.
+// global Git configuration. GitPersona's rules come after them, so in a
+// profile's directories (and everywhere, with a default) GitPersona wins.
+// Rules a profile takes over are a warning with a fix (they are only
+// confusing); rules a profile with another identity overrides are a
+// warning; the others apply as before and are fine.
 func (e Env) checkOldRules(ctx context.Context, cfg config.Config) []check {
 	owners := ownersOf(cfg)
 	var checks []check
 	var replaced []string
-	text, _ := readOptional(e.resolvedUserGitConfig())
-	included, skipped := e.userRules(ctx, cfg, text)
-	rules := discover.IdentityRules(ctx, e.Home, e.GlobalGitConfigPath(), e.Run)
-	identities := map[string]discover.Rule{}
-	for _, r := range rules {
-		identities[r.Condition] = r
-	}
-	// Until apply runs, GitPersona's files do not include a rule added by hand.
-	pending := ""
-	if changes, err := planApply(ctx, e); err == nil && len(changes) > 0 {
-		pending = " once you run `gitpersona apply`"
-	}
-	overridden := map[string]bool{}
-	for _, k := range skipped {
-		overridden[k.Condition] = true
-		checks = append(checks, e.skippedRuleCheck(k, identities[k.Condition], owners, cfg.Default))
-	}
-	for _, u := range included {
-		if u.Yield {
-			overridden[u.Condition] = true
-			checks = append(checks, check{warn: true,
-				label:  fmt.Sprintf("your includeIf rule %q is replaced there by the profile you gave that folder", u.Condition),
-				advice: "remove the rule from " + e.display(e.GlobalGitConfigPath()) + " if you no longer need it"})
-		}
-	}
-	for _, r := range rules {
+	for _, r := range discover.IdentityRules(ctx, e.Home, e.GlobalGitConfigPath(), e.Run) {
+		by, overridden := e.overriddenBy(r.Dir, owners, cfg.Default)
 		switch {
-		case overridden[r.Condition]:
 		case e.takenOver(r, owners) && r.Keep == "":
 			replaced = append(replaced, r.Dir)
 		case e.takenOver(r, owners):
-			checks = append(checks, check{ok: true, label: fmt.Sprintf("your includeIf rule for %s stays: %s", r.Dir, r.Keep)})
+			// The profile covers the folder and comes after the rule, so what
+			// the rule does more than the profile is lost there.
+			checks = append(checks, check{warn: true,
+				label:  fmt.Sprintf("profile %s covers your includeIf rule for %s, which does more than a profile can (%s); that is lost there", by.id, r.Dir, r.Keep),
+				advice: fmt.Sprintf("take %s out of the profile (`gitpersona remove` there) to let your rule decide", r.Dir)})
+		case overridden && !by.sameIdentity(r.Email, r.Name):
+			advice := fmt.Sprintf("give %s to a profile with that identity, or remove the rule from %s", r.Dir, e.display(e.GlobalGitConfigPath()))
+			if by.id == cfg.Default && !coversWith(e.comparisonKey, by.dirs, r.Dir) {
+				advice += "; or set no default profile, which applies everywhere"
+			}
+			checks = append(checks, check{warn: true,
+				label: fmt.Sprintf("profile %s overrides your includeIf rule for %s: commits there use %s instead of %s",
+					by.id, r.Dir, author(by.name, by.email), author(r.Name, r.Email)),
+				advice: advice})
 		default:
-			checks = append(checks, check{ok: true, label: fmt.Sprintf("your includeIf rule for %s keeps applying there%s (%s)",
-				r.Dir, pending, author(r.Name, r.Email))})
+			label := fmt.Sprintf("your includeIf rule for %s applies there (%s)", r.Dir, author(r.Name, r.Email))
+			if inside := e.profileDirsInside(r.Dir, owners); len(inside) > 0 {
+				label += ", except in " + strings.Join(inside, ", ") + ", which you gave to profiles"
+			}
+			checks = append(checks, check{ok: true, label: label})
+		}
+	}
+	for _, r := range discover.OtherIdentityRules(ctx, e.Home, e.GlobalGitConfigPath(), e.Run) {
+		if cfg.Default != "" {
+			checks = append(checks, check{warn: true,
+				label: fmt.Sprintf("the default profile %s overrides your includeIf rule %q, which sets %s",
+					cfg.Default, r.Condition, author(r.Name, r.Email)),
+				advice: "set no default profile, or remove the rule if you no longer need it"})
 		}
 	}
 	if len(replaced) > 0 {
@@ -147,33 +146,17 @@ func (e Env) checkOldRules(ctx context.Context, cfg config.Config) []check {
 	return checks
 }
 
-// skippedRuleCheck warns about a rule GitPersona cannot include again: its
-// rules override it there, and when it sets an identity, says which one
-// commits use instead.
-func (e Env) skippedRuleCheck(k skippedRule, id discover.Rule, owners []ruleOwner, defaultID string) check {
-	c := check{warn: true,
-		label: fmt.Sprintf("GitPersona's rules override your includeIf rule %q: %s", k.Condition, k.Why),
-		advice: "GitPersona cannot include it again after its own rules; move those settings out of the rule's file, " +
-			"or give its folder to a profile"}
-	if id.Email == "" {
-		return c
-	}
-	if by, ok := e.overriddenBy(id.Dir, owners, defaultID); ok && !by.sameIdentity(id.Email, id.Name) {
-		c.label += fmt.Sprintf(", so commits in %s use %s instead of %s", id.Dir, author(by.name, by.email), author(id.Name, id.Email))
-	}
-	if coversWith(e.comparisonKey, ownerDirs(owners), id.Dir) {
-		c.advice = "move those settings out of the rule's file, so GitPersona can include it again after its own rules"
-	}
-	return c
-}
-
-// ownerDirs returns every profile directory.
-func ownerDirs(owners []ruleOwner) []string {
-	var dirs []string
+// profileDirsInside returns the profile directories strictly inside dir.
+func (e Env) profileDirsInside(dir string, owners []ruleOwner) []string {
+	var inside []string
 	for _, o := range owners {
-		dirs = append(dirs, o.dirs...)
+		for _, d := range o.dirs {
+			if coversWith(e.comparisonKey, []string{dir}, d) && e.comparisonKey(d) != e.comparisonKey(dir) {
+				inside = append(inside, d)
+			}
+		}
 	}
-	return dirs
+	return inside
 }
 
 // author writes an identity as Git shows it: Name <email>, or <email>.

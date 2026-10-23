@@ -74,6 +74,60 @@ type Rule struct {
 	Keep      string
 }
 
+// RuleSettings is an includeIf rule of a configuration file and the
+// settings (lowercase keys) its file sets. Dir is the directory a directory
+// rule covers ("~" for the whole home), or "" for other rules.
+type RuleSettings struct {
+	Condition string
+	Dir       string
+	Keys      map[string]bool
+}
+
+// RulesSettings returns the includeIf rules of a configuration file, in
+// order, with the settings their files set.
+func RulesSettings(ctx context.Context, home, gitconfig string, run provider.Runner) []RuleSettings {
+	var out []RuleSettings
+	for _, p := range includeIfPaths(ctx, gitconfig, run) {
+		file := expandHome(p.path, home)
+		if !filepath.IsAbs(file) {
+			file = filepath.Join(filepath.Dir(gitconfig), file)
+		}
+		if realPath(file) == realPath(gitconfig) {
+			continue
+		}
+		r := RuleSettings{Condition: p.condition, Dir: withTilde(gitdirToDir(p.condition), home, strings.HasPrefix(p.condition, "gitdir/i:")), Keys: map[string]bool{}}
+		if out, err := run(ctx, "git", "config", "--file", file, "--name-only", "--list"); err == nil {
+			for _, key := range strings.Fields(string(out)) {
+				r.Keys[key] = true
+			}
+		}
+		out = append(out, r)
+	}
+	return out
+}
+
+// OtherIdentityRules returns the includeIf rules that set an identity but
+// are not plain directory rules (onbranch, hasconfig, a single repository,
+// one for the whole home), with Dir "".
+func OtherIdentityRules(ctx context.Context, home, gitconfig string, run provider.Runner) []Rule {
+	var rules []Rule
+	global := readGlobals(ctx, home, gitconfig, run)
+	for _, p := range includeIfPaths(ctx, gitconfig, run) {
+		// Directory rules are IdentityRules, except one for the whole home.
+		if dir := withTilde(gitdirToDir(p.condition), home, strings.HasPrefix(p.condition, "gitdir/i:")); dir != "" && dir != "~" {
+			continue
+		}
+		file := expandHome(p.path, home)
+		if realPath(file) == realPath(gitconfig) {
+			continue
+		}
+		if id, _ := readIdentity(ctx, file, global, run); id.Email != "" || id.Name != "" {
+			rules = append(rules, Rule{Condition: p.condition, Email: id.Email, Name: id.Name})
+		}
+	}
+	return rules
+}
+
 // IdentityRules returns the includeIf rules Existing reads identities from,
 // in order, so they can be removed once GitPersona has taken them over.
 func IdentityRules(ctx context.Context, home, gitconfig string, run provider.Runner) []Rule {
@@ -84,6 +138,44 @@ func IdentityRules(ctx context.Context, home, gitconfig string, run provider.Run
 	return rules
 }
 
+// includeIfPath is the path setting of an includeIf section; settings is
+// the number of settings its condition has in all, counted on its first path.
+type includeIfPath struct {
+	condition, path string
+	settings        int
+}
+
+// includeIfPaths returns the path settings of the includeIf sections of a
+// configuration file, in order.
+func includeIfPaths(ctx context.Context, gitconfig string, run provider.Runner) []includeIfPath {
+	out, err := run(ctx, "git", "config", "--file", gitconfig, "--get-regexp", `^includeif\.`)
+	if err != nil {
+		return nil // no includeIf rules (or no file)
+	}
+	counts := map[string]int{}
+	var paths []includeIfPath
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		key, value, _ := strings.Cut(line, " ")
+		dot := strings.LastIndex(key, ".")
+		if dot <= len(includeIfPrefix) {
+			continue
+		}
+		condition := key[len(includeIfPrefix):dot]
+		counts[condition]++
+		if key[dot+1:] == "path" {
+			paths = append(paths, includeIfPath{condition: condition, path: strings.TrimSpace(value)})
+		}
+	}
+	seen := map[string]bool{}
+	for i, p := range paths {
+		if !seen[p.condition] {
+			seen[p.condition] = true
+			paths[i].settings = counts[p.condition]
+		}
+	}
+	return paths
+}
+
 type identityRule struct {
 	condition, dir, keep string
 	id                   Identity
@@ -92,24 +184,10 @@ type identityRule struct {
 // identityRules returns the plain directory includeIf rules whose included
 // file sets an email.
 func identityRules(ctx context.Context, home, gitconfig string, run provider.Runner) []identityRule {
-	out, err := run(ctx, "git", "config", "--file", gitconfig, "--get-regexp", `^includeif\.`)
-	if err != nil {
-		return nil // no includeIf rules (or no file): nothing to import
-	}
+	paths := includeIfPaths(ctx, gitconfig, run)
 	entries := map[string]int{} // condition -> number of settings in its sections
-	type pathKey struct{ condition, path string }
-	var paths []pathKey
-	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
-		key, value, _ := strings.Cut(line, " ")
-		dot := strings.LastIndex(key, ".")
-		if dot <= len(includeIfPrefix) {
-			continue
-		}
-		condition := key[len(includeIfPrefix):dot]
-		entries[condition]++
-		if key[dot+1:] == "path" {
-			paths = append(paths, pathKey{condition, strings.TrimSpace(value)})
-		}
+	for _, p := range paths {
+		entries[p.condition] += p.settings
 	}
 	global := readGlobals(ctx, home, gitconfig, run)
 	var rules []identityRule

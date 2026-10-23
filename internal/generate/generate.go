@@ -19,10 +19,7 @@ import (
 
 // Generated file names, relative to the configuration directory.
 const (
-	RulesFile = "rules.gitconfig"
-	// BaseFile restores the user's own global settings before each of their
-	// rules is included again, so a rule's folder works as it did before.
-	BaseFile    = "base.gitconfig"
+	RulesFile   = "rules.gitconfig"
 	profilesDir = "profiles"
 )
 
@@ -40,69 +37,15 @@ type Options struct {
 	// FallbackSigning restores the user's own signing settings for profiles
 	// without signing. Empty fields are not restored; signing is then off.
 	FallbackSigning Signing
+	// ResetSigning and ResetSSH name the profiles that must set their
+	// signing and SSH command even when no profile changes them: a rule of
+	// the user's that sets them applies where the profile does, and the
+	// profile must not inherit its key.
+	ResetSigning, ResetSSH map[string]bool
 	// Canonicalize, if set, resolves symbolic links in a path. Git matches
 	// includeIf against the real path of the repository, so when a rule's
 	// directory goes through a symlink an entry for the real path is added.
 	Canonicalize func(string) string
-	// UserRules are the includeIf rules of the user's own Git configuration,
-	// in the order Git reads them. They are included again among
-	// GitPersona's rules, each after the user's own global settings (see
-	// BaseFile), so that in their folders they work as they did before.
-	UserRules []UserRule
-	// Global is the user's global identity, for BaseFile.
-	Global Global
-}
-
-// UserRule is an includeIf rule of the user's own configuration, with its
-// path made absolute (or ~/...) so it can be included from elsewhere.
-type UserRule struct {
-	Condition string // as Git reads it, such as "gitdir:~/oss/" or "onbranch:release/**"
-	Path      string
-	// Dir is the absolute directory a gitdir rule covers ("/" for a pattern
-	// Git matches anywhere, the least specific), or "" for other rules
-	// (onbranch, hasconfig, a single repository), which come after every
-	// directory rule.
-	Dir string
-	// Yield puts the rule before GitPersona's rule for the same directory:
-	// the user gave that directory to a profile with another identity.
-	Yield bool
-	// SameSection marks another path of the previous rule's section.
-	SameSection bool
-}
-
-// hasBase reports whether the user's own global settings are restored for
-// rule i: it is a directory rule, the first path of its section, and no
-// other directory rule of the user's covers it (rules inside it, and rules
-// that only refine, such as onbranch, build on what is there).
-func (o Options) hasBase(i int) bool {
-	u := o.UserRules[i]
-	if u.Dir == "" || u.SameSection {
-		return false
-	}
-	for j, v := range o.UserRules {
-		if j != i && v.Dir != "" && v.Dir != "/" && u.Dir != "/" && o.inside(u.Dir, v.Dir) {
-			return false
-		}
-	}
-	return true
-}
-
-// inside reports whether dir is strictly inside outer.
-func (o Options) inside(dir, outer string) bool {
-	d, p := o.compareKey(dir), o.compareKey(outer)
-	return strings.HasPrefix(d, strings.TrimSuffix(p, "/")+"/")
-}
-
-// baseAt is where the base settings of rule i go: before the first of the
-// user's rules in its folder, so they never undo what those rules set.
-func (o Options) baseAt(i int) int {
-	u := o.UserRules[i]
-	for j, v := range o.UserRules[:i] {
-		if v.Dir != "" && (u.Dir == "/" || o.compareKey(v.Dir) == o.compareKey(u.Dir) || o.inside(v.Dir, u.Dir)) {
-			return j
-		}
-	}
-	return i
 }
 
 // Signing holds the user's global commit-signing settings.
@@ -111,11 +54,6 @@ type Signing struct {
 	SigningKey string // user.signingkey
 	Format     string // gpg.format
 	TagSign    string // tag.gpgsign
-}
-
-// Global is the user's own global identity, restored around their rules.
-type Global struct {
-	Name, Email string
 }
 
 // File is one generated file.
@@ -145,9 +83,6 @@ func Generate(cfg config.Config, opts Options) ([]File, error) {
 		files = append(files, File{Name: ProfileFile(p.ID), Content: content})
 	}
 	files = append(files, File{Name: RulesFile, Content: rulesIndex(cfg, opts)})
-	if len(opts.UserRules) > 0 {
-		files = append(files, File{Name: BaseFile, Content: baseSnippet(opts, usage)})
-	}
 
 	slices.SortFunc(files, func(a, b File) int { return cmp.Compare(a.Name, b.Name) })
 	return files, nil
@@ -170,6 +105,8 @@ func scanUsage(cfg config.Config) usage {
 }
 
 func profileSnippet(p config.Profile, u usage, opts Options) (string, error) {
+	u.signing = u.signing || opts.ResetSigning[p.ID]
+	u.sshKeys = u.sshKeys || opts.ResetSSH[p.ID]
 	var b strings.Builder
 	b.WriteString(header)
 	fmt.Fprintf(&b, "# Profile %s: %s on %s\n", p.ID, p.Account, p.Host)
@@ -240,6 +177,8 @@ func writeFallbackSigning(b *strings.Builder, s Signing, email string) {
 	writeKV(b, "format", format)
 	b.WriteString("[commit]\n")
 	writeKV(b, "gpgsign", cmp.Or(s.GPGSign, "false"))
+	b.WriteString("[tag]\n")
+	writeKV(b, "gpgSign", cmp.Or(s.TagSign, "false"))
 }
 
 func writeSSH(b *strings.Builder, p config.Profile, u usage, opts Options) error {
@@ -281,8 +220,7 @@ func writeCredential(b *strings.Builder, p config.Profile, opts Options) {
 func rulesIndex(cfg config.Config, opts Options) string {
 	var b strings.Builder
 	b.WriteString(header)
-	b.WriteString("# Order is precedence: the default, then directory rules from least to most specific with your\n" +
-		"# own includeIf rules among them (in your order), then pins.\n")
+	b.WriteString("# Order is precedence: default, then directory rules from least to most specific, then pins.\n")
 
 	if cfg.Default != "" {
 		fmt.Fprintf(&b, "\n# Default profile: %s\n[include]\n", cfg.Default)
@@ -293,34 +231,9 @@ func rulesIndex(cfg config.Config, opts Options) string {
 	if opts.CaseInsensitive {
 		gitdir = "gitdir/i:"
 	}
-	// slots[i] are GitPersona's rules that go after the user's first i rules.
-	slots := make([][]rule, len(opts.UserRules)+1)
 	for _, r := range sortedRules(cfg, opts) {
-		i := insertAt(r, opts)
-		slots[i] = append(slots[i], r)
-	}
-	bases := make([][]UserRule, len(opts.UserRules))
-	for i, u := range opts.UserRules {
-		if opts.hasBase(i) {
-			at := opts.baseAt(i)
-			bases[at] = append(bases[at], u)
-		}
-	}
-	for i := range slots {
-		if i > 0 {
-			opts.writeUserRule(&b, opts.UserRules[i-1])
-		}
-		for _, r := range slots[i] {
-			fmt.Fprintf(&b, "\n# Rule: %s -> %s\n", r.written, r.profile)
-			opts.writeIncludeIf(&b, gitdir, r.norm, "/", r.profile)
-		}
-		if i < len(bases) {
-			for _, u := range bases[i] {
-				fmt.Fprintf(&b, "\n# Your own global settings, under your rule %s\n", u.Condition)
-				fmt.Fprintf(&b, "[includeIf %s]\n", quoteSubsection(u.Condition))
-				writeKV(&b, "path", path.Join(opts.ConfigDir, BaseFile))
-			}
-		}
+		fmt.Fprintf(&b, "\n# Rule: %s -> %s\n", r.written, r.profile)
+		opts.writeIncludeIf(&b, gitdir, r.norm, "/", r.profile)
 	}
 	for _, pin := range cfg.Pins {
 		norm, _ := paths.Normalize(pin.Repo, opts.Home) // validated in Generate
@@ -331,22 +244,6 @@ func rulesIndex(cfg config.Config, opts Options) string {
 	return b.String()
 }
 
-// insertAt places a GitPersona directory rule among the user's own rules,
-// which keep their order: right after the last one it must win over (one
-// for a folder that contains it, a pattern Git matches anywhere, or one for
-// the same folder that yields to the profile), so every rule of the user's
-// for a folder inside it still wins.
-func insertAt(r rule, opts Options) int {
-	at := 0
-	for i, u := range opts.UserRules {
-		same := u.Dir != "" && opts.compareKey(u.Dir) == opts.compareKey(r.norm)
-		if u.Dir == "/" || (u.Dir != "" && opts.inside(r.norm, u.Dir)) || (same && u.Yield) {
-			at = i + 1
-		}
-	}
-	return at
-}
-
 // compareKey is the form directories are compared in: lowercase on a
 // case-insensitive disk, where ~/Work and ~/work are one folder.
 func (o Options) compareKey(dir string) string {
@@ -354,44 +251,6 @@ func (o Options) compareKey(dir string) string {
 		return strings.ToLower(dir)
 	}
 	return dir
-}
-
-// writeUserRule includes one of the user's own rules again.
-func (o Options) writeUserRule(b *strings.Builder, u UserRule) {
-	fmt.Fprintf(b, "\n# Your own rule from your Git configuration: %s\n", u.Condition)
-	fmt.Fprintf(b, "[includeIf %s]\n", quoteSubsection(u.Condition))
-	writeKV(b, "path", u.Path)
-}
-
-// baseSnippet holds the user's own global settings for what profiles
-// change, with Git's defaults where the user sets nothing. Settings no
-// profile changes are left alone (an environment variable such as GIT_SSH
-// still decides then), and a signing key only the user's own.
-func baseSnippet(opts Options, u usage) string {
-	var b strings.Builder
-	b.WriteString(header)
-	b.WriteString("# Your own global settings, restored before each of your includeIf rules.\n")
-	if opts.Global.Name != "" || opts.Global.Email != "" {
-		b.WriteString("[user]\n")
-		if opts.Global.Name != "" {
-			writeKV(&b, "name", opts.Global.Name)
-		}
-		if opts.Global.Email != "" {
-			writeKV(&b, "email", opts.Global.Email)
-		}
-	}
-	if u.signing {
-		// No email: without a key of the user's, the key stays undecided
-		// rather than become another identity's.
-		writeFallbackSigning(&b, opts.FallbackSigning, "")
-		b.WriteString("[tag]\n")
-		writeKV(&b, "gpgSign", cmp.Or(opts.FallbackSigning.TagSign, "false"))
-	}
-	if u.sshKeys {
-		b.WriteString("[core]\n")
-		writeKV(&b, "sshCommand", cmp.Or(opts.FallbackSSHCommand, "ssh"))
-	}
-	return b.String()
 }
 
 // writeIncludeIf writes the entry for dir, plus one for its real path when a

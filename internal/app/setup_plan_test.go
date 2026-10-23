@@ -44,8 +44,9 @@ func TestProposeSetupReusesAnExistingSetupAndReportsTheRest(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if got.Default != "octo-alex" || len(got.Profiles) != 2 {
-		t.Fatalf("proposal = %+v, want two profiles with the active account as default", got)
+	// The clients rule stays the user's, so the active account is only suggested as the default.
+	if got.Default != "" || got.SuggestedDefault != "octo-alex" || len(got.Profiles) != 2 {
+		t.Fatalf("proposal = %+v, want two profiles, no default, octo-alex suggested", got)
 	}
 	octo, acme := got.Profiles[0], got.Profiles[1]
 	if octo.Source != "existing" || octo.Email != "alex.personal@example.com" || octo.Name != "Alex Personal" ||

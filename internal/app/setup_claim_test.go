@@ -158,9 +158,9 @@ func TestAnIdentityNothingTiesToAnAccountKeepsWorkingInItsFolder(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got.Unmatched) != 1 || got.Unmatched[0].AccountFrom != got.Default || got.Default == "" ||
+	if len(got.Unmatched) != 1 || got.Unmatched[0].OverriddenBy != "" || got.Default != "" || got.SuggestedDefault == "" ||
 		!slices.Equal(got.Unmatched[0].Replaceable, []string{"~/oss"}) || len(got.OldRules) != 0 {
-		t.Fatalf("unmatched = %+v, old rules = %v; want ~/oss left to its own rule", got.Unmatched, got.OldRules)
+		t.Fatalf("proposal = %+v; want ~/oss left to its own rule and no default", got)
 	}
 	if err := Setup(context.Background(), env, SetupOptions{Yes: true, NoShell: true}); err != nil {
 		t.Fatal(err)
@@ -174,9 +174,29 @@ func TestAnIdentityNothingTiesToAnAccountKeepsWorkingInItsFolder(t *testing.T) {
 			t.Errorf("setup should say %q:\n%s", want, out.String())
 		}
 	}
-	// GitPersona's default comes first; the user's own rule still wins in ~/oss.
 	if got := runGit(t, repo, "config", "user.email"); got != "personal@demo.example" {
 		t.Errorf("~/oss/notes commits as %q after setup, want personal@demo.example as before", got)
+	}
+}
+
+func TestADefaultChosenAnywayIsAnnouncedAsOverridingYourRules(t *testing.T) {
+	_, env := identityWorld(t, "")
+	out := &strings.Builder{}
+	env.Stdout = out
+	env.Stdin = strings.NewReader("n\n")
+
+	if err := Setup(context.Background(), env, SetupOptions{Default: "acme-alex"}); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, want := range []string{"! The default profile acme-alex overrides your own includeIf rules everywhere",
+		"! Replaced: Demo Personal <personal@demo.example> for ~/oss"} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("setup --default should say %q:\n%s", want, out.String())
+		}
+	}
+	if err := Setup(context.Background(), env, SetupOptions{Default: "nobody", Print: true}); err == nil {
+		t.Error("an unknown --default must be refused")
 	}
 }
 

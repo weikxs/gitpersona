@@ -27,20 +27,27 @@ func Upsert(content, body string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	region := render(body)
+	eol := lineEnding(content)
+	region := strings.ReplaceAll(render(body), newline, eol)
 
 	if begin >= 0 {
 		return join(lines[:begin]) + region + join(lines[end+1:]), nil
 	}
-	switch {
-	case content == "":
+	if content == "" {
 		return region, nil
-	case strings.HasSuffix(content, newline):
-		return content + newline + region, nil
-	default:
-		// No blank line: Remove can then tell that the newline was added.
-		return content + newline + region, nil
 	}
+	// After a final newline this adds a blank line; without one, only the
+	// newline, so Remove can tell which it added.
+	return content + eol + region, nil
+}
+
+// lineEnding returns the line ending content uses: CRLF when it has any,
+// as files edited on Windows do, else LF.
+func lineEnding(content string) string {
+	if strings.Contains(content, "\r\n") {
+		return "\r\n"
+	}
+	return newline
 }
 
 // Remove returns content without the managed region. When the region is at
@@ -53,13 +60,14 @@ func Remove(content string) (string, error) {
 	}
 
 	before, after := lines[:begin], lines[end+1:]
+	eol := lineEnding(content)
 	if len(after) == 0 && len(before) > 0 {
-		if before[len(before)-1] == newline {
+		if before[len(before)-1] == eol || before[len(before)-1] == newline {
 			// The blank line Upsert added before the region.
 			before = before[:len(before)-1]
 		} else {
 			// The file had no final newline; Upsert added one.
-			return strings.TrimSuffix(join(before), newline), nil
+			return strings.TrimSuffix(join(before), eol), nil
 		}
 	}
 	return join(before) + join(after), nil

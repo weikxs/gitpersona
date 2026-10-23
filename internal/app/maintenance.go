@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/weikxs/gitpersona/internal/backup"
@@ -159,7 +161,7 @@ func (e Env) planUninstall() ([]change, error) {
 		changes = append(changes, change{path: e.ghEntry(), remove: true})
 	}
 	generated, _ := filepath.Glob(filepath.Join(e.ConfigDir, "profiles", "*.gitconfig"))
-	generated = append(generated, filepath.Join(e.ConfigDir, generate.RulesFile), filepath.Join(e.ConfigDir, generate.BaseFile))
+	generated = append(generated, filepath.Join(e.ConfigDir, generate.RulesFile))
 	for _, path := range generated {
 		if _, err := os.Stat(path); err == nil {
 			changes = append(changes, change{path: path, remove: true})
@@ -168,15 +170,18 @@ func (e Env) planUninstall() ([]change, error) {
 	return changes, nil
 }
 
-// ruleSection is an includeIf section of a Git configuration: its condition
-// and its text (the header and its settings).
+// ruleSection is an includeIf section of a Git configuration: its
+// condition, its text (the header and its settings), and the header of the
+// section that follows it, if any, with which occurrence of that header it
+// is (headers such as [core] can repeat).
 type ruleSection struct {
-	condition, text string
+	condition, text, before string
+	beforeN                 int
 }
 
 // removedRules returns the includeIf sections that setup or `doctor --fix`
 // removed from the global Git configuration (as their backups record) and
-// that current does not have, newest first.
+// that current does not have, oldest backup first.
 func (e Env) removedRules(current string) []ruleSection {
 	infos, err := backup.List(e.backupDir())
 	if err != nil {
@@ -187,8 +192,8 @@ func (e Env) removedRules(current string) []ruleSection {
 		have[s.condition] = true
 	}
 	var out []ruleSection
-	for _, info := range infos {
-		data, err := os.ReadFile(filepath.Join(info.Dir, removedRulesFile))
+	for i := len(infos) - 1; i >= 0; i-- {
+		data, err := os.ReadFile(filepath.Join(infos[i].Dir, removedRulesFile))
 		if err != nil {
 			continue
 		}
@@ -204,17 +209,30 @@ func (e Env) removedRules(current string) []ruleSection {
 
 // includeIfSections returns the includeIf sections of a Git configuration,
 // each with its header and settings (not the comments around them), keeping
-// each line's own ending.
+// each line's own ending, and the header that follows it. In a record of
+// removed rules, a beforeMarker line ("<occurrence> <header>") says that.
 func includeIfSections(text string) []ruleSection {
 	var out []ruleSection
-	inside := false
+	inside, marked, markedN := false, "", 0
+	seen := map[string]int{} // header -> occurrences so far
 	for _, line := range strings.SplitAfter(text, "\n") {
 		trimmed := strings.TrimSpace(line)
+		if rest, ok := strings.CutPrefix(trimmed, strings.TrimSpace(beforeMarker)); ok {
+			n, header, _ := strings.Cut(strings.TrimSpace(rest), " ")
+			markedN, _ = strconv.Atoi(n)
+			marked = header
+			continue
+		}
 		if strings.HasPrefix(trimmed, "[") {
+			seen[trimmed]++
+			if inside && out[len(out)-1].before == "" {
+				out[len(out)-1].before, out[len(out)-1].beforeN = trimmed, seen[trimmed]
+			}
 			m := includeIfHeader.FindStringSubmatch(trimmed)
 			inside = m != nil
 			if inside {
-				out = append(out, ruleSection{condition: unescapeSubsection(m[1])})
+				out = append(out, ruleSection{condition: unescapeSubsection(m[1]), before: marked, beforeN: markedN})
+				marked, markedN = "", 0
 			}
 		}
 		if inside && trimmed != "" && !strings.HasPrefix(trimmed, "#") && !strings.HasPrefix(trimmed, ";") {
@@ -227,16 +245,43 @@ func includeIfSections(text string) []ruleSection {
 	return out
 }
 
-// withRules appends sections to a Git configuration's text.
+// withRules puts sections back into a Git configuration's text: each before
+// the section that followed it, when that is there; the others at the end,
+// in order. Placing one can make room for another, so it goes round until
+// nothing more fits.
 func withRules(text string, sections []ruleSection) string {
-	if len(sections) == 0 {
-		return text
+	pending := slices.Clone(sections)
+	for placed := true; placed && len(pending) > 0; {
+		placed = false
+		for i := len(pending) - 1; i >= 0; i-- {
+			s := pending[i]
+			if at := sectionLine(text, s.before, s.beforeN); s.before != "" && at >= 0 {
+				text = text[:at] + s.text + text[at:]
+				pending = slices.Delete(pending, i, i+1)
+				placed = true
+			}
+		}
 	}
-	if text != "" && !strings.HasSuffix(text, "\n") {
+	if len(pending) > 0 && text != "" && !strings.HasSuffix(text, "\n") {
 		text += "\n"
 	}
-	for _, s := range sections {
+	for _, s := range pending {
 		text += s.text
 	}
 	return text
+}
+
+// sectionLine returns where the n-th line whose trimmed text is header
+// starts in text, or -1.
+func sectionLine(text, header string, n int) int {
+	at, count := 0, 0
+	for _, line := range strings.SplitAfter(text, "\n") {
+		if strings.TrimSpace(line) == header {
+			if count++; count == max(n, 1) {
+				return at
+			}
+		}
+		at += len(line)
+	}
+	return -1
 }

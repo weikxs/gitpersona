@@ -2,7 +2,9 @@ package app
 
 import (
 	"bufio"
+	"cmp"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -28,6 +30,18 @@ type SetupOptions struct {
 	// NoDefault sets no default profile, so the global Git identity stays
 	// outside the directories.
 	NoDefault bool
+	// Default sets this profile as the default, also when the user's own
+	// includeIf rules would be overridden by it.
+	Default string
+}
+
+// proposedIDs lists the ids of proposed profiles.
+func proposedIDs(profiles []SetupProfile) string {
+	ids := make([]string, len(profiles))
+	for i, p := range profiles {
+		ids[i] = p.ID
+	}
+	return strings.Join(ids, ", ")
 }
 
 var invalidIDChars = regexp.MustCompile(`[^a-z0-9-]+`)
@@ -37,7 +51,8 @@ var invalidIDChars = regexp.MustCompile(`[^a-z0-9-]+`)
 // Git configuration and the shell integration in one backup.
 func Setup(ctx context.Context, e Env, opts SetupOptions) error {
 	if _, err := os.Stat(e.configFile()); err == nil && !opts.Print {
-		return fmt.Errorf("%s already exists; change it on the configuration page (`gitpersona ui`), with `gitpersona use` and `gitpersona pin`, or by hand", e.display(e.configFile()))
+		return fmt.Errorf("%s already exists; change it on the configuration page (`gitpersona ui`), with `gitpersona use` and `gitpersona pin`, "+
+			"or by hand (after `gitpersona uninstall`, `gitpersona apply` sets GitPersona up again from it)", e.display(e.configFile()))
 	}
 	proposal, err := ProposeSetup(ctx, e)
 	if err != nil {
@@ -49,8 +64,16 @@ func Setup(ctx context.Context, e Env, opts SetupOptions) error {
 	if opts.KeepOldRules {
 		proposal.OldRules = []string{}
 	}
-	if opts.NoDefault {
-		proposal = e.withoutDefault(proposal)
+	switch {
+	case opts.NoDefault && opts.Default != "":
+		return errors.New("choose either --default or --no-default")
+	case opts.NoDefault:
+		proposal = e.withDefault(proposal, "")
+	case opts.Default != "":
+		if !slices.ContainsFunc(proposal.Profiles, func(p SetupProfile) bool { return p.ID == opts.Default }) {
+			return fmt.Errorf("--default %s: no such profile; setup proposes %s", opts.Default, proposedIDs(proposal.Profiles))
+		}
+		proposal = e.withDefault(proposal, opts.Default)
 	}
 	plan := proposal.Plan()
 	if opts.Print {
@@ -112,6 +135,14 @@ func (e Env) printProposal(p SetupProposal) {
 			fmt.Fprintf(w, "\n  Pin %s to %s: %s\n", pin.Repo, pin.Profile, pin.Why)
 		}
 	}
+	if p.Default == "" && len(p.OwnRules) > 0 {
+		fmt.Fprintf(w, "\n  No default profile: one would override your own includeIf rules everywhere (%s). Outside these "+
+			"directories Git keeps your own settings; `gitpersona setup --default %s` sets one anyway.\n",
+			strings.Join(p.OwnRules, "; "), cmp.Or(p.SuggestedDefault, "<profile>"))
+	}
+	if p.Default != "" && len(p.OwnRules) > 0 {
+		fmt.Fprintf(w, "\n  ! The default profile %s overrides your own includeIf rules everywhere: %s.\n", p.Default, strings.Join(p.OwnRules, "; "))
+	}
 	if k := slices.IndexFunc(p.Profiles, func(x SetupProfile) bool { return x.ID == p.Default }); k >= 0 {
 		def := p.Profiles[k]
 		fmt.Fprintf(w, "\n  Outside these directories, commits will use %s (%s <%s>)", def.ID, def.Name, def.Email)
@@ -128,7 +159,12 @@ func (e Env) printProposal(p SetupProposal) {
 			strings.Join(p.OldRules, ", "))
 	}
 	for _, k := range p.KeptRules {
-		fmt.Fprintf(w, "\n  Kept your includeIf rule for %s: %s.\n", k.Dir, k.Why)
+		if k.OverriddenBy != "" {
+			fmt.Fprintf(w, "\n  ! Your includeIf rule for %s does more than a profile can (%s), but profile %s applies there, "+
+				"so that is lost; take %s out of the profile to keep it.\n", k.Dir, k.Why, k.OverriddenBy, k.Dir)
+			continue
+		}
+		fmt.Fprintf(w, "\n  Kept your includeIf rule for %s, which stays in charge there: %s.\n", k.Dir, k.Why)
 	}
 	if len(p.Shells) > 0 {
 		fmt.Fprintf(w, "\n  Shell integration for %s, so gh and your prompt follow the directory (--no-shell to skip).\n",
@@ -141,23 +177,19 @@ func (e Env) printProposal(p SetupProposal) {
 }
 
 // printLeftOut says what happens in the folder of an identity setup does not
-// take over: its rule keeps working, or a profile replaces it.
+// take over: its rule keeps applying, or a profile replaces it.
 func printLeftOut(w io.Writer, p SetupProposal, u LeftOut) {
 	where := strings.Join(u.Dirs, ", ")
-	if u.Overridden != "" {
-		by := "Git's own settings"
-		if k := slices.IndexFunc(p.Profiles, func(x SetupProfile) bool { return x.ID == u.AccountFrom }); k >= 0 {
-			by = fmt.Sprintf("profile %s (%s)", u.AccountFrom, author(p.Profiles[k].Name, p.Profiles[k].Email))
-		}
-		fmt.Fprintf(w, "\n  ! Replaced: %s for %s (from %s). GitPersona cannot keep your rule working, because %s, so commits "+
-			"there will use %s. To keep it, choose its account with `gitpersona setup --web`, or move those settings out of the rule's file.\n",
-			author(u.Name, u.Email), where, u.Source, u.Overridden, by)
+	if k := slices.IndexFunc(p.Profiles, func(x SetupProfile) bool { return x.ID == u.OverriddenBy }); k >= 0 {
+		fmt.Fprintf(w, "\n  ! Replaced: %s for %s (from %s). Profile %s (%s) applies there instead, because GitPersona's rules "+
+			"come after yours. To keep it, choose its account with `gitpersona setup --web`.\n",
+			author(u.Name, u.Email), where, u.Source, u.OverriddenBy, author(p.Profiles[k].Name, p.Profiles[k].Email))
 		return
 	}
 	fmt.Fprintf(w, "\n  Not taken over: %s for %s (from %s); no signed-in account could be tied to it, so your rule keeps "+
 		"applying there. To make it a profile, choose its account with `gitpersona setup --web`.\n", author(u.Name, u.Email), where, u.Source)
-	if u.AccountFrom != "" {
-		fmt.Fprintf(w, "    What your rule does not set, such as the account for pushes, comes from profile %s there.\n", u.AccountFrom)
+	if len(u.ReplacedIn) > 0 {
+		fmt.Fprintf(w, "    Except in %s, which go to profiles.\n", strings.Join(u.ReplacedIn, ", "))
 	}
 }
 
@@ -167,7 +199,7 @@ func printUnassigned(w io.Writer, p SetupProposal) {
 	if len(p.Unassigned) == 0 {
 		return
 	}
-	applies := "Git's own settings apply"
+	applies := "your own Git settings apply"
 	if p.Default != "" {
 		applies = "the default profile " + p.Default + " applies"
 	}
@@ -229,20 +261,20 @@ func profileID(login string) string {
 	return id
 }
 
-// withoutDefault drops the default profile from a proposal, and works out
-// again which profile applies around the identities left out.
-func (e Env) withoutDefault(p SetupProposal) SetupProposal {
+// withDefault makes id (or none, for "") the default profile of a proposal,
+// and works out again which profile replaces the identities left out.
+func (e Env) withDefault(p SetupProposal, id string) SetupProposal {
 	owners := setupOwners(p.Profiles)
 	unmatched := make([]LeftOut, len(p.Unmatched))
 	for i, u := range p.Unmatched {
-		u.AccountFrom = ""
+		u.OverriddenBy = ""
 		for _, d := range u.Dirs {
-			if by, ok := e.overriddenBy(d, owners, ""); ok && u.AccountFrom == "" {
-				u.AccountFrom = by.id
+			if by, ok := e.overriddenBy(d, owners, id); ok && !by.sameIdentity(u.Email, u.Name) && u.OverriddenBy == "" {
+				u.OverriddenBy = by.id
 			}
 		}
 		unmatched[i] = u
 	}
-	p.Default, p.Unmatched = "", unmatched
+	p.Default, p.Unmatched, p.KeptRules = id, unmatched, e.keptOverrides(p.KeptRules, owners, id)
 	return p
 }

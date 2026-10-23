@@ -67,8 +67,11 @@ func (e Env) organize(ctx context.Context, p SetupProposal, existing []discover.
 		profiles[k] = e.adopt(profiles[k], existing[i], p.Global.Name)
 	}
 
-	l := inferLayout(profiles, repos, aliases, e.comparisonKey,
-		layoutHints{reserved: identityDirs(unused(existing, used)), roots: roots.Shown})
+	// A rule that does more than a profile can (x509 signing, extra SSH
+	// options, ...) keeps its folder: a profile there would win and lose it.
+	profiles, kept := e.withoutKeptDirs(ctx, profiles)
+	reserved := append(identityDirs(unused(existing, used)), keptDirs(kept)...)
+	l := inferLayout(profiles, repos, aliases, e.comparisonKey, layoutHints{reserved: reserved, roots: roots.Shown})
 	for i, prof := range profiles {
 		prof.Found = l.found[prof.Account]
 		if prof.SSHKey == "" {
@@ -85,12 +88,21 @@ func (e Env) organize(ctx context.Context, p SetupProposal, existing []discover.
 	p.Unassigned = append([]UnassignedDir{}, l.unassigned...)
 
 	owners := setupOwners(profiles)
-	replaced, kept := e.classifyOldRules(ctx, owners, nil)
+	replaced, _ := e.classifyOldRules(ctx, owners, nil)
 	p.OldRules, p.KeptRules = []string{}, kept
 	for _, r := range replaced {
 		p.OldRules = append(p.OldRules, r.Dir)
 	}
-	p.Unmatched = e.leftOut(ctx, existing, used, owners, p.Default, p.Global.Name)
+	// What stays the user's is judged without a default; a default would
+	// override all of it, so it is proposed only when nothing stays.
+	p.Unmatched = e.leftOut(ctx, existing, used, owners, "", p.Global.Name)
+	p.KeptRules = e.keptOverrides(kept, owners, "")
+	p.OwnRules, p.SuggestedDefault = e.ownRules(ctx, p.Unmatched, p.KeptRules), p.Default
+	if len(p.OwnRules) > 0 {
+		p = e.withDefault(p, "")
+	} else {
+		p = e.withDefault(p, p.SuggestedDefault)
+	}
 
 	p.Shells = []string{}
 	if k := e.loginShell(ctx).Kind; k != shell.Unknown {

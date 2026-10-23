@@ -92,11 +92,11 @@ export function leftOutChoices(get, set, redraw) {
       "Choose an account to make one a profile:"),
     h("ul", {}, wizard.unmatched.map((u, k) => h("li", {},
       `${u.name || "(no name)"} <${u.email}> · ${u.dirs.join(", ")} (${u.source})`,
-      u.overridden
-        ? h("p", {}, `GitPersona cannot keep your rule working, because ${u.overridden}, so ` +
-          (u.account_from ? `profile ${u.account_from} replaces it there.` : "Git's own settings apply there."))
+      u.overridden_by || wizard.defaultAccount
+        ? h("p", {}, `${u.overridden_by ? `Profile ${u.overridden_by}` : "The default profile"} applies there instead, ` +
+          "because GitPersona's rules come after yours.")
         : h("p", {}, "Your rule keeps applying there.",
-          u.account_from ? ` What it does not set, such as the account for pushes, comes from profile ${u.account_from}.` : ""),
+          u.replaced_in?.length ? ` Except in ${u.replaced_in.join(", ")}, which go to profiles.` : ""),
       chosen.length === 0 ? h("p", {}, "Every chosen profile already uses an identity of your setup.")
         : accountSelect(u, chosen, (i) => {
           set(adoptIdentity(get(), k, i));
@@ -142,8 +142,8 @@ function outsideText(wizard) {
   const g = wizard.global ?? {};
   const today = g.email ? `${g.name || "(no name)"} <${g.email}>` : "";
   if (!chosen) {
-    return h("p", { class: "muted" }, today ? `Outside these directories, commits keep using ${today}.`
-      : "Outside these directories, Git's own settings apply.");
+    return h("p", { class: "muted" }, today ? `Outside these directories, commits keep using ${today}` : "Outside these directories, Git's own settings apply",
+      wizard.ownRules?.length ? ", and your own includeIf rules keep applying. A default profile would override them everywhere." : ".");
   }
   return h("p", { class: "muted" }, `Outside these directories, commits use ${chosen.id} (${chosen.name} <${chosen.email}>)`,
     today ? ` instead of ${today} (choose "No default" under Adjust to keep it).` : ".");

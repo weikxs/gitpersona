@@ -36,8 +36,8 @@ func RemoveOldRules(ctx context.Context, e Env) error {
 		fmt.Fprintln(e.Stdout, "No old includeIf identity rules that a profile takes over; nothing to change.")
 		return nil
 	}
-	// GitPersona's files include the user's rules again, so they are
-	// regenerated in the same backup.
+	// The profiles' files depend on which rules of the user's remain (see
+	// resets), so they are regenerated in the same backup.
 	changes, err := e.planWith(ctx, cfg, func(text string) string {
 		updated, _, _ := e.withoutOldRules(ctx, text, ownersOf(cfg), nil)
 		return updated
@@ -144,6 +144,9 @@ func (e Env) classifyOldRules(ctx context.Context, owners []ruleOwner, only []st
 type KeptRule struct {
 	Dir string `json:"dir"`
 	Why string `json:"why"`
+	// OverriddenBy names the profile whose folder around it (or the
+	// default) applies there instead, so what the rule does more is lost.
+	OverriddenBy string `json:"overridden_by,omitempty"`
 }
 
 // includeIfHeader matches an includeIf section header and captures its

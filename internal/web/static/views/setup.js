@@ -25,7 +25,7 @@ const EMAIL_HINTS = {
 // through setWizard, which also keeps it for this tab, so a reload or the
 // browser's Back and Forward do not lose the choices.
 const STORE_KEY = "gitpersona-setup";
-const STORE_VERSION = 5; // a wizard stored by an older page is not reused
+const STORE_VERSION = 6; // a wizard stored by an older page is not reused
 let wizard = loadWizard();
 let shownStep = null;
 let shownIn = null; // {body, run} of the steps on screen, for Back and Forward
@@ -92,6 +92,7 @@ function fromProposal(p) {
     defaultAccount: accountOf(p.default) ?? "",
     unmatched: p.unmatched,
     global: p.global,
+    ownRules: p.own_rules ?? [],
     profiles: p.profiles.map(({ found = [], ...x }) => ({
       ...x, include: true,
       dirs: [...x.dirs.map((d) => ({ dir: d, on: true, why: "your existing setup" })),
@@ -246,7 +247,9 @@ function defaultChoice() {
         " today (your global Git settings). The default profile replaces it."]
       : "Commits outside every directory use the default profile chosen above."),
     h("label", { class: "check" }, none,
-      today ? `No default: keep ${today}` : "No default: keep Git's own settings"));
+      today ? `No default: keep ${today}` : "No default: keep Git's own settings"),
+    wizard.ownRules?.length ? h("p", { class: "notice warn" }, badge("warn"),
+      ` A default profile overrides your own includeIf rules everywhere: ${wizard.ownRules.join("; ")}.`) : null);
 }
 
 // Step 2: which directories each profile covers.

@@ -196,7 +196,17 @@ func Restore(dir string) error {
 	if err != nil {
 		return err
 	}
-	for _, e := range m.Entries {
+	// Read every stored copy first, so a damaged backup changes nothing.
+	contents := make([][]byte, len(m.Entries))
+	for i, e := range m.Entries {
+		if !e.Existed || e.Link != "" {
+			continue
+		}
+		if contents[i], err = os.ReadFile(filepath.Join(dir, e.Stored)); err != nil {
+			return fmt.Errorf("read backup of %s: %w", e.Path, err)
+		}
+	}
+	for i, e := range m.Entries {
 		if !e.Existed || e.Link != "" {
 			if err := os.Remove(e.Path); err != nil && !errors.Is(err, fs.ErrNotExist) {
 				return fmt.Errorf("remove %s: %w", e.Path, err)
@@ -205,21 +215,21 @@ func Restore(dir string) error {
 		if !e.Existed {
 			continue
 		}
+		// The folder may be gone, for example after uninstall.
+		if err := os.MkdirAll(filepath.Dir(e.Path), fsutil.DirPerm); err != nil {
+			return fmt.Errorf("restore %s: %w", e.Path, err)
+		}
 		if e.Link != "" {
 			if err := os.Symlink(e.Link, e.Path); err != nil {
 				return fmt.Errorf("restore link %s: %w", e.Path, err)
 			}
 			continue
 		}
-		data, err := os.ReadFile(filepath.Join(dir, e.Stored))
-		if err != nil {
-			return fmt.Errorf("read backup of %s: %w", e.Path, err)
-		}
 		mode := fs.FileMode(e.Mode)
 		if mode == 0 {
 			mode = fsutil.FilePerm
 		}
-		if err := fsutil.WriteAtomic(e.Path, data, mode); err != nil {
+		if err := fsutil.WriteAtomic(e.Path, contents[i], mode); err != nil {
 			return err
 		}
 	}

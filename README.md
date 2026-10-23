@@ -116,14 +116,13 @@ Prompt and plugin-manager setups (tide, Powerlevel10k, Starship, fisher, oh-my-z
 - **Precedence:** a pin, then the most specific directory rule, then `default`. Git applies the rules by the
   location of the repository's `.git` directory, so a **worktree follows its main repository**. Outside any
   repository only `default` applies; `whoami` also tells you which profile new clones will get.
-- **Your own `includeIf` rules keep working:** GitPersona includes them again in your order, with its directory rules
-  placed between them by how specific they are; in each folder your rules cover it first restores your own global
-  settings, so the folder works as before (rules that only refine, such as `onbranch`, build on the profile). In their folders they still win
-  over a less specific rule and over `default` (`whoami` says when one sets the author); a more specific GitPersona
-  rule or a pin wins inside them, and giving exactly their folder to a profile with another identity replaces them.
-  Rules whose files set settings Git collects as lists (credential helpers, extra HTTP headers, URL rewrites) cannot
-  be included twice; `doctor` lists them. `setup` and `doctor --fix` remove the rules a profile fully takes over,
-  and `uninstall` puts them back. After editing your rules by hand, run `gitpersona apply`.
+- **Your own `includeIf` rules:** GitPersona's rules come after yours, so in the directories you give to profiles
+  (and in pins) the profile decides; everywhere else your own rules work exactly as before. A default profile applies
+  everywhere, so while you keep identity rules of your own, `setup` proposes none (`--default <profile>` sets one
+  anyway, and says which of your rules it overrides). `setup` leaves the folders of rules that do more than a profile
+  can (such as x509 signing or extra `ssh` options) to those rules (and says so when a profile's folder around one
+  still overrides it), removes the rules a profile fully takes over, and
+  `uninstall` puts those back where they were. `doctor` says which of your rules a profile overrides.
 - **Credentials:** for GitHub profiles, GitPersona is the only credential helper for that host and borrows the
   token `gh` already holds, so no other helper stores a copy. If an account is not signed in to `gh`, Git asks
   for a password; `gitpersona doctor` tells you which account to sign in.

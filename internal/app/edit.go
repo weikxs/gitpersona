@@ -26,8 +26,7 @@ func Use(ctx context.Context, e Env, profileID string) error {
 	}
 	dir := e.display(e.WorkDir)
 	opts := e.editOptions()
-	if r := e.resolveDir(cfg); r.Found && r.Reason == resolve.ReasonRule && r.Profile.ID == profileID && !samePath(r.Match, dir, opts) &&
-		!e.ownRuleBetween(ctx, cfg, r.Match) {
+	if r := e.resolveDir(cfg); r.Found && r.Reason == resolve.ReasonRule && r.Profile.ID == profileID && !samePath(r.Match, dir, opts) {
 		fmt.Fprintf(e.Stdout, "%s already uses profile %s through %s; nothing to change.\n", dir, profileID, r.Match)
 		return nil
 	}
@@ -298,26 +297,4 @@ func samePath(a, b string, o config.EditOptions) bool {
 	na, errA := paths.Normalize(a, o.Home)
 	nb, errB := paths.Normalize(b, o.Home)
 	return errA == nil && errB == nil && paths.Same(na, nb, o.CaseInsensitive)
-}
-
-// ownRuleBetween reports whether one of the user's own directory rules
-// covers the current directory more specifically than GitPersona's rule for
-// match, so that rule does not decide there.
-func (e Env) ownRuleBetween(ctx context.Context, cfg config.Config, match string) bool {
-	text, err := readOptional(e.resolvedUserGitConfig())
-	if err != nil {
-		return false
-	}
-	outer, err := paths.Normalize(match, e.Home)
-	if err != nil {
-		return false
-	}
-	rules, _ := e.userRules(ctx, cfg, text)
-	for _, r := range rules {
-		if r.Dir != "" && r.Dir != "/" && coversWith(e.comparisonKey, []string{r.Dir}, e.WorkDir) &&
-			len(e.comparisonKey(r.Dir)) > len(e.comparisonKey(outer)) {
-			return true
-		}
-	}
-	return false
 }

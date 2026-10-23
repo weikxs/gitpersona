@@ -287,7 +287,7 @@ func TestSetupKeepsAnOldRuleThatDoesMoreThanAProfile(t *testing.T) {
 	if got := readFile(t, filepath.Join(w.home, ".gitconfig")); !strings.Contains(got, "gitdir:~/Projects/personal/") {
 		t.Errorf("a rule that also rewrites URLs must stay:\n%s", got)
 	}
-	if !strings.Contains(out.String(), "Kept your includeIf rule for ~/Projects/personal: it also sets url.git@github-personal:.insteadof") {
+	if !strings.Contains(out.String(), "Kept your includeIf rule for ~/Projects/personal, which stays in charge there: it also sets url.git@github-personal:.insteadof") {
 		t.Errorf("setup should say why the rule stays:\n%s", out.String())
 	}
 }

@@ -175,3 +175,19 @@ func TestRemoveRestoresAFileWithoutTrailingNewline(t *testing.T) {
 		t.Fatalf("Remove(Upsert(%q)) = %q, want the original exactly", original, got)
 	}
 }
+
+func TestTheBlockUsesTheFilesLineEndings(t *testing.T) {
+	content := "[user]\r\n\tname = Demo\r\n"
+
+	got, err := UpsertLast(content, "[include]\n\tpath = x\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if strings.Count(got, "\n") != strings.Count(got, "\r\n") {
+		t.Errorf("a CRLF file must stay CRLF:\n%q", got)
+	}
+	if back, _ := Remove(got); back != content {
+		t.Errorf("Remove() = %q, want the original %q", back, content)
+	}
+}

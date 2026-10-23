@@ -9,6 +9,8 @@
 	format = openpgp
 [commit]
 	gpgsign = false
+[tag]
+	gpgSign = false
 [core]
 	sshCommand = ssh
 [credential "https://github.com"]

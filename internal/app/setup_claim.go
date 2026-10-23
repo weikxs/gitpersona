@@ -6,23 +6,22 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/weikxs/gitpersona/internal/config"
 	"github.com/weikxs/gitpersona/internal/discover"
 )
 
 // LeftOut is an identity of the user's existing includeIf setup that no
-// profile takes over. Its rule keeps applying in its folder; AccountFrom
-// names the profile GitPersona applies around it there, whose account is
-// used for what the rule does not set (such as pushes), or is "". The old
-// directory instead (GitPersona's rules come last), or is "". Replaceable
-// are the directories whose rules could go once a profile takes it over.
+// profile takes over. OverriddenBy names the profile whose rules replace it
+// in its folder (GitPersona's rules come after the user's: a profile's
+// directory around it, or the default), or is "" when the rule keeps
+// applying. Replaceable are the directories whose rules could go once a
+// profile takes it over.
 type LeftOut struct {
 	discover.Identity
-	AccountFrom string `json:"account_from,omitempty"`
-	// Overridden says why GitPersona cannot keep the rule working, in which
-	// case AccountFrom's profile replaces it there; "" when it keeps working.
-	Overridden  string   `json:"overridden,omitempty"`
-	Replaceable []string `json:"replaceable"`
+	OverriddenBy string   `json:"overridden_by,omitempty"`
+	Replaceable  []string `json:"replaceable"`
+	// ReplacedIn are profile directories inside its folder, where the
+	// profile's identity applies instead.
+	ReplacedIn []string `json:"replaced_in"`
 }
 
 // Evidence weights for tying an identity to an account. A single repository
@@ -156,21 +155,11 @@ func setupOwners(profiles []SetupProfile) []ruleOwner {
 	return owners
 }
 
-// leftOut describes the identities no profile takes over: what overrides
-// them, and which of their rules could go if one did.
+// leftOut describes the identities no profile takes over: which profile
+// replaces them, and which of their rules could go if one took them over.
 // An identity without a name is shown with globalName, which it commits with.
 func (e Env) leftOut(ctx context.Context, ids []discover.Identity, used []bool, owners []ruleOwner, defaultID, globalName string) []LeftOut {
 	rules := discover.IdentityRules(ctx, e.Home, e.resolvedUserGitConfig(), e.Run)
-	text, _ := readOptional(e.resolvedUserGitConfig())
-	_, skipped := e.userRules(ctx, config.Config{}, text)
-	why := map[string]string{} // directory -> why its rule is not kept working
-	for _, r := range rules {
-		for _, k := range skipped {
-			if k.Condition == r.Condition {
-				why[r.Dir] = k.Why
-			}
-		}
-	}
 	out := []LeftOut{}
 	for i, id := range ids {
 		if used[i] {
@@ -179,14 +168,12 @@ func (e Env) leftOut(ctx context.Context, ids []discover.Identity, used []bool, 
 		id.Source = e.Display(id.Source)
 		key, signing, _ := e.existingKeys(id) // offered only with keys that exist
 		id.SSHKey, id.Signing = key, discover.Signing{Method: signing.Method, Key: signing.Key}
-		l := LeftOut{Identity: id, Replaceable: []string{}}
+		l := LeftOut{Identity: id, Replaceable: []string{}, ReplacedIn: []string{}}
 		for _, d := range id.Dirs {
-			if by, ok := e.overriddenBy(d, owners, defaultID); ok && l.AccountFrom == "" {
-				l.AccountFrom = by.id
+			if by, ok := e.overriddenBy(d, owners, defaultID); ok && !by.sameIdentity(id.Email, id.Name) && l.OverriddenBy == "" {
+				l.OverriddenBy = by.id
 			}
-			if why[d] != "" {
-				l.Overridden = why[d]
-			}
+			l.ReplacedIn = append(l.ReplacedIn, e.profileDirsInside(d, owners)...)
 		}
 		for _, r := range rules {
 			if strings.EqualFold(r.Email, id.Email) && r.Name == id.Name && r.Keep == "" {
@@ -203,3 +190,72 @@ func (e Env) leftOut(ctx context.Context, ids []discover.Identity, used []bool, 
 
 // sortedClaims returns the claimed identity indexes in order.
 func sortedClaims(claims map[int]string) []int { return slices.Sorted(maps.Keys(claims)) }
+
+// ownRules describes the user's own includeIf identity rules that stay:
+// those of the identities left out, those kept because they do more than a
+// profile, and rules that are not directory rules (onbranch, hasconfig).
+func (e Env) ownRules(ctx context.Context, left []LeftOut, kept []KeptRule) []string {
+	out := []string{}
+	for _, l := range left {
+		if l.OverriddenBy == "" { // a profile's folder around it decides there anyway
+			out = append(out, author(l.Name, l.Email)+" for "+strings.Join(l.Dirs, ", "))
+		}
+	}
+	for _, k := range kept {
+		if k.OverriddenBy == "" {
+			out = append(out, "your rule for "+k.Dir)
+		}
+	}
+	for _, r := range discover.OtherIdentityRules(ctx, e.Home, e.resolvedUserGitConfig(), e.Run) {
+		out = append(out, author(r.Name, r.Email)+" for "+r.Condition)
+	}
+	return out
+}
+
+// withoutKeptDirs takes out of the profiles the directories of rules that do
+// more than a profile can (KeptRule says why): in a profile's directory the
+// profile wins, so those settings would be lost. The rules keep applying.
+func (e Env) withoutKeptDirs(ctx context.Context, profiles []SetupProfile) ([]SetupProfile, []KeptRule) {
+	why := map[string]string{}
+	for _, r := range discover.IdentityRules(ctx, e.Home, e.resolvedUserGitConfig(), e.Run) {
+		if r.Keep != "" {
+			why[e.comparisonKey(r.Dir)] = r.Keep
+		}
+	}
+	kept := []KeptRule{}
+	out := make([]SetupProfile, len(profiles))
+	for i, p := range profiles {
+		p.Dirs = slices.DeleteFunc(slices.Clone(p.Dirs), func(d string) bool {
+			if reason, ok := why[e.comparisonKey(d)]; ok {
+				kept = append(kept, KeptRule{Dir: d, Why: reason})
+				return true
+			}
+			return false
+		})
+		out[i] = p
+	}
+	return out, kept
+}
+
+// keptDirs returns the directories of kept rules.
+func keptDirs(kept []KeptRule) []string {
+	dirs := make([]string, len(kept))
+	for i, k := range kept {
+		dirs[i] = k.Dir
+	}
+	return dirs
+}
+
+// keptOverrides says, for each kept rule, which profile applies in its
+// folder instead (a profile's folder around it, or the default), if any.
+func (e Env) keptOverrides(kept []KeptRule, owners []ruleOwner, defaultID string) []KeptRule {
+	out := make([]KeptRule, len(kept))
+	for i, k := range kept {
+		k.OverriddenBy = ""
+		if by, ok := e.overriddenBy(k.Dir, owners, defaultID); ok {
+			k.OverriddenBy = by.id
+		}
+		out[i] = k
+	}
+	return out
+}

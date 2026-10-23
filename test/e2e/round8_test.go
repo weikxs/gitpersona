@@ -37,9 +37,10 @@ func TestRulesSetupDoesNotTakeOverKeepWorking(t *testing.T) {
 	if got := s.git(oss, "config", "user.email"); got != "release@demo.example" {
 		t.Errorf("on a release branch ~/oss commits as %q, want release@demo.example from the branch rule", got)
 	}
+	// No profile and no default apply there: Git's (and your rule's) settings decide.
 	whoami := s.runIn(oss, "whoami", "--check")
-	if !strings.Contains(whoami, "from your own includeIf rule") {
-		t.Errorf("whoami should explain the user's own rule:\n%s", whoami)
+	if !strings.Contains(whoami, "No GitPersona profile applies here") {
+		t.Errorf("whoami in a folder left to your own rule:\n%s", whoami)
 	}
 	if doctor := s.run("doctor"); strings.Contains(doctor, "✗") {
 		t.Errorf("doctor after setup:\n%s", doctor)

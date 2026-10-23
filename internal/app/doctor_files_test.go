@@ -57,8 +57,8 @@ func TestDoctorReportsMissingKeysMissingDirectoriesAndOldRules(t *testing.T) {
 		"✗ profile acme: signing key ~/.ssh/acme.pub does not exist",
 		"! profile globex: directory ~/Projects/clients/globex does not exist yet",
 		"! ~/.gitconfig still has includeIf identity rules that your profiles take over (~/Projects/personal)",
-		// No profile has that identity; GitPersona keeps the rule working there.
-		"✓ your includeIf rule for ~/old keeps applying there (<old@example.com>)",
+		// No profile has that identity, and the default applies everywhere.
+		"! profile acme overrides your includeIf rule for ~/old: commits there use Alex (Acme) <1000002+acme-alex@users.noreply.github.com> instead of <old@example.com>",
 	} {
 		if !strings.Contains(report, want) {
 			t.Errorf("doctor should report %q:\n%s", want, report)

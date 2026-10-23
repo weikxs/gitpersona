@@ -57,6 +57,11 @@ type SetupProposal struct {
 	// Global is the identity used outside every rule today, so the page can
 	// say what the default profile replaces.
 	Global GlobalIdentity `json:"global"`
+	// OwnRules describe the user's own includeIf identity rules that stay; a
+	// default profile would override them everywhere, so setup proposes none
+	// while there are any. SuggestedDefault is the profile it would propose.
+	OwnRules         []string `json:"own_rules"`
+	SuggestedDefault string   `json:"suggested_default"`
 	// Pins are repositories whose own settings name another profile than
 	// their directory; Unassigned are folders the user must choose for.
 	Pins       []PinSuggestion `json:"pins"`

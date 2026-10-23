@@ -59,6 +59,11 @@ func (e Env) removedSections(changes []change) string {
 	if err != nil {
 		return ""
 	}
+	// Where a rule stood is recorded without GitPersona's block, which
+	// uninstall takes out before putting the rules back.
+	if without, err := block.Remove(current); err == nil {
+		current = without
+	}
 	keep := map[string]bool{}
 	for _, s := range includeIfSections(changes[i].content) {
 		keep[s.condition] = true
@@ -66,11 +71,18 @@ func (e Env) removedSections(changes []change) string {
 	var b strings.Builder
 	for _, s := range includeIfSections(current) {
 		if !keep[s.condition] {
+			if s.before != "" {
+				fmt.Fprintf(&b, "%s%d %s\n", beforeMarker, s.beforeN, s.before) // where it goes back
+			}
 			b.WriteString(s.text)
 		}
 	}
 	return b.String()
 }
+
+// beforeMarker, in a backup's record of removed rules, names the section
+// header a removed rule stood before.
+const beforeMarker = "# gitpersona-before: "
 
 // Apply regenerates every file from the configuration. Only files whose
 // content changes are backed up and written, so running it twice is a no-op.
@@ -137,12 +149,10 @@ func (e Env) applyChanges(changes []change, opts ApplyOptions) error {
 	return backup.Prune(e.backupDir(), backupsToKeep)
 }
 
-// removals names the files a change set removes that need the user's
-// confirmation: all but the base settings, which only follow the rules.
 func (e Env) removals(changes []change) []string {
 	var names []string
 	for _, c := range changes {
-		if c.remove && c.path != filepath.Join(e.ConfigDir, generate.BaseFile) {
+		if c.remove {
 			names = append(names, e.display(c.path))
 		}
 	}
@@ -160,8 +170,7 @@ func planApply(ctx context.Context, e Env) ([]change, error) {
 
 // planWith computes the changes that generate the files for cfg. edit, when
 // set, also changes the global Git configuration (such as removing old
-// rules); the user's rules are read from the result, so the generated files
-// match it.
+// rules); the generated files follow the rules left in the result.
 func (e Env) planWith(ctx context.Context, cfg config.Config, edit func(string) string) ([]change, error) {
 	gitconfig, err := e.gitConfigWithBlock(edit)
 	if err != nil {
@@ -171,7 +180,7 @@ func (e Env) planWith(ctx context.Context, cfg config.Config, edit func(string) 
 	if err != nil {
 		return nil, err
 	}
-	opts.UserRules, _ = e.userRules(ctx, cfg, gitconfig.content)
+	opts.ResetSigning, opts.ResetSSH = e.resets(ctx, cfg, gitconfig.content)
 	files, err := generate.Generate(cfg, opts)
 	if err != nil {
 		return nil, err
@@ -221,8 +230,6 @@ func (e Env) generateOptions(ctx context.Context) (generate.Options, error) {
 		"user.signingkey": &opts.FallbackSigning.SigningKey,
 		"gpg.format":      &opts.FallbackSigning.Format,
 		"tag.gpgsign":     &opts.FallbackSigning.TagSign,
-		"user.name":       &opts.Global.Name,
-		"user.email":      &opts.Global.Email,
 	} {
 		values, err := e.gitConfigAll(ctx, key)
 		if err != nil {
@@ -345,14 +352,10 @@ func (e Env) gitConfigWithBlock(edit func(string) string) (change, error) {
 	return change{path: path, content: updated, perm: perm}, nil
 }
 
-// staleGenerated returns removals for generated files no longer generated:
-// those of profiles that no longer exist, and the base settings once no
-// rule of the user's is included again.
+// staleGenerated returns removals for generated profile files whose profile
+// no longer exists.
 func (e Env) staleGenerated(desired []change) []change {
 	existing, _ := filepath.Glob(filepath.Join(e.ConfigDir, "profiles", "*.gitconfig"))
-	if _, err := os.Stat(filepath.Join(e.ConfigDir, generate.BaseFile)); err == nil {
-		existing = append(existing, filepath.Join(e.ConfigDir, generate.BaseFile))
-	}
 	var stale []change
 	for _, path := range existing {
 		if !slices.ContainsFunc(desired, func(c change) bool { return c.path == path }) {

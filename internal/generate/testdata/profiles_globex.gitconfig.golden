@@ -9,5 +9,7 @@
 	format = openpgp
 [commit]
 	gpgsign = false
+[tag]
+	gpgSign = false
 [core]
 	sshCommand = ssh -i '/tmp/home/.ssh/id_ed25519_globex' -o IdentitiesOnly=yes

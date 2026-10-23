@@ -62,20 +62,21 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 - `signing = { method = "none" }` now also makes `git commit -S` refuse, instead of signing with a key from your
   global settings or another profile.
-- Your own `includeIf` rules (in `~/.config/git/config`, your global configuration and the files it includes) keep
-  working in their folders: GitPersona includes them again in your order, placing its own directory rules between
-  them by how specific they are, and restores your own global settings (identity, signing, SSH command, where a
-  profile changes them) at the start of each folder your rules cover, so the folder works as it did before setup.
-  Rules that only refine (`onbranch`, `hasconfig`) build on the profile around them. Rules setup cannot turn into a profile (an identity no account is tied to, x509 signing, a key used
-  only for tags, extra `ssh` options, `onbranch`, include chains, single repositories) therefore keep their effect;
-  only the account for pushes comes from the profile around them. A rule whose files set settings Git collects as
-  lists (credential helpers, extra HTTP headers, URL rewrites, remotes) is not included twice: setup and `doctor` say
-  that a profile replaces it there, and with which identity. `whoami` shows the author Git really uses and says when
-  your own rule sets it. `uninstall` puts back the rules setup or `doctor --fix` took over.
+- Your own `includeIf` rules and GitPersona have a clear boundary: GitPersona decides in the directories you give to
+  profiles and in pins, your rules everywhere else, as before. While you keep identity rules of your own, `setup`
+  proposes no default profile, which would override them everywhere (`--default <profile>` sets one anyway and lists
+  the rules it overrides). The folders of rules that do more than a profile can (x509 signing, extra `ssh` options, a
+  key used only for tags) stay with those rules. `doctor` says which of your rules a profile overrides; profiles reset
+  signing and the SSH command when your rules set them, so a profile's folder inside one of your rules never uses its
+  key. `uninstall` puts back the rules setup or `doctor --fix` removed, where they were; `whoami` shows the author Git
+  really uses and where it comes from. GitPersona's own settings are read from your dotfile includes and
+  `~/.config/git/config` too.
 - A configuration whose GPG signing key is a file is refused (it made every commit fail); use `method = "ssh"`.
 
 ### Fixed
 
+- The GitPersona block keeps the line endings of a CRLF `~/.gitconfig`. `rollback` recreates folders that are gone
+  (for example after `uninstall`) and reads every saved file before it starts writing.
 - Setup ties an existing `includeIf` identity that names no account to the right one by what is on disk: the key of
   that account's SSH alias, or the repositories in its folders or that set its email. The folders of existing rules
   are scanned too, along with `~/Developer`, `~/workspace` and `~/Documents/GitHub`. An identity it still cannot tie
