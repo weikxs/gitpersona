@@ -3,6 +3,7 @@ package discover
 import (
 	"context"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -23,9 +24,10 @@ func TestReposReportRemoteHostOwnerAndTheirOwnEmail(t *testing.T) {
 	repo(t, filepath.Join(root, "fun", "game"), "https://github.com/demo-personal/game")
 	repo(t, filepath.Join(root, "local"), "")
 
-	got, complete := Repos(context.Background(), []string{root}, ScanLimits{MaxDepth: 4, Timeout: time.Second})
+	found := Repos(context.Background(), []string{root}, ScanLimits{MaxDepth: 4, Timeout: time.Second})
+	got := found.Repos
 
-	if !complete {
+	if !found.Complete || found.TooDeep {
 		t.Error("a small scan should complete")
 	}
 	if len(got) != 3 {
@@ -71,7 +73,7 @@ func TestReposInsideRepositoriesAndAScannedRepositoryAreLone(t *testing.T) {
 	repo(t, filepath.Join(root, "outer", "inner"), "git@github-work:demo-work/inner.git")
 	write(t, filepath.Join(root, "outer", "sub", ".git"), "gitdir: ../.git/modules/sub\n") // a submodule
 
-	got, _ := Repos(context.Background(), []string{root}, ScanLimits{MaxDepth: 4, Timeout: time.Second})
+	got := Repos(context.Background(), []string{root}, ScanLimits{MaxDepth: 4, Timeout: time.Second}).Repos
 
 	lone := map[string]bool{}
 	for _, r := range got {
@@ -86,5 +88,43 @@ func TestReposInsideRepositoriesAndAScannedRepositoryAreLone(t *testing.T) {
 		if got, ok := lone[dir]; !ok || got != l {
 			t.Errorf("%s: lone = %v (found %v), want %v", dir, got, ok, l)
 		}
+	}
+}
+
+func TestReposSaysWhenFoldersWereTooDeepToLookIn(t *testing.T) {
+	root := t.TempDir()
+	repo(t, filepath.Join(root, "a", "shallow"), "https://github.com/demo-work/shallow")
+	repo(t, filepath.Join(root, "a", "b", "c", "deep"), "https://github.com/demo-work/deep")
+
+	found := Repos(context.Background(), []string{root}, ScanLimits{MaxDepth: 2, Timeout: time.Second})
+
+	if len(found.Repos) != 1 || !found.TooDeep {
+		t.Errorf("Repos() = %+v, want only the shallow repository and TooDeep", found)
+	}
+}
+
+func TestReposMarksTheFolderItWasInWhenTimeRanOut(t *testing.T) {
+	repos := []Repo{{Dir: "/r/code/a/one"}, {Dir: "/r/code/b/two"}, {Dir: "/r/code/b/three"}}
+
+	got := markPartial(repos, "/r/code/b/deep/folder")
+
+	if got[0].Partial || !got[1].Partial || !got[2].Partial {
+		t.Errorf("markPartial() = %+v; ~/code/a was finished, ~/code/b was still being looked through", got)
+	}
+	if repos[1].Partial {
+		t.Error("markPartial() changed its input")
+	}
+}
+
+func TestWalkReposSaysWhereItStopped(t *testing.T) {
+	root := t.TempDir()
+	repo(t, filepath.Join(root, "a", "one"), "")
+	repo(t, filepath.Join(root, "b", "two"), "")
+	ctx, cancel := context.WithCancel(context.Background())
+
+	_, stoppedAt := walkRepos(ctx, root, 4, func(string, bool) { cancel() })
+
+	if stoppedAt == "" || !strings.HasPrefix(stoppedAt, root) {
+		t.Errorf("stoppedAt = %q, want the folder it was about to look in", stoppedAt)
 	}
 }

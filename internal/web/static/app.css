@@ -279,8 +279,9 @@ input, select {
 input[aria-invalid="true"] { border-color: var(--fail); }
 fieldset { border: 1px solid var(--border); border-radius: var(--radius); padding: var(--space-3); margin: 0; }
 legend { padding: 0 var(--space-1); font-weight: 500; }
-label.check { display: flex; flex-wrap: wrap; align-items: center; gap: 0 var(--space-2); min-height: 44px; }
-label.check input { width: 20px; min-height: 20px; }
+/* The box sits left of the text, which wraps beside it rather than under it. */
+label.check { display: block; position: relative; min-height: 44px; padding: 12px 0 12px 28px; line-height: 20px; }
+label.check input { position: absolute; left: 0; top: 12px; width: 20px; min-height: 20px; margin: 0; }
 
 /* Status badges: an icon character and a word, never color alone. */
 

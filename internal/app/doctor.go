@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -131,6 +132,7 @@ func (e Env) runChecks(ctx context.Context) []check {
 		checks = append(checks, e.checkCurrentRepository(ctx, cfg)...)
 		checks = append(checks, e.checkPins(cfg)...)
 		checks = append(checks, e.checkKeyFiles(cfg)...)
+		checks = append(checks, e.checkSigning(ctx, cfg)...)
 		checks = append(checks, e.checkDirs(cfg)...)
 		checks = append(checks, e.checkOldRules(ctx, cfg)...)
 		checks = append(checks, e.checkShellIntegration(ctx, cfg)...)
@@ -163,6 +165,10 @@ func (e Env) checkConfig() (config.Config, check) {
 	cfg, err := config.Load(e.configFile())
 	if err == nil {
 		err = cfg.Validate(e.Home, e.CaseInsensitive)
+	}
+	if errors.Is(err, config.ErrNotFound) {
+		return cfg, check{label: "no configuration yet (" + e.display(e.configFile()) + ")",
+			advice: "run `gitpersona setup` to create it from what you already have"}
 	}
 	if err != nil {
 		return cfg, check{label: "configuration: " + err.Error(), advice: "fix " + e.display(e.configFile())}

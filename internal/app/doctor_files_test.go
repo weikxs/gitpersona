@@ -58,7 +58,7 @@ func TestDoctorReportsMissingKeysMissingDirectoriesAndOldRules(t *testing.T) {
 		"! profile globex: directory ~/Projects/clients/globex does not exist yet",
 		"! ~/.gitconfig still has includeIf identity rules that your profiles take over (~/Projects/personal)",
 		// No profile has that identity, and the default acme applies there instead.
-		"! profile acme overrides your includeIf rule for ~/old, so commits there do not use old@example.com",
+		"! profile acme overrides your includeIf rule for ~/old, so commits there do not use <old@example.com>",
 	} {
 		if !strings.Contains(report, want) {
 			t.Errorf("doctor should report %q:\n%s", want, report)
@@ -233,5 +233,61 @@ func TestAnOldRuleWithTheDefaultsEmailIsNotReportedAsOverridden(t *testing.T) {
 
 	if strings.Contains(out.String(), "overrides your includeIf rule") {
 		t.Errorf("the default acme has the rule's email, so nothing is lost:\n%s", out.String())
+	}
+}
+
+func TestDoctorCatchesSigningThatCannotWork(t *testing.T) {
+	w := newWorld(t)
+	cfg := strings.Replace(demoConfig, `email   = "1000002+acme-alex@users.noreply.github.com"`,
+		`email   = "1000002+acme-alex@users.noreply.github.com"`+"\n"+`signing = { method = "gpg", key = "~/.ssh/acme.pub" }`, 1)
+	cfg = strings.Replace(cfg, `email   = "1000001+octo-alex@users.noreply.github.com"`,
+		`email   = "1000001+octo-alex@users.noreply.github.com"`+"\n"+`signing = { method = "ssh", key = "~/.ssh/octo.pub" }`, 1)
+	withDefault := strings.Replace(cfg, `default = "acme"`, `default = "personal"`, 1)
+	mustWrite(t, filepath.Join(w.home, ".config", "gitpersona", "config.toml"), withDefault, 0o600)
+	mustWrite(t, filepath.Join(w.home, ".ssh", "octo.pub"), "PUBLIC KEY PLACEHOLDER\n", 0o600)
+	mustWrite(t, filepath.Join(w.home, ".gitconfig"), "[gpg]\n\tformat = ssh\n", 0o600)
+	env, out := w.env(t, w.home)
+	if err := Apply(context.Background(), env, ApplyOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	out.Reset()
+
+	ok := Doctor(context.Background(), env)
+
+	for _, want := range []string{
+		"✗ profile acme signs with GPG, but its key ~/.ssh/acme.pub is a file",
+		"! profile globex has no signing, so `git commit -S` in its directories uses profile personal's SSH key",
+	} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("doctor should report %q:\n%s", want, out.String())
+		}
+	}
+	if ok {
+		t.Error("GPG signing with a file key fails every commit, so doctor must fail")
+	}
+
+	// With acme as the default, personal's key applies only in its own
+	// directories, which do not enclose globex's.
+	mustWrite(t, filepath.Join(w.home, ".config", "gitpersona", "config.toml"), cfg, 0o600)
+	if err := Apply(context.Background(), env, ApplyOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	out.Reset()
+	Doctor(context.Background(), env)
+	if strings.Contains(out.String(), "has no signing") {
+		t.Errorf("no profile's SSH key reaches globex's directories:\n%s", out.String())
+	}
+}
+
+func TestDoctorWithoutAConfigurationSuggestsSetup(t *testing.T) {
+	w := newWorld(t)
+	withoutConfig(t, w)
+	env, out := w.env(t, w.home)
+
+	Doctor(context.Background(), env)
+
+	if !strings.Contains(out.String(), "no configuration yet (~/.config/gitpersona/config.toml)") ||
+		!strings.Contains(out.String(), "gitpersona setup") || strings.Contains(out.String(), w.home) {
+		t.Errorf("doctor without a configuration:\n%s", out.String())
 	}
 }

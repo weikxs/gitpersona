@@ -12,8 +12,8 @@ import { renderSetup } from "./views/setup.js";
 
 const VIEWS = {
   overview: { title: "Overview", render: renderOverview },
-  profiles: { title: "Profiles", render: renderProfiles },
-  apply: { title: "Review & apply", render: renderApply },
+  profiles: { title: "Profiles", render: renderProfiles, needsConfig: true },
+  apply: { title: "Review & apply", render: renderApply, needsConfig: true },
   shells: { title: "Shells", render: renderShells },
   backups: { title: "Backups", render: renderBackups },
   setup: { title: "Set up GitPersona", render: renderSetup },
@@ -89,7 +89,12 @@ function render({ focus = false } = {}) {
   const heading = h("h2", { tabindex: "-1" }, view.title);
   const section = h("section", { "aria-labelledby": "view-title" }, heading);
   heading.id = "view-title";
-  view.render(section, { state, run, refresh: refreshAll });
+  if (view.needsConfig && !state.config_exists) {
+    section.append(h("p", { class: "empty" }, "No configuration yet. ",
+      h("a", { href: "#setup" }, "Set GitPersona up"), " first; it takes a few seconds."));
+  } else {
+    view.render(section, { state, run, refresh: refreshAll });
+  }
   replace(document.getElementById("view"), section);
   if (focus) heading.focus();
 }

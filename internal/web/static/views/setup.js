@@ -10,6 +10,11 @@ import { quickView, pinChoices, shellChoices, oldRulesChoice, leftOutChoices, pr
 
 const STEPS = ["Identities", "Directories", "Review & apply"];
 
+const NAME_HINTS = {
+  login: "This account shows no public name, so this is its login",
+  global: "Your includeIf setup sets no name, so this is your global Git name",
+};
+
 const EMAIL_HINTS = {
   public: "The public email on this account's GitHub profile",
   noreply: "This account shows no public email, so this is its GitHub noreply address",
@@ -99,6 +104,7 @@ function fromProposal(p) {
     roots: p.roots.join(", "),
     scanned: p.roots.length > 0,
     scanIncomplete: p.scan_incomplete,
+    scanTooDeep: p.scan_too_deep,
   };
 }
 
@@ -209,7 +215,7 @@ function identityFields(p, i) {
   // profile the user leaves out cannot block Next.
   const fields = h("fieldset", { class: "stack plain", hidden: !p.include, disabled: !p.include },
     field("Profile name", input("id", { pattern: "[a-z0-9][a-z0-9\\-]{0,31}", maxlength: 32, title: "Lowercase letters, digits and -, starting with a letter or digit" }), "Lowercase letters, digits and -"),
-    field("Author name", input("name"), p.name_source === "login" ? "This account shows no public name, so this is its login" : null),
+    field("Author name", input("name"), NAME_HINTS[p.name_source]),
     field("Author email", input("email", { type: "email" }), EMAIL_HINTS[p.email_source]),
     h("label", { class: "check" }, isDefault, "Use this profile where no directory rule matches (default)"));
   include.addEventListener("change", () => {

@@ -119,7 +119,11 @@ func profileSnippet(p config.Profile, u usage, opts Options) (string, error) {
 
 func writeSigning(b *strings.Builder, p config.Profile, u usage, opts Options) error {
 	if p.Signing.Method == config.SigningNone {
-		// "none" means off, even when the user signs everything globally.
+		// "none" means off, even when the user signs everything globally;
+		// an empty key makes `git commit -S` refuse instead of signing with
+		// another profile's key.
+		b.WriteString("[user]\n")
+		writeKV(b, "signingkey", "")
 		b.WriteString("[commit]\n")
 		writeKV(b, "gpgsign", "false")
 		b.WriteString("[tag]\n")

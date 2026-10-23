@@ -58,6 +58,11 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
   `gh` already holds, and stays silent otherwise so the user's own helpers still work.
 - Directory rules work when a directory is reached through a symbolic link.
 
+### Changed
+
+- `signing = { method = "none" }` now also makes `git commit -S` refuse, instead of signing with a key from your
+  global settings or another profile.
+
 ### Fixed
 
 - Setup ties an existing `includeIf` identity that names no account to the right one by what is on disk: the key of
@@ -81,6 +86,24 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
   a repository outside every rule follows the default you choose.
 - `includeIf` rules written with the home's absolute path are shown and stored as `~/...`.
 - The preview on the "Your setup is ready" page follows the boxes you tick or untick.
+- An existing identity that takes `gpg.format` or `commit.gpgsign` from your global settings (also from files they
+  include, such as dotfiles) is imported with that signing; `gpg.format = ssh` was read as GPG, which made every
+  commit fail. `doctor` fails on a GPG key that is a file path.
+- The folder of an identity setup cannot tie to an account gets no rule or pin from the repositories in it, which
+  would otherwise replace that identity; folders inside it that clearly belong to an account still get their rule.
+- An SSH alias is tied to the account whose existing key it uses, or else to the account most of its repositories
+  belong to (one vote each); an alias used for several accounts' repositories is tied to none. Reasons say whose
+  alias a repository uses.
+- Suggested rules inside a rule for the same profile are merged into it.
+- An existing identity without `user.name` keeps your global Git name instead of the GitHub login; setup says where
+  each name comes from. Identities with the same email but another author name are no longer merged, and an old rule
+  is removed only when its name matches too (or you ticked its removal on the page).
+- Setup names the default profile's identity, has `--no-default`, says when folders were too deep to look in (it now
+  looks five levels deep) or when a folder was cut off by the time limit, and `--print` lists what it leaves out.
+- `doctor` warns when `git commit -S` in a profile without signing would use another profile's SSH key (the default
+  or an enclosing directory's; Git cannot unset a key).
+- `doctor` without a configuration suggests `gitpersona setup`; the page's Profiles and Review & apply sections
+  point to setup until there is a configuration; long checkbox labels wrap beside the box at phone width.
 - `signing = { method = "none" }` turns commit and tag signing off even when you sign everything globally; before,
   it did nothing and commits still tried to sign.
 - The configuration page compares a directory typed as an absolute path with the stored `~/` form: moving a

@@ -56,26 +56,35 @@ func RemoveOldRules(ctx context.Context, e Env) error {
 	return nil
 }
 
-// ruleOwner is what an old rule is compared with: a profile's id, email and
-// directories.
+// ruleOwner is what an old rule is compared with: a profile's id, author
+// name and email, and directories.
 type ruleOwner struct {
-	id, email string
-	dirs      []string
+	id, name, email string
+	dirs            []string
+	// anyName compares by email only: the user chose to replace the rule,
+	// perhaps after changing the name.
+	anyName bool
+}
+
+// sameIdentity reports whether the owner commits as the rule does: the same
+// email, and the same name when the rule sets one.
+func (o ruleOwner) sameIdentity(email, name string) bool {
+	return strings.EqualFold(o.email, email) && (o.anyName || name == "" || o.name == name)
 }
 
 func ownersOf(cfg config.Config) []ruleOwner {
 	owners := make([]ruleOwner, len(cfg.Profiles))
 	for i, p := range cfg.Profiles {
-		owners[i] = ruleOwner{id: p.ID, email: p.Email, dirs: p.Dirs}
+		owners[i] = ruleOwner{id: p.ID, name: p.Name, email: p.Email, dirs: p.Dirs}
 	}
 	return owners
 }
 
-// takenOver reports whether a profile with the rule's email covers the
+// takenOver reports whether a profile with the rule's identity covers the
 // rule's directory, so the rule adds nothing.
 func (e Env) takenOver(r discover.Rule, owners []ruleOwner) bool {
 	return slices.ContainsFunc(owners, func(o ruleOwner) bool {
-		return strings.EqualFold(o.email, r.Email) && coversWith(e.comparisonKey, o.dirs, r.Dir)
+		return o.sameIdentity(r.Email, r.Name) && coversWith(e.comparisonKey, o.dirs, r.Dir)
 	})
 }
 

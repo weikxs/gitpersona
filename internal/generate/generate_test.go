@@ -304,3 +304,18 @@ func TestAProfileWithoutSigningNeverInheritsAnotherProfilesKey(t *testing.T) {
 		})
 	}
 }
+
+func TestSigningNoneMakesGitCommitSRefuse(t *testing.T) {
+	var b strings.Builder
+	p := config.Profile{ID: "off", Signing: config.Signing{Method: config.SigningNone}}
+
+	if err := writeSigning(&b, p, usage{}, Options{}); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, want := range []string{`signingkey = ""`, "gpgsign = false", "gpgSign = false"} {
+		if !strings.Contains(b.String(), want) {
+			t.Errorf("signing none should write %q:\n%s", want, b.String())
+		}
+	}
+}

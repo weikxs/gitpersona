@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -23,6 +24,9 @@ type SetupOptions struct {
 	// KeepOldRules leaves hand-made includeIf rules in ~/.gitconfig even
 	// when the profiles take them over.
 	KeepOldRules bool
+	// NoDefault sets no default profile, so the global Git identity stays
+	// outside the directories.
+	NoDefault bool
 }
 
 var invalidIDChars = regexp.MustCompile(`[^a-z0-9-]+`)
@@ -44,9 +48,13 @@ func Setup(ctx context.Context, e Env, opts SetupOptions) error {
 	if opts.KeepOldRules {
 		proposal.OldRules = []string{}
 	}
+	if opts.NoDefault {
+		proposal.Default = ""
+	}
 	plan := proposal.Plan()
 	if opts.Print {
 		fmt.Fprint(e.Stdout, renderPlan(plan))
+		printLeftOutComments(e.Stdout, proposal)
 		return nil
 	}
 	e.printProposal(proposal)
@@ -90,6 +98,10 @@ func (e Env) printProposal(p SetupProposal) {
 		fmt.Fprintf(w, "\n  ! Looking for repositories stopped after %s; folders it did not reach are not included.\n",
 			discover.DefaultScanLimits.Timeout)
 	}
+	if p.ScanTooDeep {
+		fmt.Fprintf(w, "\n  Repositories nested more than %d folders deep were not looked at; add their folders with `gitpersona use`.\n",
+			discover.DefaultScanLimits.MaxDepth)
+	}
 	for _, prof := range p.Profiles {
 		printProposedProfile(w, prof, prof.ID == p.Default)
 	}
@@ -98,9 +110,13 @@ func (e Env) printProposal(p SetupProposal) {
 			fmt.Fprintf(w, "\n  Pin %s to %s: %s\n", pin.Repo, pin.Profile, pin.Why)
 		}
 	}
-	if p.Default != "" && p.Global.Email != "" {
-		fmt.Fprintf(w, "\n  Outside these directories, commits will use %s instead of %s <%s>.\n",
-			p.Default, p.Global.Name, p.Global.Email)
+	if k := slices.IndexFunc(p.Profiles, func(x SetupProfile) bool { return x.ID == p.Default }); k >= 0 {
+		def := p.Profiles[k]
+		fmt.Fprintf(w, "\n  Outside these directories, commits will use %s (%s <%s>)", def.ID, def.Name, def.Email)
+		if p.Global.Email != "" {
+			fmt.Fprintf(w, " instead of %s <%s>", p.Global.Name, p.Global.Email)
+		}
+		fmt.Fprintln(w, " (--no-default to keep your global Git identity).")
 	}
 	if len(p.OldRules) > 0 {
 		fmt.Fprintf(w, "\n  The profiles take over your includeIf rules for %s; they are removed from your Git configuration (--keep-old-rules to keep them).\n",
@@ -139,12 +155,29 @@ func printUnassigned(w io.Writer, p SetupProposal) {
 	}
 }
 
+// printLeftOutComments adds to a printed configuration, as comments, what
+// it leaves out of the existing setup.
+func printLeftOutComments(w io.Writer, p SetupProposal) {
+	for _, u := range p.Unmatched {
+		fmt.Fprintf(w, "\n# Left out: %s for %s; no signed-in account could be tied to it.\n", author(u.Name, u.Email), strings.Join(u.Dirs, ", "))
+	}
+	for _, k := range p.KeptRules {
+		fmt.Fprintf(w, "# Kept: your includeIf rule for %s (%s).\n", k.Dir, k.Why)
+	}
+}
+
 func printProposedProfile(w io.Writer, p SetupProfile, isDefault bool) {
 	label := p.ID
 	if isDefault {
 		label += " (default)"
 	}
 	fmt.Fprintf(w, "\n  %s: %s <%s>\n", label, p.Name, p.Email)
+	switch p.NameSource {
+	case "login":
+		fmt.Fprintln(w, "    (the account shows no public name, so the name is its login)")
+	case "global":
+		fmt.Fprintln(w, "    (your includeIf setup sets no name, so the name is your global Git name)")
+	}
 	if p.SSHKey != "" {
 		fmt.Fprintf(w, "    SSH key %s\n", p.SSHKey)
 	}

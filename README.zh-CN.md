@@ -99,7 +99,7 @@ Git、`gh`、`glab` 都假定只有一个全局的"当前账户"，于是很容�
 | `gitpersona prompt [--format]` | 输出这里 Git 使用的账户，供提示符使用（`{account}`、`{profile}`、`{host}`） |
 | `gitpersona rollback [<名称>\|latest] [--yes]` | 列出备份，或恢复某个备份（恢复前会先备份当前状态） |
 | `gitpersona uninstall [--yes]` | 从 Git 配置中移除 GitPersona；保留 config.toml |
-| `gitpersona setup [--yes] [--no-shell] [--keep-old-rules] [--print \| --web]` | 根据现有配置一步完成设置（账户、已有身份、仓库、SSH 别名、Shell）；写入前询问，`--yes` 不询问；`--web` 在浏览器中展示，也可以逐步调整 |
+| `gitpersona setup [--yes] [--no-shell] [--keep-old-rules] [--no-default] [--print \| --web]` | 根据现有配置一步完成设置（账户、已有身份、仓库、SSH 别名、Shell）；写入前询问，`--yes` 不询问；`--web` 在浏览器中展示，也可以逐步调整 |
 | `gitpersona ui [--no-open]` | 在浏览器中打开配置页面：身份、目录、Pin、应用前的差异预览、体检、shell 和备份。只监听 127.0.0.1，链接只能用一次，15 分钟无操作自动退出 |
 | `gitpersona help <命令>` | 查看某个命令的参数 |
 

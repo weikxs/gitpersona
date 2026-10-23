@@ -11,10 +11,6 @@ const SIGNING_LABELS = { ssh: "SSH", gpg: "GPG", none: "off" };
 
 export function renderProfiles(section, ctx) {
   const { state } = ctx;
-  if (!state.config_exists) {
-    section.append(h("p", { class: "empty" }, "No configuration yet. Create one from the Overview."));
-    return;
-  }
   if (state.config_error) {
     section.append(configProblem(state));
     // A file that does not parse has no profiles to show or change.

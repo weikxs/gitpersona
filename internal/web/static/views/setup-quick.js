@@ -9,6 +9,11 @@ import { diffBlock } from "./apply.js";
 // QUICK is the wizard step of this page; the detailed steps are 0, 1 and 2.
 export const QUICK = -1;
 
+const NAME_NOTES = {
+  login: "The account shows no public name, so the name is its login.",
+  global: "Your includeIf setup sets no name, so the name is your global Git name.",
+};
+
 const SIGNING = { ssh: "signs commits with SSH", gpg: "signs commits with GPG", none: "never signs" };
 
 // quickView shows the proposal. ctx gives the wizard state and its actions:
@@ -32,6 +37,8 @@ export function quickView(ctx) {
     wizard.scanIncomplete ? h("div", { class: "notice warn" }, badge("warn"),
       " Looking for repositories stopped at its time limit, so folders it did not reach are not included. " +
       "Add them under Adjust step by step.") : null,
+    wizard.scanTooDeep ? h("p", { class: "muted" }, "Repositories nested more than five folders deep were not looked at; " +
+      "add their directories under Adjust step by step.") : null,
     included.length === 0
       ? h("div", { class: "notice warn" }, "No profile is chosen. Use Adjust step by step to choose at least one.")
       : h("div", { class: "grid" }, included.map((p) => profileSummary(p, p.account === wizard.defaultAccount))),
@@ -61,6 +68,7 @@ function profileSummary(p, isDefault) {
   return h("article", { class: "card", "aria-label": `Profile ${p.id}` },
     h("div", { class: "card-head" }, h("h4", {}, p.id), isDefault ? badge("info", "Default") : null),
     h("p", {}, `${p.name} <${p.email}>`),
+    NAME_NOTES[p.name_source] ? h("p", { class: "muted" }, NAME_NOTES[p.name_source]) : null,
     p.ssh_key ? h("p", { class: "muted" }, "SSH key ", h("span", { class: "mono" }, p.ssh_key)) : null,
     p.signing?.method ? h("p", { class: "muted" }, SIGNING[p.signing.method] ?? p.signing.method) : null,
     dirs.length === 0 ? h("p", { class: "empty" }, "No directories yet; add them under Adjust or later with gitpersona use.")
@@ -111,8 +119,9 @@ function adoptIdentity(w, k, i) {
   const u = w.unmatched[k];
   const profiles = w.profiles.map((p, j) => (j !== i ? p : {
     ...p,
-    name: u.name || p.name,
-    name_source: u.name ? "existing" : p.name_source,
+    // An identity without a name committed with the global Git name.
+    name: u.name || w.global?.name || p.name,
+    name_source: u.name ? "existing" : w.global?.name ? "global" : p.name_source,
     email: u.email,
     email_source: "existing",
     source: "existing",
@@ -134,7 +143,7 @@ function outsideText(wizard) {
     return h("p", { class: "muted" }, today ? `Outside these directories, commits keep using ${today}.`
       : "Outside these directories, Git's own settings apply.");
   }
-  return h("p", { class: "muted" }, `Outside these directories, commits use ${chosen.id}`,
+  return h("p", { class: "muted" }, `Outside these directories, commits use ${chosen.id} (${chosen.name} <${chosen.email}>)`,
     today ? ` instead of ${today} (choose "No default" under Adjust to keep it).` : ".");
 }
 

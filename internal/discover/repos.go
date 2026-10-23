@@ -1,9 +1,11 @@
 package discover
 
 import (
+	"cmp"
 	"context"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 )
 
@@ -18,16 +20,32 @@ type Repo struct {
 	// repositories: it is a scanned folder itself, or sits inside another
 	// repository.
 	Lone bool `json:"lone"`
+	// Partial is set when the scan stopped at its time limit while in the
+	// repository's folder, so the folder may hold more repositories.
+	Partial bool `json:"partial,omitempty"`
+}
+
+// Found is the outcome of Repos.
+type Found struct {
+	Repos []Repo
+	// Complete is false when the scan stopped at its time limit.
+	Complete bool
+	// TooDeep is set when folders below the depth limit were not looked in.
+	TooDeep bool
 }
 
 // Repos finds the repositories under roots and reads, from each .git/config,
-// only the origin remote (or the first remote) and user.email. complete is
-// false when the scan stopped at the time limit before it saw everything.
-func Repos(ctx context.Context, roots []string, limits ScanLimits) (repos []Repo, complete bool) {
+// only the origin remote (or the first remote) and user.email.
+func Repos(ctx context.Context, roots []string, limits ScanLimits) Found {
 	ctx, cancel := context.WithTimeout(ctx, limits.Timeout)
 	defer cancel()
+	var repos []Repo
+	tooDeep, stoppedAt := false, ""
 	for _, root := range roots {
-		walkRepos(ctx, root, limits.MaxDepth, func(dir string, lone bool) {
+		if ctx.Err() != nil {
+			break
+		}
+		deep, stopped := walkRepos(ctx, root, limits.MaxDepth, func(dir string, lone bool) {
 			data, err := os.ReadFile(filepath.Join(dir, ".git", "config"))
 			if err != nil {
 				return
@@ -36,8 +54,24 @@ func Repos(ctx context.Context, roots []string, limits ScanLimits) (repos []Repo
 			host, owner, user := parseRemote(url)
 			repos = append(repos, Repo{Dir: dir, Host: host, Owner: owner, Email: email, User: user, Lone: lone})
 		})
+		tooDeep = tooDeep || deep
+		stoppedAt = cmp.Or(stoppedAt, stopped)
 	}
-	return repos, ctx.Err() == nil
+	if ctx.Err() == nil {
+		return Found{Repos: repos, Complete: true, TooDeep: tooDeep}
+	}
+	return Found{Repos: markPartial(repos, stoppedAt), TooDeep: tooDeep}
+}
+
+// markPartial marks the repositories in the folders the scan was still
+// going through when it stopped at stoppedAt: those may hold more.
+func markPartial(repos []Repo, stoppedAt string) []Repo {
+	out := slices.Clone(repos)
+	for i, r := range out {
+		parent := filepath.Dir(r.Dir)
+		out[i].Partial = stoppedAt != "" && (stoppedAt == parent || strings.HasPrefix(stoppedAt, parent+string(filepath.Separator)))
+	}
+	return out
 }
 
 // repoConfig returns the origin remote's URL (or the first remote's) and

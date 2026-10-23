@@ -101,15 +101,30 @@ func tied(counts map[string]int, n int) bool {
 }
 
 // adopt gives profile p the name, email, directories and keys of an
-// existing identity. Keys whose files are missing are left out with a note.
-func (e Env) adopt(p SetupProfile, id discover.Identity) SetupProfile {
-	if id.Name != "" {
+// existing identity. An identity without a name used the global name, which
+// it keeps. Keys whose files are missing are left out with a note.
+func (e Env) adopt(p SetupProfile, id discover.Identity, globalName string) SetupProfile {
+	switch {
+	case id.Name != "":
 		p.Name, p.NameSource = id.Name, "existing"
+	case globalName != "":
+		p.Name, p.NameSource = globalName, "global"
 	}
 	p.Email, p.EmailSource, p.Source = id.Email, "existing", "existing"
 	p.Dirs = append(slices.Clone(p.Dirs), id.Dirs...)
 	p.SSHKey, p.Signing, p.Notes = e.existingKeys(id)
 	return p
+}
+
+// unused returns the identities no profile took over.
+func unused(ids []discover.Identity, used []bool) []discover.Identity {
+	var out []discover.Identity
+	for i, id := range ids {
+		if !used[i] {
+			out = append(out, id)
+		}
+	}
+	return out
 }
 
 // identityDirs returns the directories of the existing identities, to scan.
@@ -130,7 +145,7 @@ func setupOwners(profiles []SetupProfile) []ruleOwner {
 		for _, f := range p.Found {
 			dirs = append(dirs, f.Dir)
 		}
-		owners[i] = ruleOwner{id: p.ID, email: p.Email, dirs: dirs}
+		owners[i] = ruleOwner{id: p.ID, name: p.Name, email: p.Email, dirs: dirs}
 	}
 	return owners
 }
@@ -149,12 +164,12 @@ func (e Env) leftOut(ctx context.Context, ids []discover.Identity, used []bool, 
 		id.SSHKey, id.Signing = key, discover.Signing{Method: signing.Method, Key: signing.Key}
 		l := LeftOut{Identity: id, Replaceable: []string{}}
 		for _, d := range id.Dirs {
-			if by, ok := e.overriddenBy(d, owners, defaultID); ok && l.OverriddenBy == "" && !strings.EqualFold(by.email, id.Email) {
+			if by, ok := e.overriddenBy(d, owners, defaultID); ok && l.OverriddenBy == "" && !by.sameIdentity(id.Email, id.Name) {
 				l.OverriddenBy = by.id
 			}
 		}
 		for _, r := range rules {
-			if strings.EqualFold(r.Email, id.Email) && r.Keep == "" {
+			if strings.EqualFold(r.Email, id.Email) && r.Name == id.Name && r.Keep == "" {
 				l.Replaceable = append(l.Replaceable, r.Dir)
 			}
 		}

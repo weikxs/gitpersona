@@ -29,7 +29,8 @@ type SetupProfile struct {
 	// when the account shows none, or "existing".
 	EmailSource string `json:"email_source,omitempty"`
 	// NameSource is "public" for the name on the GitHub profile, "login"
-	// when the account shows none, or "existing".
+	// when the account shows none, "existing", or "global" for the global
+	// Git name an existing identity without a name used.
 	NameSource string `json:"name_source,omitempty"`
 	// SSHKey and Signing come from the existing setup or an SSH alias.
 	SSHKey  string         `json:"ssh_key,omitempty"`
@@ -67,6 +68,8 @@ type SetupProposal struct {
 	// ScanIncomplete is set when the scan stopped at its time limit, so
 	// some folders were not looked at.
 	ScanIncomplete bool `json:"scan_incomplete"`
+	// ScanTooDeep is set when folders below the depth limit were not looked in.
+	ScanTooDeep bool `json:"scan_too_deep"`
 	// OldRules are the directories of hand-made includeIf rules whose
 	// identities the profiles take over; setup removes those rules.
 	OldRules []string `json:"old_rules"`
@@ -124,6 +127,7 @@ func ProposeSetup(ctx context.Context, e Env) (SetupProposal, error) {
 	}
 	existing, _ := discover.Existing(ctx, e.Home, e.GlobalGitConfigPath(), e.Run)
 	used := make([]bool, len(existing))
+	global := e.globalIdentity(ctx)
 
 	proposal := SetupProposal{Profiles: []SetupProfile{}}
 	for _, a := range accounts {
@@ -135,14 +139,14 @@ func ProposeSetup(ctx context.Context, e Env) (SetupProposal, error) {
 		p.Name, p.Email, p.EmailSource, p.NameSource = gh.name, gh.email, gh.emailSource, gh.nameSource
 		if i := matchIdentity(existing, used, a.Login, gh.publicEmail); i >= 0 {
 			used[i] = true
-			p = e.adopt(p, existing[i])
+			p = e.adopt(p, existing[i], global.Name)
 		}
 		if a.Active {
 			proposal.Default = p.ID
 		}
 		proposal.Profiles = append(proposal.Profiles, p)
 	}
-	proposal.Global = e.globalIdentity(ctx)
+	proposal.Global = global
 	return e.organize(ctx, proposal, existing, used)
 }
 
@@ -302,7 +306,13 @@ func (e Env) retireOldRules(ctx context.Context, changes []change, plan SetupPla
 		}
 		out, i = append(out, change{path: path, content: current, perm: perm}), len(out)
 	}
-	updated, _, _ := e.withoutOldRules(ctx, out[i].content, setupOwners(plan.Profiles), plan.RemoveOldRules)
+	// The user ticked these rules for removal, perhaps after editing the
+	// name, so a profile with the email covering the folder is enough.
+	owners := setupOwners(plan.Profiles)
+	for k := range owners {
+		owners[k].anyName = true
+	}
+	updated, _, _ := e.withoutOldRules(ctx, out[i].content, owners, plan.RemoveOldRules)
 	if updated == out[i].content && i == len(changes) {
 		return changes, nil // nothing to remove after all
 	}

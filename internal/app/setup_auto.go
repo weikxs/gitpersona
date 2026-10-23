@@ -56,17 +56,18 @@ func (e Env) organize(ctx context.Context, p SetupProposal, existing []discover.
 		return SetupProposal{}, err
 	}
 	aliases := discover.SSHAliases(filepath.Join(e.Home, ".ssh", "config"), e.Home)
-	repos, complete := e.scannedRepos(ctx, roots)
+	found := e.scannedRepos(ctx, roots)
+	repos := found.Repos
 
 	profiles := slices.Clone(p.Profiles)
 	claims := claimIdentities(newInference(profiles, repos, aliases, e.comparisonKey), existing, used, repos, aliases)
 	for _, i := range sortedClaims(claims) {
 		used[i] = true
 		k := slices.IndexFunc(profiles, func(x SetupProfile) bool { return x.Account == claims[i] })
-		profiles[k] = e.adopt(profiles[k], existing[i])
+		profiles[k] = e.adopt(profiles[k], existing[i], p.Global.Name)
 	}
 
-	l := inferLayout(profiles, repos, aliases, e.comparisonKey)
+	l := inferLayout(profiles, repos, aliases, e.comparisonKey, identityDirs(unused(existing, used)))
 	for i, prof := range profiles {
 		prof.Found = l.found[prof.Account]
 		if prof.SSHKey == "" {
@@ -74,7 +75,7 @@ func (e Env) organize(ctx context.Context, p SetupProposal, existing []discover.
 		}
 		profiles[i] = prof
 	}
-	p.Profiles, p.Roots, p.ScanIncomplete = profiles, roots.Shown, !complete
+	p.Profiles, p.Roots, p.ScanIncomplete, p.ScanTooDeep = profiles, roots.Shown, !found.Complete, found.TooDeep
 	p.Pins = append([]PinSuggestion{}, l.pins...)
 	p.Unassigned = append([]UnassignedDir{}, l.unassigned...)
 
@@ -97,11 +98,11 @@ func (e Env) organize(ctx context.Context, p SetupProposal, existing []discover.
 
 // scannedRepos finds the repositories under roots once each, even when two
 // roots reach the same folder, written as the user reaches them.
-func (e Env) scannedRepos(ctx context.Context, roots ScanRoots) ([]discover.Repo, bool) {
+func (e Env) scannedRepos(ctx context.Context, roots ScanRoots) discover.Found {
 	seen := map[string]bool{}
 	var repos []discover.Repo
-	found, complete := discover.Repos(ctx, roots.Real, discover.DefaultScanLimits)
-	for _, r := range found {
+	found := discover.Repos(ctx, roots.Real, discover.DefaultScanLimits)
+	for _, r := range found.Repos {
 		realPath := paths.ResolveSymlinks(r.Dir)
 		if seen[realPath] {
 			continue
@@ -110,7 +111,8 @@ func (e Env) scannedRepos(ctx context.Context, roots ScanRoots) ([]discover.Repo
 		r.Dir = roots.Written(e, r.Dir)
 		repos = append(repos, r)
 	}
-	return repos, complete
+	found.Repos = repos
+	return found
 }
 
 // comparisonKey is the form two paths are compared in: absolute, and

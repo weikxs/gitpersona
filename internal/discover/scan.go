@@ -18,7 +18,7 @@ type ScanLimits struct {
 }
 
 // DefaultScanLimits suit a home directory's usual code folders.
-var DefaultScanLimits = ScanLimits{MaxDepth: 4, Timeout: 10 * time.Second}
+var DefaultScanLimits = ScanLimits{MaxDepth: 5, Timeout: 10 * time.Second}
 
 // Suggestion proposes a directory rule: most repositories directly under Dir
 // belong to Owner. Account is the signed-in account that is Owner, or "" when
@@ -43,8 +43,7 @@ func Scan(ctx context.Context, roots, accounts []string, limits ScanLimits) []Su
 		byOwner map[string]int
 	}
 	parents := map[string]*tally{}
-	repos, _ := Repos(ctx, roots, limits)
-	for _, r := range repos {
+	for _, r := range Repos(ctx, roots, limits).Repos {
 		if r.Lone || !strings.EqualFold(r.Host, "github.com") || r.Owner == "" {
 			continue
 		}
@@ -81,11 +80,14 @@ const maxNesting = 3
 // walkRepos calls found for every repository under root, not descending into
 // skipped or hidden directories, or below maxDepth. Inside a repository it
 // only looks at the folders directly in it, for repositories kept there;
-// those, and root when it is a repository itself, are found as lone.
-func walkRepos(ctx context.Context, root string, maxDepth int, found func(dir string, lone bool)) {
+// those, and root when it is a repository itself, are found as lone. It
+// reports whether it left out repositories below maxDepth, and the folder it
+// was about to look in when time ran out ("" when it finished).
+func walkRepos(ctx context.Context, root string, maxDepth int, found func(dir string, lone bool)) (tooDeep bool, stoppedAt string) {
 	base := strings.Count(filepath.Clean(root), string(filepath.Separator))
 	_ = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if ctx.Err() != nil {
+			stoppedAt = path
 			return filepath.SkipAll
 		}
 		if err != nil || !d.IsDir() {
@@ -101,10 +103,37 @@ func walkRepos(ctx context.Context, root string, maxDepth int, found func(dir st
 			return filepath.SkipDir
 		}
 		if strings.Count(path, string(filepath.Separator))-base >= maxDepth {
+			tooDeep = tooDeep || hasRepoBelow(path, deepLook)
 			return filepath.SkipDir
 		}
 		return nil
 	})
+	return tooDeep, stoppedAt
+}
+
+// deepLook is how many levels below the depth limit are checked for a
+// repository, to say that some were left out.
+const deepLook = 2
+
+// hasRepoBelow reports whether a repository sits in a folder up to levels
+// below dir, which the scan does not reach.
+func hasRepoBelow(dir string, levels int) bool {
+	if levels == 0 {
+		return false
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return false
+	}
+	for _, e := range entries {
+		if !e.IsDir() || strings.HasPrefix(e.Name(), ".") || skippedDirs[e.Name()] {
+			continue
+		}
+		if child := filepath.Join(dir, e.Name()); isRepo(child) || hasRepoBelow(child, levels-1) {
+			return true
+		}
+	}
+	return false
 }
 
 // nestedRepos finds repositories kept directly inside the repository dir,

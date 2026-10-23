@@ -46,7 +46,7 @@ var commands = map[string]command{
 		},
 	},
 	"setup": {
-		synopsis: "setup [--yes] [--no-shell] [--keep-old-rules] [--print | --web [--no-open]]",
+		synopsis: "setup [--yes] [--no-shell] [--keep-old-rules] [--no-default] [--print | --web [--no-open]]",
 		description: "Find what you already have and set GitPersona up from it in one step: one profile per GitHub\n" +
 			"account gh is signed in to (public name and email, or the noreply address), your existing includeIf\n" +
 			"identities with their SSH keys and signing, directories from the remotes and emails of the\n" +
@@ -59,6 +59,7 @@ var commands = map[string]command{
 			fs.BoolVar(&opts.Yes, "yes", false, "apply without asking")
 			fs.BoolVar(&opts.NoShell, "no-shell", false, "do not add the shell integration")
 			fs.BoolVar(&opts.KeepOldRules, "keep-old-rules", false, "keep the includeIf rules the profiles take over")
+			fs.BoolVar(&opts.NoDefault, "no-default", false, "set no default profile; your global Git identity stays outside the directories")
 			web := fs.Bool("web", false, "set up in the browser: confirm identities, choose directories, review, apply")
 			noOpen := fs.Bool("no-open", false, "with --web, print the link without opening a browser")
 			return func(ctx context.Context, env app.Env, _ []string) int {

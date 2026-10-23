@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 
 	"github.com/weikxs/gitpersona/internal/config"
@@ -100,7 +101,7 @@ func (e Env) checkOldRules(ctx context.Context, cfg config.Config) []check {
 	var replaced []string
 	for _, r := range discover.IdentityRules(ctx, e.Home, e.GlobalGitConfigPath(), e.Run) {
 		by, overridden := e.overriddenBy(r.Dir, owners, cfg.Default)
-		overridden = overridden && !strings.EqualFold(by.email, r.Email) // the same identity is no loss
+		overridden = overridden && !by.sameIdentity(r.Email, r.Name) // the same identity is no loss
 		switch {
 		case e.takenOver(r, owners) && r.Keep == "":
 			replaced = append(replaced, r.Dir)
@@ -108,8 +109,8 @@ func (e Env) checkOldRules(ctx context.Context, cfg config.Config) []check {
 			checks = append(checks, check{ok: true, label: fmt.Sprintf("your includeIf rule for %s stays: %s", r.Dir, r.Keep)})
 		case overridden:
 			checks = append(checks, check{warn: true,
-				label: fmt.Sprintf("profile %s overrides your includeIf rule for %s, so commits there do not use %s", by.id, r.Dir, r.Email),
-				advice: fmt.Sprintf("add %s to a profile with that email (or pin its repositories); remove the rule from %s by hand if you no longer need it",
+				label: fmt.Sprintf("profile %s overrides your includeIf rule for %s, so commits there do not use %s", by.id, r.Dir, author(r.Name, r.Email)),
+				advice: fmt.Sprintf("add %s to a profile with that identity (or pin its repositories); remove the rule from %s by hand if you no longer need it",
 					r.Dir, e.display(e.GlobalGitConfigPath()))})
 		default:
 			checks = append(checks, check{ok: true, label: fmt.Sprintf("your includeIf rule for %s still applies there (%s)", r.Dir, r.Email)})
@@ -123,4 +124,74 @@ func (e Env) checkOldRules(ctx context.Context, cfg config.Config) []check {
 			fix:    RemoveOldRules, fixKey: FixOldRules})
 	}
 	return checks
+}
+
+// author writes an identity as Git shows it: Name <email>, or <email>.
+func author(name, email string) string {
+	if name == "" {
+		return "<" + email + ">"
+	}
+	return name + " <" + email + ">"
+}
+
+// checkSigning catches signing that cannot work: a GPG key written as a
+// file path (a key from an SSH setup read as GPG), and a profile without
+// signing whose directories or pins lie inside an SSH-signing profile's
+// (or that profile is the default): there `git commit -S` uses that key,
+// because Git cannot unset a key and the user has none of their own.
+func (e Env) checkSigning(ctx context.Context, cfg config.Config) []check {
+	var checks []check
+	var signers []config.Profile
+	for _, p := range cfg.Profiles {
+		if p.Signing.Method == config.SigningGPG && (strings.ContainsRune(p.Signing.Key, '/') || strings.HasSuffix(p.Signing.Key, ".pub")) {
+			checks = append(checks, check{
+				label:  fmt.Sprintf("profile %s signs with GPG, but its key %s is a file, as SSH signing uses", p.ID, p.Signing.Key),
+				advice: "Git fails every commit there; set signing = { method = \"ssh\", key = \"" + p.Signing.Key + "\" }"})
+		}
+		if p.Signing.Method == config.SigningSSH {
+			signers = append(signers, p)
+		}
+	}
+	if len(signers) == 0 {
+		return checks
+	}
+	opts, err := e.generateOptions(ctx)
+	if err != nil || opts.FallbackSigning.SigningKey != "" || opts.FallbackSigning.Format != "ssh" {
+		return checks
+	}
+	for _, p := range cfg.Profiles {
+		if p.Signing.Method != "" {
+			continue
+		}
+		if s, ok := e.enclosingSigner(p, cfg, signers); ok {
+			checks = append(checks, check{warn: true,
+				label: fmt.Sprintf("profile %s has no signing, so `git commit -S` in its directories uses profile %s's SSH key", p.ID, s),
+				advice: "Git cannot unset a signing key and your Git settings name none; give the profile its own key, " +
+					"or signing = { method = \"none\" } to make `git commit -S` refuse there"})
+		}
+	}
+	return checks
+}
+
+// enclosingSigner returns the signing profile whose settings Git reads
+// before p's in p's directories or pins: the default, or one whose
+// directory encloses them.
+func (e Env) enclosingSigner(p config.Profile, cfg config.Config, signers []config.Profile) (string, bool) {
+	places := slices.Clone(p.Dirs)
+	for _, pin := range cfg.Pins {
+		if pin.Profile == p.ID {
+			places = append(places, pin.Repo)
+		}
+	}
+	for _, s := range signers {
+		if s.ID == p.ID {
+			continue
+		}
+		for _, place := range places {
+			if s.ID == cfg.Default || coversWith(e.comparisonKey, s.Dirs, place) {
+				return s.ID, true
+			}
+		}
+	}
+	return "", false
 }

@@ -183,3 +183,48 @@ func TestWithTilde(t *testing.T) {
 		}
 	}
 }
+
+func TestAnIdentitySigningInTheGlobalFormatKeepsIt(t *testing.T) {
+	home := t.TempDir()
+	write(t, filepath.Join(home, ".gc-work"), "[user]\n\temail = worker@demo.example\n\tsigningkey = ~/.ssh/id_work.pub\n[commit]\n\tgpgsign = true\n")
+	write(t, filepath.Join(home, ".gitconfig"), "[gpg]\n\tformat = ssh\n[includeIf \"gitdir:~/work/\"]\n\tpath = ~/.gc-work\n")
+
+	got, _ := Existing(context.Background(), home, filepath.Join(home, ".gitconfig"), provider.ExecRunner)
+
+	if len(got) != 1 || got[0].Signing != (Signing{Method: "ssh", Key: "~/.ssh/id_work.pub"}) {
+		t.Errorf("Existing() = %+v; the file signs in the global format, ssh", got)
+	}
+}
+
+func TestTheSameEmailWithAnotherNameIsAnotherIdentity(t *testing.T) {
+	home := t.TempDir()
+	write(t, filepath.Join(home, ".gc-a"), "[user]\n\tname = Demo Worker\n\temail = worker@demo.example\n")
+	write(t, filepath.Join(home, ".gc-b"), "[user]\n\tname = Demo Worker (Clients)\n\temail = worker@demo.example\n")
+	write(t, filepath.Join(home, ".gitconfig"), "[includeIf \"gitdir:~/work/\"]\n\tpath = ~/.gc-a\n[includeIf \"gitdir:~/clients/\"]\n\tpath = ~/.gc-b\n")
+
+	got, _ := Existing(context.Background(), home, filepath.Join(home, ".gitconfig"), provider.ExecRunner)
+
+	if len(got) != 2 {
+		t.Errorf("Existing() = %+v, want two identities: the author names differ", got)
+	}
+}
+
+func TestAnIdentityInheritsGlobalSigningAndName(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home) // Git expands ~ in include paths from $HOME
+	write(t, filepath.Join(home, ".gc-work"), "[user]\n\temail = worker@demo.example\n\tsigningkey = ~/.ssh/id_work.pub\n")
+	write(t, filepath.Join(home, ".gc-more"), "[user]\n\tname = Demo Worker\n\temail = worker@demo.example\n")
+	// Signing and the name live in an included dotfile, as with many dotfile managers.
+	write(t, filepath.Join(home, ".dotfiles", "git"), "[user]\n\tname = Demo Worker\n[gpg]\n\tformat = ssh\n[commit]\n\tgpgsign = true\n")
+	write(t, filepath.Join(home, ".gitconfig"), "[include]\n\tpath = ~/.dotfiles/git\n"+
+		"[includeIf \"gitdir:~/work/\"]\n\tpath = ~/.gc-work\n[includeIf \"gitdir:~/more/\"]\n\tpath = ~/.gc-more\n")
+
+	got, _ := Existing(context.Background(), home, filepath.Join(home, ".gitconfig"), provider.ExecRunner)
+
+	if len(got) != 1 {
+		t.Fatalf("Existing() = %+v; both files commit as Demo Worker <worker@demo.example>", got)
+	}
+	if got[0].Signing != (Signing{Method: "ssh", Key: "~/.ssh/id_work.pub"}) || got[0].Name != "Demo Worker" || len(got[0].Dirs) != 2 {
+		t.Errorf("Existing() = %+v, want SSH signing from the global settings, the name, and both folders", got[0])
+	}
+}

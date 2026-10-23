@@ -95,7 +95,7 @@ func TestSetupShowsWhatItFoundAndAsksFirst(t *testing.T) {
 		"~/code/mine  (its one repository belongs to octo-alex)",
 		"SSH key ~/.ssh/id_acme",
 		"Pin ~/code/acme/side to octo-alex: the repository sets alex@octo.example",
-		"commits will use octo-alex instead of Demo Person <person@demo.example>",
+		"commits will use octo-alex (Alex Octo <alex@octo.example>) instead of Demo Person <person@demo.example>",
 		"~/code/other  (its one repository, owned by other-org)",
 		"Nothing was written",
 	} {

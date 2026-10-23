@@ -4,6 +4,7 @@
 package discover
 
 import (
+	"cmp"
 	"context"
 	"path/filepath"
 	"slices"
@@ -38,10 +39,28 @@ const includeIfPrefix = "includeif."
 // hasconfig:) are skipped. GitPersona's own include is ignored.
 func Existing(ctx context.Context, home, gitconfig string, run provider.Runner) ([]Identity, error) {
 	var identities []Identity
+	globalName := readGlobals(ctx, home, gitconfig, run).name
 	for _, r := range identityRules(ctx, home, gitconfig, run) {
-		identities = merge(identities, r.id, r.dir)
+		identities = merge(identities, r.id, r.dir, globalName)
 	}
 	return identities, nil
+}
+
+// globals are the settings an included file inherits from the global
+// configuration that includes it.
+type globals struct {
+	name, format, gpgSign string
+}
+
+// readGlobals reads the global configuration with the files it includes,
+// such as dotfiles, from the home (outside any repository, so no includeIf
+// gitdir rule applies).
+func readGlobals(ctx context.Context, home, gitconfig string, run provider.Runner) globals {
+	get := func(key string) string {
+		out, _ := run(ctx, "git", "-C", home, "config", "--file", gitconfig, "--includes", "--get", key)
+		return strings.TrimSpace(string(out))
+	}
+	return globals{name: get("user.name"), format: get("gpg.format"), gpgSign: get("commit.gpgsign")}
 }
 
 // Rule is a hand-made includeIf identity rule: its condition (such as
@@ -51,6 +70,7 @@ type Rule struct {
 	Condition string
 	Dir       string
 	Email     string // the email the included file sets
+	Name      string // the user.name it sets, or ""
 	Keep      string
 }
 
@@ -59,7 +79,7 @@ type Rule struct {
 func IdentityRules(ctx context.Context, home, gitconfig string, run provider.Runner) []Rule {
 	var rules []Rule
 	for _, r := range identityRules(ctx, home, gitconfig, run) {
-		rules = append(rules, Rule{Condition: r.condition, Dir: r.dir, Email: r.id.Email, Keep: r.keep})
+		rules = append(rules, Rule{Condition: r.condition, Dir: r.dir, Email: r.id.Email, Name: r.id.Name, Keep: r.keep})
 	}
 	return rules
 }
@@ -91,13 +111,14 @@ func identityRules(ctx context.Context, home, gitconfig string, run provider.Run
 			paths = append(paths, pathKey{condition, strings.TrimSpace(value)})
 		}
 	}
+	global := readGlobals(ctx, home, gitconfig, run)
 	var rules []identityRule
 	for _, p := range paths {
 		dir := withTilde(gitdirToDir(p.condition), home, strings.HasPrefix(p.condition, "gitdir/i:"))
 		if dir == "" || dir == "~" {
 			continue // a rule for the whole home is a default, not a directory rule
 		}
-		id, keep := readIdentity(ctx, expandHome(p.path, home), run)
+		id, keep := readIdentity(ctx, expandHome(p.path, home), global, run)
 		if id.Email == "" {
 			continue
 		}
@@ -119,7 +140,8 @@ var replaceable = map[string]bool{
 
 // readIdentity reads the identity an included file sets. keep says why a
 // profile cannot replace the file, or is "".
-func readIdentity(ctx context.Context, file string, run provider.Runner) (Identity, string) {
+// Signing settings the file leaves out come from global, as in Git.
+func readIdentity(ctx context.Context, file string, global globals, run provider.Runner) (Identity, string) {
 	out, err := run(ctx, "git", "config", "--file", file, "--list")
 	if err != nil {
 		return Identity{}, ""
@@ -142,14 +164,21 @@ func readIdentity(ctx context.Context, file string, run provider.Runner) (Identi
 	if cmd := values["core.sshcommand"]; cmd != "" && !plainSSHCommand(cmd) && keep == "" {
 		keep = "its core.sshCommand has other options"
 	}
-	if key := values["user.signingkey"]; key != "" && gitTrue(values["commit.gpgsign"]) {
-		switch values["gpg.format"] {
+	inherit := func(key, global string) string {
+		if v, ok := values[key]; ok {
+			return v
+		}
+		return global
+	}
+	if key := values["user.signingkey"]; key != "" && gitTrue(inherit("commit.gpgsign", global.gpgSign)) {
+		format := inherit("gpg.format", global.format)
+		switch format {
 		case "", "openpgp":
 			id.Signing = Signing{Method: "gpg", Key: key}
 		case "ssh":
 			id.Signing = Signing{Method: "ssh", Key: key}
 		default:
-			keep = "it signs with " + values["gpg.format"] // not a method GitPersona sets
+			keep = "it signs with " + format // not a method GitPersona sets
 		}
 	}
 	return id, keep
@@ -241,13 +270,18 @@ func shellWords(s string) []string {
 	return words
 }
 
-func merge(identities []Identity, id Identity, dir string) []Identity {
-	i := slices.IndexFunc(identities, func(x Identity) bool { return x.Email == id.Email })
+// merge adds dir to the identity with the same email and author name, or
+// adds the identity: the same email with another name is another identity.
+// A file without a name commits with the global name.
+func merge(identities []Identity, id Identity, dir, globalName string) []Identity {
+	name := func(x Identity) string { return cmp.Or(x.Name, globalName) }
+	i := slices.IndexFunc(identities, func(x Identity) bool { return x.Email == id.Email && name(x) == name(id) })
 	if i < 0 {
 		id.Dirs = []string{dir}
 		return append(identities, id)
 	}
 	out := slices.Clone(identities)
+	out[i].Name = cmp.Or(out[i].Name, id.Name)
 	if !slices.Contains(out[i].Dirs, dir) {
 		out[i].Dirs = append(slices.Clone(out[i].Dirs), dir)
 	}

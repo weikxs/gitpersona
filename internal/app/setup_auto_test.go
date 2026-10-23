@@ -41,14 +41,14 @@ func TestInferLayoutUsesOwnersAliasesAndRepositoryEmails(t *testing.T) {
 	}
 	aliases := []discover.SSHAlias{{Alias: "github-acme", IdentityFile: "~/.ssh/id_acme"}, {Alias: "github.com", IdentityFile: "~/.ssh/id"}}
 
-	got := inferLayout(profiles, repos, aliases, testKey)
+	got := inferLayout(profiles, repos, aliases, testKey, nil)
 
 	wantFound := map[string][]DirSuggestion{
 		"octo-alex": {
 			{Dir: "~/code/mine", Why: "all 2 repositories belong to octo-alex"},
 			{Dir: "~/code/oss", Why: "its one repository belongs to octo-alex; it sets alex@octo.example"},
 		},
-		"acme-alex": {{Dir: "~/code/acme", Why: "3 of 4 repositories belong to acme-alex; all use the SSH alias github-acme"}},
+		"acme-alex": {{Dir: "~/code/acme", Why: "3 of 4 repositories belong to acme-alex; all use acme-alex's SSH alias github-acme"}},
 	}
 	if !reflect.DeepEqual(got.found, wantFound) {
 		t.Errorf("found = %+v\nwant  %+v", got.found, wantFound)
@@ -82,7 +82,7 @@ func TestInferLayoutNeverGivesAFolderTwoProfiles(t *testing.T) {
 		{Dir: "~/work/z", Host: "github.com", Owner: "b", Email: "b@demo.example"},
 	}
 
-	got := inferLayout(profiles, repos, nil, testKey)
+	got := inferLayout(profiles, repos, nil, testKey, nil)
 
 	if len(got.found) != 0 {
 		t.Errorf("found = %+v; ~/work already belongs to a (written /tmp/home/Work)", got.found)
@@ -106,7 +106,7 @@ func TestInferLayoutHandlesAliasesItCannotTieToAnAccount(t *testing.T) {
 	}
 	aliases := []discover.SSHAlias{{Alias: "github-client"}, {Alias: "GitHub-Work", IdentityFile: "~/.ssh/id_a"}}
 
-	got := inferLayout(profiles, repos, aliases, testKey)
+	got := inferLayout(profiles, repos, aliases, testKey, nil)
 
 	if len(got.unassigned) != 1 || got.unassigned[0].Dir != "~/client" || got.unassigned[0].Owner != "client-org" {
 		t.Errorf("unassigned = %+v, want ~/client to be asked about", got.unassigned)
@@ -117,7 +117,7 @@ func TestInferLayoutHandlesAliasesItCannotTieToAnAccount(t *testing.T) {
 }
 
 func TestInferLayoutWithoutRepositoriesSuggestsNothing(t *testing.T) {
-	got := inferLayout([]SetupProfile{{ID: "a", Account: "a", Email: "a@x.example"}}, nil, nil, testKey)
+	got := inferLayout([]SetupProfile{{ID: "a", Account: "a", Email: "a@x.example"}}, nil, nil, testKey, nil)
 	if len(got.found) != 0 || len(got.pins) != 0 || len(got.unassigned) != 0 {
 		t.Fatalf("inferLayout() = %+v", got)
 	}
