@@ -81,14 +81,14 @@ func AuthStatus(ctx context.Context, e Env, opts AuthOptions) error {
 			return err
 		}
 	}
-	shown, missing := 0, 0
+	shown, missing, invalid := 0, 0, 0
 	for _, p := range cfg.Profiles {
 		if p.Provider == config.ProviderGitHub || (opts.Profile != "" && p.ID != opts.Profile) {
 			continue
 		}
 		shown++
 		if err := e.checkAuthProfile(p); err != nil {
-			missing++
+			invalid++
 			fmt.Fprintf(e.Stdout, "✗ %s\n", err)
 			continue
 		}
@@ -104,8 +104,12 @@ func AuthStatus(ctx context.Context, e Env, opts AuthOptions) error {
 		return fmt.Errorf("profile %s is a GitHub profile; check its account with `gh auth status`", opts.Profile)
 	case shown == 0:
 		fmt.Fprintln(e.Stdout, "No profile is on a host other than GitHub; GitHub accounts are signed in with `gh auth login`.")
+	case missing > 0 && invalid > 0:
+		return fmt.Errorf("no token for %d of %d profiles, and %d need a valid host and account", missing, shown, invalid)
 	case missing > 0:
 		return fmt.Errorf("no token for %d of %d profiles", missing, shown)
+	case invalid > 0:
+		return fmt.Errorf("%d of %d profiles need a valid host and account", invalid, shown)
 	}
 	return nil
 }
@@ -174,12 +178,12 @@ func (e Env) authProfile(opts AuthOptions) (config.Profile, error) {
 // requireSafeHelper refuses to save a token where no helper would keep it,
 // or where the helper keeps it in a file in clear text.
 func (e Env) requireSafeHelper(ctx context.Context, p config.Profile) error {
-	_, problem, err := e.helpersProblem(ctx, p)
+	_, issue, err := e.helpersProblem(ctx, p)
 	if err != nil {
 		return err
 	}
-	if problem != "" {
-		return fmt.Errorf("%s; %s first", problem, helperAdvice())
+	if issue.problem != "" {
+		return fmt.Errorf("%s; %s first", issue.problem, issue.advice)
 	}
 	return nil
 }

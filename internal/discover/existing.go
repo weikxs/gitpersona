@@ -9,6 +9,7 @@ import (
 	"maps"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/weikxs/gitpersona/internal/config"
@@ -265,12 +266,12 @@ func readIdentity(ctx context.Context, file string, global globals, run provider
 		return global
 	}
 	key := values["user.signingkey"]
-	if key != "" && !gitTrue(inherit("commit.gpgsign", global.gpgSign)) && keep == "" {
+	if key != "" && !GitTrue(inherit("commit.gpgsign", global.gpgSign)) && keep == "" {
 		// A profile that signs signs every commit; this key serves tags and
 		// `git commit -S` only, so the rule stays.
 		keep = "it sets a signing key without signing every commit"
 	}
-	if key != "" && gitTrue(inherit("commit.gpgsign", global.gpgSign)) {
+	if key != "" && GitTrue(inherit("commit.gpgsign", global.gpgSign)) {
 		format := inherit("gpg.format", global.format)
 		switch format {
 		case "", "openpgp":
@@ -329,13 +330,19 @@ func hostAccounts(values map[string]string) map[string]string {
 	return out
 }
 
-// gitTrue reports whether a Git boolean is true.
-func gitTrue(v string) bool {
-	switch strings.ToLower(v) {
-	case "true", "yes", "on", "1":
+// GitTrue reports whether a Git boolean is true.
+// Like Git, a non-zero number (with an optional k, m or g) is true.
+func GitTrue(v string) bool {
+	v = strings.ToLower(strings.TrimSpace(v))
+	switch v {
+	case "true", "yes", "on":
 		return true
 	}
-	return false
+	if strings.ContainsAny(v[max(len(v)-1, 0):], "kmg") {
+		v = v[:len(v)-1]
+	}
+	n, err := strconv.ParseInt(v, 10, 64)
+	return err == nil && n != 0
 }
 
 // plainSSHCommand reports whether an ssh command does no more than a

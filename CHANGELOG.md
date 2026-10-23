@@ -27,6 +27,8 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 - `doctor` warns when only the `cache` helper keeps the tokens of a host, and finds helpers set for a URL pattern
   such as `credential.https://*.example.com.helper`, and the system-wide helper many installations set. A helper
   set only for `https://<user>@host` does not count: Git uses it only for remotes whose URL names that user.
+  `auth login` refuses to save a token where a push would not find it (a helper set only for the account, or
+  `credential.useHttpPath`) or in clear text, including `store` set for every host.
 - `glab` follows your directories: in a GitLab profile's directory it runs with that account's token, which goes only
   to that one process.
 - One-step setup: `gitpersona setup` and `setup --web` look at what you already have — the accounts signed in to gh,

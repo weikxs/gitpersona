@@ -128,7 +128,7 @@ func (e Env) printProposal(p SetupProposal) {
 	}
 	fmt.Fprintln(w, ":")
 	if p.GitHubUnavailable != "" {
-		fmt.Fprintf(w, "\n  No GitHub profiles: %s.\n", strings.TrimSuffix(p.GitHubUnavailable, "."))
+		fmt.Fprintf(w, "\n  GitHub accounts were not looked up: %s.\n", strings.TrimSuffix(p.GitHubUnavailable, "."))
 	}
 	if p.ScanIncomplete {
 		fmt.Fprintf(w, "\n  ! Looking for repositories stopped after %s, before it finished %s; repositories it did not reach "+

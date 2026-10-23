@@ -308,3 +308,12 @@ func TestTheSameEmailForAccountsOnTwoHostsIsTwoIdentities(t *testing.T) {
 		}
 	}
 }
+
+func TestGitTrueReadsBooleansAsGitDoes(t *testing.T) {
+	for v, want := range map[string]bool{"true": true, "Yes": true, "on": true, "1": true, "2": true, "-1": true, "1k": true,
+		"false": false, "0": false, "0k": false, "": false, "no": false, "k": false, "maybe": false} {
+		if got := GitTrue(v); got != want {
+			t.Errorf("GitTrue(%q) = %v, want %v", v, got, want)
+		}
+	}
+}

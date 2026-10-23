@@ -157,7 +157,7 @@ function outsideText(wizard) {
 // be asked but other hosts' profiles are.
 function githubNotice(wizard) {
   if (!wizard.githubUnavailable) return null;
-  return h("div", { class: "notice warn" }, badge("warn"), ` No GitHub profiles: ${wizard.githubUnavailable}`);
+  return h("div", { class: "notice warn" }, badge("warn"), ` GitHub accounts were not looked up: ${wizard.githubUnavailable}`);
 }
 
 // scanLimitNotice says which folders the scan did not finish, if any.

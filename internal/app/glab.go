@@ -79,10 +79,10 @@ func bareHost(v string) string {
 	if err != nil {
 		return ""
 	}
-	if u.Scheme == "https" {
-		return strings.TrimSuffix(u.Host, ":443") // the default port
+	if u.Scheme != "https" {
+		return u.Scheme + "://" + u.Host // plain http is another server than the profile's
 	}
-	return u.Host
+	return strings.TrimSuffix(u.Host, ":443") // the default port
 }
 
 // glabTarget returns the GitLab profile glab should use here, if GitPersona

@@ -317,7 +317,7 @@ func TestSetupWithoutGhSaysWhyThereAreNoGitHubProfiles(t *testing.T) {
 	}
 	env.printProposal(proposal)
 
-	if !strings.Contains(proposal.GitHubUnavailable, "GitHub CLI") || !strings.Contains(out.String(), "No GitHub profiles: setup needs the GitHub CLI") {
+	if !strings.Contains(proposal.GitHubUnavailable, "GitHub CLI") || !strings.Contains(out.String(), "GitHub accounts were not looked up: setup needs the GitHub CLI") {
 		t.Errorf("the proposal should say why: %q\n%s", proposal.GitHubUnavailable, out.String())
 	}
 	if !strings.Contains(out.String(), "account demo-lab on gitlab.com (gitlab)") {

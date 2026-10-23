@@ -169,7 +169,9 @@ func ProposeSetup(ctx context.Context, e Env) (SetupProposal, error) {
 		return SetupProposal{}, err
 	}
 	if ghErr != nil && len(proposal.Profiles) == 0 {
-		return SetupProposal{}, ghErr
+		return SetupProposal{}, fmt.Errorf("%w\n(GitPersona also found %s in your Git settings, but none names one account "+
+			"on one host other than GitHub; add credential.https://<host>.username to its includeIf file, or write the profile in "+
+			"config.toml yourself)", ghErr, identities(len(existing)))
 	}
 	if ghErr != nil {
 		proposal.GitHubUnavailable = ghErr.Error()
@@ -384,4 +386,12 @@ func renderPlan(plan SetupPlan) string {
 		fmt.Fprintf(&b, "\n[[pin]]\nrepo    = %q\nprofile = %q\n", pin.Repo, pin.Profile)
 	}
 	return b.String()
+}
+
+// identities says how many identities there are.
+func identities(n int) string {
+	if n == 1 {
+		return "1 identity"
+	}
+	return fmt.Sprintf("%d identities", n)
 }

@@ -130,7 +130,18 @@ func TestURLMatchesLikeGit(t *testing.T) {
 		"git.demo.example":                 true,  // a bare host name
 		"*.demo.example":                   false, // no globs without a scheme
 		"git.demo.example:443":             false,
-		"https://alice@git.demo.example":   true, // the account itself
+		"alice@git.demo.example":           true,
+		"bob@git.demo.example":             false,
+		"GIT.demo.example":                 false, // compared exactly without a scheme
+		"git.demo.example/team":            false,
+		"https://":                         true, // no host: every host
+		"https://alice@":                   true,
+		"alice@":                           true,
+		"bob@":                             false,
+		"https://git.demo.example.":        true,  // a trailing dot
+		"https://[git.demo.example]":       false, // brackets are for IPv6
+		"https://*":                        false, // one label only
+		"https://alice@git.demo.example":   true,  // the account itself
 		"https://bob@git.demo.example":     false,
 		"https://Alice@git.demo.example":   false, // user names are exact
 		"https://git.demo.example:8443":    false,
@@ -314,5 +325,109 @@ func TestAuthLoginRefusesHelpersAPushDoesNotAsk(t *testing.T) {
 
 	if err == nil || !strings.Contains(err.Error(), "which a push to gitlab.globex.example does not ask") {
 		t.Errorf("auth login = %v", err)
+	}
+}
+
+func TestURLMatchesNormalizesPortsAsGitDoes(t *testing.T) {
+	if !urlMatches("https://git.demo.example:08443", "git.demo.example:8443", "") {
+		t.Error("leading zeros in a port do not count")
+	}
+	if urlMatches("https://[git.demo.example]:8443", "git.demo.example:8443", "") {
+		t.Error("a host name in brackets is not a host")
+	}
+}
+
+func TestHelperKindKnowsTheShellForms(t *testing.T) {
+	for helper, want := range map[string]string{
+		"store": "plain", "!git credential-store --file x": "plain", "/usr/bin/git-credential-store": "plain",
+		"!git credential-cache": "memory", "osxkeychain": "secure", "!/opt/demo/helper": "other",
+		`"/opt/a b/git-credential-store"`: "plain", "!/usr/bin/env git-credential-store": "plain",
+		"!git -c x=y credential-store": "plain", `!f() { git credential-store "$@"; }; f`: "plain",
+		`C:/Program Files/Git/git.exe credential-store`: "plain", "manager-core": "secure",
+	} {
+		if got := helperKind(helper); got != want {
+			t.Errorf("helperKind(%q) = %q, want %q", helper, got, want)
+		}
+	}
+}
+
+func TestAStoreHelperForEveryHostIsRefused(t *testing.T) {
+	w := newWorld(t)
+	fakeKeychain(t, w)
+	env, _ := w.env(t, w.home)
+	if err := Apply(context.Background(), env, ApplyOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	appendConfig(t, w, "[credential \"https://\"]\n\thelper = !git credential-store\n")
+	env.Stdin = strings.NewReader("demo-token\n")
+
+	err := AuthLogin(context.Background(), env, AuthOptions{Profile: "globex"})
+
+	if err == nil || !strings.Contains(err.Error(), "clear text") {
+		t.Errorf("auth login with store for every host = %v", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(w.home, ".git-credentials")); statErr == nil {
+		t.Error("the token went to a file in clear text")
+	}
+}
+
+func TestATokenPerRepositoryIsRefused(t *testing.T) {
+	w := newWorld(t)
+	fakeKeychain(t, w)
+	env, out := w.env(t, w.home)
+	if err := Apply(context.Background(), env, ApplyOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	appendConfig(t, w, "[credential]\n\tuseHttpPath = true\n")
+	env.Stdin = strings.NewReader("demo-token\n")
+
+	err := AuthLogin(context.Background(), env, AuthOptions{Profile: "globex"})
+	_ = Doctor(context.Background(), env)
+
+	if err == nil || !strings.Contains(err.Error(), "credential.useHttpPath is on for gitlab.globex.example") {
+		t.Errorf("auth login with useHttpPath = %v", err)
+	}
+	if !strings.Contains(out.String(), "turn it off where you set it") {
+		t.Errorf("doctor should say how to turn it off:\n%s", out.String())
+	}
+}
+
+func TestAuthStatusTellsInvalidProfilesFromMissingTokens(t *testing.T) {
+	w := newWorld(t)
+	fakeKeychain(t, w)
+	env, _ := w.env(t, w.home)
+	cfgPath := filepath.Join(w.home, ".config", "gitpersona", "config.toml")
+	mustWrite(t, cfgPath, strings.Replace(readFile(t, cfgPath), `host     = "gitlab.globex.example"`, "", 1), 0o600)
+
+	err := AuthStatus(context.Background(), env, AuthOptions{})
+
+	if err == nil || err.Error() != "1 of 1 profiles need a valid host and account" {
+		t.Errorf("auth status = %v", err)
+	}
+}
+
+func TestURLMatchesKnowsOnlyStarAndDecodesUsers(t *testing.T) {
+	if urlMatches("https://g?t.demo.example", "git.demo.example", "") || urlMatches("https://[gh]it.demo.example", "git.demo.example", "") {
+		t.Error("Git knows only * in host names")
+	}
+	if !urlMatches("https://g*t.demo.example", "git.demo.example", "") || !urlMatches("https://al%69ce@git.demo.example", "git.demo.example", "alice") {
+		t.Error("* within a label, and a percent-escaped user, match")
+	}
+}
+
+func TestPerRepositoryTokensForSomeRepositoriesAreFound(t *testing.T) {
+	w := newWorld(t)
+	fakeKeychain(t, w)
+	env, _ := w.env(t, w.home)
+	if err := Apply(context.Background(), env, ApplyOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	appendConfig(t, w, "[credential \"https://gitlab.globex.example/team\"]\n\tuseHttpPath = 1k\n")
+	env.Stdin = strings.NewReader("demo-token\n")
+
+	err := AuthLogin(context.Background(), env, AuthOptions{Profile: "globex"})
+
+	if err == nil || !strings.Contains(err.Error(), "on for some repositories of gitlab.globex.example") {
+		t.Errorf("auth login with useHttpPath for a path = %v", err)
 	}
 }
