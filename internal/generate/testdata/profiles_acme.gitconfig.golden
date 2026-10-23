@@ -3,16 +3,6 @@
 [user]
 	name = Alex (Acme)
 	email = 1000002+acme-alex@users.noreply.github.com
-[user]
-	signingkey = 1000002+acme-alex@users.noreply.github.com
-[gpg]
-	format = openpgp
-[commit]
-	gpgsign = false
-[tag]
-	gpgSign = false
-[core]
-	sshCommand = ssh
 [credential "https://github.com"]
 	helper = ""
 	helper = !'/opt/tools/gitpersona' credential --provider github --host 'github.com' --account 'acme-alex'

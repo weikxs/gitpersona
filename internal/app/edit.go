@@ -52,7 +52,19 @@ func Use(ctx context.Context, e Env, profileID string) error {
 	} else {
 		fmt.Fprintf(e.Stdout, "%s now uses profile %s.\n", dir, profileID)
 	}
+	e.warnAboutCoveredRules(ctx, dir, profileID)
 	return nil
+}
+
+// warnAboutCoveredRules says which rules of the user's that do more than a
+// profile can are now overridden inside dir.
+func (e Env) warnAboutCoveredRules(ctx context.Context, dir, profileID string) {
+	for _, r := range e.identityRules(ctx) {
+		if r.Keep != "" && coversWith(e.comparisonKey, []string{dir}, r.Dir) {
+			fmt.Fprintf(e.Stdout, "! Your includeIf rule for %s does more than a profile can (%s); profile %s now applies there, "+
+				"so that is lost. Run `gitpersona remove %s` to undo.\n", r.Dir, r.Keep, profileID, dir)
+		}
+	}
 }
 
 // Remove unassigns a directory (the current one when dir is empty).

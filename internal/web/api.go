@@ -179,7 +179,7 @@ func (a api) discover(c call) (any, error) {
 	if chosen != "" {
 		report.Missing = roots.Missing // the usual folders are only tried
 	}
-	if existing, err := discover.Existing(c.ctx, c.env.Home, c.env.GlobalGitConfigPath(), c.env.Run); err == nil && existing != nil {
+	if existing := c.env.ExistingIdentities(c.ctx); existing != nil {
 		for _, id := range existing {
 			id.Source = c.env.Display(id.Source)
 			report.Existing = append(report.Existing, id)

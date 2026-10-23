@@ -105,7 +105,7 @@ Paths must be absolute or start with `~/`.
 | `gitpersona prompt [--format]` | Print the account Git uses here, for prompts (`{account}`, `{profile}`, `{host}`) |
 | `gitpersona rollback [<name>\|latest] [--yes]` | List backups, or restore one (the current state is backed up first) |
 | `gitpersona uninstall [--yes]` | Remove GitPersona from your Git configuration and put back the `includeIf` rules it took over; keeps config.toml |
-| `gitpersona setup [--yes] [--no-shell] [--keep-old-rules] [--no-default] [--print \| --web]` | Set GitPersona up from what you already have in one step (accounts, existing identities, repositories, SSH aliases, shell); asks before writing unless `--yes`; `--web` shows it in the browser, where you can also adjust it step by step |
+| `gitpersona setup [--yes] [--no-shell] [--keep-old-rules] [--default <profile> \| --no-default] [--print \| --web]` | Set GitPersona up from what you already have in one step (accounts, existing identities, repositories, SSH aliases, shell); asks before writing unless `--yes`; `--web` shows it in the browser, where you can also adjust it step by step |
 | `gitpersona ui [--no-open]` | Open the configuration page in your browser: profiles, directories, pins, a diff preview before applying, health checks, shells and backups. It listens only on 127.0.0.1, the link works once, and it stops after 15 minutes without use |
 | `gitpersona help <command>` | Show the flags of a command |
 
@@ -122,7 +122,7 @@ Prompt and plugin-manager setups (tide, Powerlevel10k, Starship, fisher, oh-my-z
   anyway, and says which of your rules it overrides). `setup` leaves the folders of rules that do more than a profile
   can (such as x509 signing or extra `ssh` options) to those rules (and says so when a profile's folder around one
   still overrides it), removes the rules a profile fully takes over, and
-  `uninstall` puts those back where they were. `doctor` says which of your rules a profile overrides.
+  `uninstall` puts those back before the section that followed them. `doctor` says which of your rules a profile overrides.
 - **Credentials:** for GitHub profiles, GitPersona is the only credential helper for that host and borrows the
   token `gh` already holds, so no other helper stores a copy. If an account is not signed in to `gh`, Git asks
   for a password; `gitpersona doctor` tells you which account to sign in.

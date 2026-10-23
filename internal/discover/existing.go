@@ -71,7 +71,10 @@ type Rule struct {
 	Dir       string
 	Email     string // the email the included file sets
 	Name      string // the user.name it sets, or ""
-	Keep      string
+	// File is the configuration file the rule is written in, when it is not
+	// the global file itself (set by the caller); GitPersona leaves it alone.
+	File string
+	Keep string
 }
 
 // RuleSettings is an includeIf rule of a configuration file and the
@@ -88,10 +91,7 @@ type RuleSettings struct {
 func RulesSettings(ctx context.Context, home, gitconfig string, run provider.Runner) []RuleSettings {
 	var out []RuleSettings
 	for _, p := range includeIfPaths(ctx, gitconfig, run) {
-		file := expandHome(p.path, home)
-		if !filepath.IsAbs(file) {
-			file = filepath.Join(filepath.Dir(gitconfig), file)
-		}
+		file := includedPath(p.path, home, gitconfig)
 		if realPath(file) == realPath(gitconfig) {
 			continue
 		}
@@ -117,7 +117,7 @@ func OtherIdentityRules(ctx context.Context, home, gitconfig string, run provide
 		if dir := withTilde(gitdirToDir(p.condition), home, strings.HasPrefix(p.condition, "gitdir/i:")); dir != "" && dir != "~" {
 			continue
 		}
-		file := expandHome(p.path, home)
+		file := includedPath(p.path, home, gitconfig)
 		if realPath(file) == realPath(gitconfig) {
 			continue
 		}
@@ -196,7 +196,7 @@ func identityRules(ctx context.Context, home, gitconfig string, run provider.Run
 		if dir == "" || dir == "~" {
 			continue // a rule for the whole home is a default, not a directory rule
 		}
-		file := expandHome(p.path, home)
+		file := includedPath(p.path, home, gitconfig)
 		if realPath(file) == realPath(gitconfig) {
 			continue // a rule that includes the global configuration itself sets no identity of its own
 		}
@@ -422,6 +422,16 @@ func realPath(path string) string {
 		return resolved
 	}
 	return path
+}
+
+// includedPath is the file an include path written in gitconfig names:
+// ~/ is the home, and a relative path is next to gitconfig, as Git reads it.
+func includedPath(path, home, gitconfig string) string {
+	file := expandHome(path, home)
+	if !filepath.IsAbs(file) {
+		file = filepath.Join(filepath.Dir(gitconfig), file)
+	}
+	return file
 }
 
 func expandHome(path, home string) string {

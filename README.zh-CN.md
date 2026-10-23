@@ -99,7 +99,7 @@ Git、`gh`、`glab` 都假定只有一个全局的"当前账户"，于是很容�
 | `gitpersona prompt [--format]` | 输出这里 Git 使用的账户，供提示符使用（`{account}`、`{profile}`、`{host}`） |
 | `gitpersona rollback [<名称>\|latest] [--yes]` | 列出备份，或恢复某个备份（恢复前会先备份当前状态） |
 | `gitpersona uninstall [--yes]` | 从 Git 配置中移除 GitPersona，并放回它接管过的 `includeIf` 规则；保留 config.toml |
-| `gitpersona setup [--yes] [--no-shell] [--keep-old-rules] [--no-default] [--print \| --web]` | 根据现有配置一步完成设置（账户、已有身份、仓库、SSH 别名、Shell）；写入前询问，`--yes` 不询问；`--web` 在浏览器中展示，也可以逐步调整 |
+| `gitpersona setup [--yes] [--no-shell] [--keep-old-rules] [--default <配置文件> \| --no-default] [--print \| --web]` | 根据现有配置一步完成设置（账户、已有身份、仓库、SSH 别名、Shell）；写入前询问，`--yes` 不询问；`--web` 在浏览器中展示，也可以逐步调整 |
 | `gitpersona ui [--no-open]` | 在浏览器中打开配置页面：身份、目录、Pin、应用前的差异预览、体检、shell 和备份。只监听 127.0.0.1，链接只能用一次，15 分钟无操作自动退出 |
 | `gitpersona help <命令>` | 查看某个命令的参数 |
 
@@ -108,7 +108,7 @@ Git、`gh`、`glab` 都假定只有一个全局的"当前账户"，于是很容�
 ## 行为说明
 
 - **优先级：** Pin → 最具体的目录规则 → `default`。Git 按仓库 `.git` 目录的位置应用规则，所以 **worktree 跟随它的主仓库**。在任何仓库之外只有 `default` 生效；`whoami` 还会告诉你在这里新克隆的仓库会用哪个身份。
-- **你自己的 `includeIf` 规则：** GitPersona 的规则排在你的规则之后，所以在你分给配置文件的目录（以及 Pin）里以配置文件为准；其他地方你的规则完全照旧。默认身份在所有地方生效，因此只要你还有自己的身份规则，`setup` 就不设默认身份（`--default <配置文件>` 可以强制设置，并会说明它覆盖了你的哪些规则）。规则如果做了配置文件做不到的事（如 x509 签名、带额外参数的 `ssh` 命令），`setup` 会把它的目录留给这条规则（如果外层仍有配置文件的目录覆盖它，会明确说明）；被配置文件完全接管的规则会被删除，`uninstall` 会把它们放回原来的位置。`doctor` 会说明你的哪些规则被配置文件覆盖。
+- **你自己的 `includeIf` 规则：** GitPersona 的规则排在你的规则之后，所以在你分给配置文件的目录（以及 Pin）里以配置文件为准；其他地方你的规则完全照旧。默认身份在所有地方生效，因此只要你还有自己的身份规则，`setup` 就不设默认身份（`--default <配置文件>` 可以强制设置，并会说明它覆盖了你的哪些规则）。规则如果做了配置文件做不到的事（如 x509 签名、带额外参数的 `ssh` 命令），`setup` 会把它的目录留给这条规则（如果外层仍有配置文件的目录覆盖它，会明确说明）；被配置文件完全接管的规则会被删除，`uninstall` 会把它们放回原处（紧挨在原来后面那一节之前）。`doctor` 会说明你的哪些规则被配置文件覆盖。
 - **凭据：** 对 GitHub 身份，GitPersona 是该主机唯一的凭据助手，借用 `gh` 已保存的令牌，因此不会有其他助手另存一份。如果某个账户没有在 `gh` 登录，Git 会要求输入密码；`gitpersona doctor` 会告诉你该登录哪个账户。
 - **gh 也跟着目录走：** 装上 shell 集成后，在某个身份的目录里运行 `gh`，就会使用该身份的账户。GitPersona 只把该账户的令牌放进那一次 `gh` 进程的环境变量，不输出、不保存。当你自己设置了 `GH_TOKEN`/`GITHUB_TOKEN`、用 `GH_HOST` 指向其他主机，或没有 GitHub 身份适用时，不做任何改动。
 - **Shell：** 默认 shell 从系统用户记录读取（而不是 `$SHELL`，终端、IDE 和各种工具经常会改它），当前正在用的 shell 从进程关系识别，已安装的 shell 从 `/etc/shells` 读取。fish 使用 `conf.d` 下的独立文件；zsh 使用 `~/.zshenv`；bash 使用 `~/.bashrc`。tide 中添加 `gitpersona` 显示项；Powerlevel10k 中添加 `gitpersona` 段；其他提示符调用 `gitpersona_prompt`。

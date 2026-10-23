@@ -93,6 +93,7 @@ function fromProposal(p) {
     unmatched: p.unmatched,
     global: p.global,
     ownRules: p.own_rules ?? [],
+    shadowed: p.shadowed ?? [],
     profiles: p.profiles.map(({ found = [], ...x }) => ({
       ...x, include: true,
       dirs: [...x.dirs.map((d) => ({ dir: d, on: true, why: "your existing setup" })),

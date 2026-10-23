@@ -399,23 +399,119 @@ func mustConfig(t *testing.T, w world) config.Config {
 	return cfg
 }
 
-func TestAKeptRuleInsideAnotherProfileFolderIsReportedAsOverridden(t *testing.T) {
+func TestRulesInTheXDGConfigAndDotfilesAreYourOwnToo(t *testing.T) {
+	for name, place := range map[string]func(w world){
+		"xdg": func(w world) {
+			mustWrite(t, filepath.Join(w.home, ".config", "git", "config"), "[includeIf \"gitdir:~/oss/\"]\n\tpath = ~/.gc-rule\n", 0o600)
+		},
+		"dotfile include": func(w world) {
+			mustWrite(t, filepath.Join(w.home, "dotfiles", "git"), "[includeIf \"gitdir:~/oss/\"]\n\tpath = ../.gc-rule\n", 0o600)
+			mustWrite(t, filepath.Join(w.home, ".gitconfig"), "[include]\n\tpath = dotfiles/git\n", 0o600)
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			w := newWorld(t)
+			withoutConfig(t, w)
+			mustWrite(t, filepath.Join(w.home, ".gitconfig"), "[user]\n\tname = Global Me\n\temail = global@demo.example\n", 0o600)
+			mustWrite(t, filepath.Join(w.home, ".gc-rule"), "[user]\n\tname = Rule Me\n\temail = rule@demo.example\n", 0o600)
+			place(w)
+			env, _ := w.env(t, w.home)
+
+			got, err := ProposeSetup(context.Background(), env)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if got.Default != "" || len(got.OwnRules) == 0 {
+				t.Errorf("default = %q, own rules = %v; a default would override the rule for ~/oss", got.Default, got.OwnRules)
+			}
+		})
+	}
+}
+
+func TestSetupLeavesAnOuterRuleThatContainsAKeptRule(t *testing.T) {
 	w := newWorld(t)
-	withoutConfig(t, w) // octo-alex's rule for ~/Projects/personal is taken over
+	withoutConfig(t, w) // octo-alex's rule for ~/Projects/personal would be taken over
 	gitconfig := filepath.Join(w.home, ".gitconfig")
-	mustWrite(t, gitconfig, readFile(t, gitconfig)+"[includeIf \"gitdir:~/Projects/personal/x509/\"]\n\tpath = ~/.gc-x509\n", 0o600)
+	mustWrite(t, gitconfig, readFile(t, gitconfig)+"[includeIf \"gitdir:~/Projects/personal/secure/\"]\n\tpath = ~/.gc-x509\n", 0o600)
 	mustWrite(t, filepath.Join(w.home, ".gc-x509"), "[user]\n\tname = Alex Personal\n\temail = alex.personal@example.com\n"+
 		"\tsigningkey = 0xDEADBEEF\n[gpg]\n\tformat = x509\n[commit]\n\tgpgsign = true\n", 0o600)
+	repo := filepath.Join(w.home, "Projects", "personal", "secure", "vault")
+	runGit(t, w.home, "init", "-q", repo)
+	before := runGit(t, repo, "config", "gpg.format")
 	env, _ := w.env(t, w.home)
-	out := &strings.Builder{}
-	env.Stdout = out
-	env.Stdin = strings.NewReader("n\n")
 
-	if err := Setup(context.Background(), env, SetupOptions{}); err != nil {
+	if err := Setup(context.Background(), env, SetupOptions{Yes: true, NoShell: true}); err != nil {
 		t.Fatal(err)
 	}
 
-	if !strings.Contains(out.String(), "! Your includeIf rule for ~/Projects/personal/x509 does more than a profile can (it signs with x509), but profile octo-alex applies there") {
-		t.Errorf("setup must not claim the rule stays in charge:\n%s", out.String())
+	if got := runGit(t, repo, "config", "gpg.format"); got != before || before != "x509" {
+		t.Errorf("~/Projects/personal/secure signs with %q after setup, %q before", got, before)
+	}
+	if cfg := readFile(t, env.configFile()); strings.Contains(cfg, `"~/Projects/personal"`) {
+		t.Errorf("~/Projects/personal contains a kept rule, so no profile may take it:\n%s", cfg)
+	}
+}
+
+func TestARuleThatNeverAppliedIsAnnouncedWhenSetupMakesItApply(t *testing.T) {
+	w := newWorld(t)
+	withoutConfig(t, w)
+	// The rule for ~/Projects/personal comes before a rule for ~/Projects, which wins there in Git.
+	gitconfig := filepath.Join(w.home, ".gitconfig")
+	mustWrite(t, gitconfig, readFile(t, gitconfig)+"[includeIf \"gitdir:~/Projects/\"]\n\tpath = ~/.gc-all\n", 0o600)
+	mustWrite(t, filepath.Join(w.home, ".gc-all"), "[user]\n\tname = Demo Person\n\temail = person@demo.example\n", 0o600)
+	env, _ := w.env(t, w.home)
+
+	got, err := ProposeSetup(context.Background(), env)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(got.Shadowed) != 1 || !strings.Contains(got.Shadowed[0], "your rule for ~/Projects/personal (Alex Personal <alex.personal@example.com>) never applied") {
+		t.Errorf("shadowed = %v", got.Shadowed)
+	}
+}
+
+func TestUseWarnsWhenItOverridesAKeptRule(t *testing.T) {
+	w := editWorld(t)
+	mustWrite(t, filepath.Join(w.home, ".gitconfig"), "[includeIf \"gitdir:~/Projects/new/secure/\"]\n\tpath = ~/.gc-x509\n", 0o600)
+	mustWrite(t, filepath.Join(w.home, ".gc-x509"), "[user]\n\temail = x@demo.example\n\tsigningkey = 0xDEADBEEF\n"+
+		"[gpg]\n\tformat = x509\n[commit]\n\tgpgsign = true\n", 0o600)
+	dir := filepath.Join(w.home, "Projects", "new")
+	mustWrite(t, filepath.Join(dir, ".keep"), "", 0o600)
+	env, out := w.env(t, dir)
+
+	if err := Use(context.Background(), env, "personal"); err != nil {
+		t.Fatal(err)
+	}
+
+	if !strings.Contains(out.String(), "! Your includeIf rule for ~/Projects/new/secure does more than a profile can") {
+		t.Errorf("use should warn:\n%s", out.String())
+	}
+}
+
+func TestAPlainRuleInTheXDGConfigIsTakenOverAndReportedAsNoLongerNeeded(t *testing.T) {
+	w := newWorld(t)
+	withoutConfig(t, w)
+	// The rule for octo-alex lives in the XDG file, not in ~/.gitconfig.
+	gitconfig := filepath.Join(w.home, ".gitconfig")
+	rule := "[includeIf \"gitdir:~/Projects/personal/\"]\n\tpath = ~/.gitconfig-personal\n"
+	mustWrite(t, filepath.Join(w.home, ".config", "git", "config"), rule, 0o600)
+	mustWrite(t, gitconfig, strings.Replace(readFile(t, gitconfig), rule, "", 1), 0o600)
+	env, out := w.env(t, w.home)
+
+	if err := Setup(context.Background(), env, SetupOptions{Yes: true, NoShell: true}); err != nil {
+		t.Fatal(err)
+	}
+	if cfg := readFile(t, env.configFile()); !strings.Contains(cfg, `"~/Projects/personal"`) {
+		t.Errorf("a plain rule in the XDG file is taken over like any other:\n%s", cfg)
+	}
+	out.Reset()
+	Doctor(context.Background(), env)
+	if !strings.Contains(out.String(), "remove it from ~/.config/git/config yourself") {
+		t.Errorf("doctor should say the XDG rule is no longer needed:\n%s", out.String())
+	}
+	if !strings.Contains(readFile(t, filepath.Join(w.home, ".config", "git", "config")), "gitdir:~/Projects/personal/") {
+		t.Error("GitPersona must not change ~/.config/git/config")
 	}
 }

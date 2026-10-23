@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"fmt"
 	"maps"
 	"slices"
 	"strings"
@@ -159,7 +160,7 @@ func setupOwners(profiles []SetupProfile) []ruleOwner {
 // replaces them, and which of their rules could go if one took them over.
 // An identity without a name is shown with globalName, which it commits with.
 func (e Env) leftOut(ctx context.Context, ids []discover.Identity, used []bool, owners []ruleOwner, defaultID, globalName string) []LeftOut {
-	rules := discover.IdentityRules(ctx, e.Home, e.resolvedUserGitConfig(), e.Run)
+	rules := e.identityRules(ctx)
 	out := []LeftOut{}
 	for i, id := range ids {
 		if used[i] {
@@ -206,28 +207,42 @@ func (e Env) ownRules(ctx context.Context, left []LeftOut, kept []KeptRule) []st
 			out = append(out, "your rule for "+k.Dir)
 		}
 	}
-	for _, r := range discover.OtherIdentityRules(ctx, e.Home, e.resolvedUserGitConfig(), e.Run) {
+	for _, r := range e.otherIdentityRules(ctx) {
 		out = append(out, author(r.Name, r.Email)+" for "+r.Condition)
 	}
 	return out
 }
 
 // withoutKeptDirs takes out of the profiles the directories of rules that do
-// more than a profile can (KeptRule says why): in a profile's directory the
-// profile wins, so those settings would be lost. The rules keep applying.
+// more than a profile can (KeptRule says why), and directories that contain
+// one: in a profile's directory the profile wins, so those settings would be
+// lost. The rules keep applying there.
 func (e Env) withoutKeptDirs(ctx context.Context, profiles []SetupProfile) ([]SetupProfile, []KeptRule) {
 	why := map[string]string{}
-	for _, r := range discover.IdentityRules(ctx, e.Home, e.resolvedUserGitConfig(), e.Run) {
+	var keptRules []string
+	for _, r := range e.identityRules(ctx) {
 		if r.Keep != "" {
 			why[e.comparisonKey(r.Dir)] = r.Keep
+			keptRules = append(keptRules, r.Dir)
 		}
+	}
+	reason := func(d string) (string, bool) {
+		if r, ok := why[e.comparisonKey(d)]; ok {
+			return r, true
+		}
+		for _, k := range keptRules {
+			if coversWith(e.comparisonKey, []string{d}, k) {
+				return "it contains your rule for " + k + " (" + why[e.comparisonKey(k)] + ")", true
+			}
+		}
+		return "", false
 	}
 	kept := []KeptRule{}
 	out := make([]SetupProfile, len(profiles))
 	for i, p := range profiles {
 		p.Dirs = slices.DeleteFunc(slices.Clone(p.Dirs), func(d string) bool {
-			if reason, ok := why[e.comparisonKey(d)]; ok {
-				kept = append(kept, KeptRule{Dir: d, Why: reason})
+			if r, ok := reason(d); ok {
+				kept = append(kept, KeptRule{Dir: d, Why: r})
 				return true
 			}
 			return false
@@ -255,7 +270,40 @@ func (e Env) keptOverrides(kept []KeptRule, owners []ruleOwner, defaultID string
 		if by, ok := e.overriddenBy(k.Dir, owners, defaultID); ok {
 			k.OverriddenBy = by.id
 		}
+		k.ReplacedIn = e.profileDirsInside(k.Dir, owners)
 		out[i] = k
+	}
+	return out
+}
+
+// shadowedRules describes the user's directory rules that never applied in
+// their folder, because a later rule of theirs for a folder around it sets
+// another identity, but that a profile now applies there: after setup that
+// folder's identity changes.
+func (e Env) shadowedRules(ctx context.Context, owners []ruleOwner) []string {
+	rules := e.identityRules(ctx)
+	var out []string
+	for i, inner := range rules {
+		// Git applies the last rule that matches: the last later rule whose
+		// folder contains this one decides there.
+		last := -1
+		for j := i + 1; j < len(rules); j++ {
+			if coversWith(e.comparisonKey, []string{rules[j].Dir}, inner.Dir) {
+				last = j
+			}
+		}
+		if last < 0 {
+			continue
+		}
+		outer := rules[last]
+		if strings.EqualFold(inner.Email, outer.Email) && inner.Name == outer.Name {
+			continue
+		}
+		if by, ok := e.overriddenBy(inner.Dir, owners, ""); ok && by.sameIdentity(inner.Email, inner.Name) {
+			out = append(out, fmt.Sprintf("your rule for %s (%s) never applied, because your later rule for %s (%s) overrides it; "+
+				"after setup %s uses %s", inner.Dir, author(inner.Name, inner.Email), outer.Dir, author(outer.Name, outer.Email),
+				inner.Dir, author(inner.Name, inner.Email)))
+		}
 	}
 	return out
 }

@@ -175,6 +175,9 @@ func printWhoami(e Env, r WhoamiReport) {
 	}
 	if !r.Found {
 		fmt.Fprintln(e.Stdout, "No GitPersona profile applies here; Git uses its own settings.")
+		if r.InRepository && r.EffectiveEmail != "" {
+			fmt.Fprintf(e.Stdout, "  author  %s <%s>%s\n", r.EffectiveName, r.EffectiveEmail, fromFile(r.EmailSource))
+		}
 	} else {
 		printProfile(e, r)
 	}
@@ -193,7 +196,7 @@ func printProfile(e Env, r WhoamiReport) {
 	if r.InRepository && r.EffectiveEmail != "" {
 		name, email = r.EffectiveName, r.EffectiveEmail // what commits really use
 	}
-	fmt.Fprintf(e.Stdout, "  author  %s <%s>\n", name, email)
+	fmt.Fprintf(e.Stdout, "  author  %s <%s>%s\n", name, email, fromFile(r.EmailSource))
 	reason := resolve.Reason(r.Reason).Describe()
 	if r.Match != "" {
 		reason += " " + r.Match
@@ -212,4 +215,12 @@ func WhoamiReportFor(ctx context.Context, e Env) (WhoamiReport, error) {
 		return WhoamiReport{}, err
 	}
 	return e.whoami(ctx, cfg), nil
+}
+
+// fromFile says which file the author's email comes from, or "".
+func fromFile(source string) string {
+	if source == "" {
+		return ""
+	}
+	return " (email from " + source + ")"
 }

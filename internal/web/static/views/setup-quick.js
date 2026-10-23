@@ -42,6 +42,8 @@ export function quickView(ctx) {
       : h("div", { class: "grid" }, included.map((p) => profileSummary(p, p.account === wizard.defaultAccount))),
     outsideText(wizard),
     leftOutChoices(ctx.get, ctx.set, () => ctx.update({})),
+    wizard.shadowed?.length ? h("div", { class: "notice warn" }, badge("warn"), " These folders change:",
+      h("ul", {}, wizard.shadowed.map((text) => h("li", {}, text)))) : null,
     wizard.unassigned.length > 0 ? ctx.unassigned() : null,
     pinChoices(ctx.get, set),
     oldRulesChoice(ctx.get, set),
@@ -195,7 +197,11 @@ export function oldRulesChoice(get, set) {
     h("legend", {}, "Your old setup"),
     oldRules.dirs.length > 0 ? h("label", { class: "check" }, box,
       `Remove the includeIf rules for ${oldRules.dirs.join(", ")} from your Git configuration; the profiles take them over`) : null,
-    oldRules.kept.map((k) => h("p", { class: "muted" }, `The includeIf rule for ${k.dir} stays: ${k.why}.`)));
+    oldRules.kept.map((k) => k.overridden_by
+      ? h("p", {}, badge("warn"), ` Your includeIf rule for ${k.dir} does more than a profile can (${k.why}), ` +
+        `but profile ${k.overridden_by} applies there, so that is lost.`)
+      : h("p", { class: "muted" }, `Your includeIf rule for ${k.dir} stays in charge there: ${k.why}.`,
+        k.replaced_in?.length ? ` Except in ${k.replaced_in.join(", ")}, which go to profiles.` : "")));
 }
 
 // shellChoices offers the shell integration, chosen by default.

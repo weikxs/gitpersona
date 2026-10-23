@@ -68,13 +68,20 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
   the rules it overrides). The folders of rules that do more than a profile can (x509 signing, extra `ssh` options, a
   key used only for tags) stay with those rules. `doctor` says which of your rules a profile overrides; profiles reset
   signing and the SSH command when your rules set them, so a profile's folder inside one of your rules never uses its
-  key. `uninstall` puts back the rules setup or `doctor --fix` removed, where they were; `whoami` shows the author Git
+  key. `uninstall` puts back the rules setup or `doctor --fix` removed, before the section that followed them; `whoami` shows the author Git
   really uses and where it comes from. GitPersona's own settings are read from your dotfile includes and
   `~/.config/git/config` too.
 - A configuration whose GPG signing key is a file is refused (it made every commit fail); use `method = "ssh"`.
 
 ### Fixed
 
+- `includeIf` rules in `~/.config/git/config` and in files your global configuration includes count as your own rules
+  (no default is proposed over them, `doctor` reports overrides, the same identity in several files is one); a plain
+  one a profile takes over is reported as no longer needed, since GitPersona does not edit those files.
+- Setup does not give a profile a folder that contains one of your rules that does more than a profile can; it lists
+  the profile folders inside a kept rule ("Except in …"), and announces folders where a rule of yours never applied
+  (a later rule of yours overrode it) but will after setup. `use` warns when it overrides such a rule, and setup says
+  when the default's SSH key applies outside your directories. `whoami` names the file the author's email comes from.
 - The GitPersona block keeps the line endings of a CRLF `~/.gitconfig`. `rollback` recreates folders that are gone
   (for example after `uninstall`) and reads every saved file before it starts writing.
 - Setup ties an existing `includeIf` identity that names no account to the right one by what is on disk: the key of
@@ -91,8 +98,10 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
   partial counts, and says which keys of an existing setup it left out because their files are missing.
 - Declining the shell integration that setup offers (`setup --no-shell`, or unticking every shell on the page) writes
   `shell_integration = false`, so `doctor` and `doctor --fix` no longer push it.
-- When some profile signs, a profile without signing resets the signing key and format to your own settings or Git's
-  defaults, so `git commit -S` in a pinned repository no longer signs with another profile's key.
+- A profile resets signing and the SSH command only where another profile's (or one of your rules') key could
+  otherwise reach its repositories: under the default, or inside another profile's folder, also through symbolic
+  links. Elsewhere it leaves them alone, so `git commit -S` never uses another identity's key, and `GIT_SSH` keeps
+  working where nothing needs a reset.
 - Setup no longer trusts weak clues: a single repository an account owns no longer ties an
   existing identity to that account, the strongest clue wins when two identities point to one account, and a pin for
   a repository outside every rule follows the default you choose.

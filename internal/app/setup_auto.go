@@ -97,6 +97,7 @@ func (e Env) organize(ctx context.Context, p SetupProposal, existing []discover.
 	// override all of it, so it is proposed only when nothing stays.
 	p.Unmatched = e.leftOut(ctx, existing, used, owners, "", p.Global.Name)
 	p.KeptRules = e.keptOverrides(kept, owners, "")
+	p.Shadowed = append([]string{}, e.shadowedRules(ctx, owners)...)
 	p.OwnRules, p.SuggestedDefault = e.ownRules(ctx, p.Unmatched, p.KeptRules), p.Default
 	if len(p.OwnRules) > 0 {
 		p = e.withDefault(p, "")

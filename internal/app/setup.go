@@ -153,6 +153,9 @@ func (e Env) printProposal(p SetupProposal) {
 		if def.Signing.Method == config.SigningSSH || def.Signing.Method == config.SigningGPG {
 			fmt.Fprintf(w, "  There, commits will also be signed (%s), as %s signs every commit.\n", def.Signing.Method, def.ID)
 		}
+		if def.SSHKey != "" {
+			fmt.Fprintf(w, "  There, Git also connects with %s's SSH key %s (instead of your own SSH settings).\n", def.ID, def.SSHKey)
+		}
 	}
 	if len(p.OldRules) > 0 {
 		fmt.Fprintf(w, "\n  The profiles take over your includeIf rules for %s; they are removed from your Git configuration (--keep-old-rules to keep them).\n",
@@ -165,6 +168,12 @@ func (e Env) printProposal(p SetupProposal) {
 			continue
 		}
 		fmt.Fprintf(w, "\n  Kept your includeIf rule for %s, which stays in charge there: %s.\n", k.Dir, k.Why)
+		if len(k.ReplacedIn) > 0 {
+			fmt.Fprintf(w, "    Except in %s, which go to profiles (what the rule does more is lost there).\n", strings.Join(k.ReplacedIn, ", "))
+		}
+	}
+	for _, s := range p.Shadowed {
+		fmt.Fprintf(w, "\n  ! Changed: %s.\n", s)
 	}
 	if len(p.Shells) > 0 {
 		fmt.Fprintf(w, "\n  Shell integration for %s, so gh and your prompt follow the directory (--no-shell to skip).\n",

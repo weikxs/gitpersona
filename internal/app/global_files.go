@@ -188,3 +188,58 @@ func (e Env) ruleReaches(dir string, p config.Profile, cfg config.Config) bool {
 		return coversWith(e.comparisonKey, []string{dir}, place) || coversWith(e.comparisonKey, []string{place}, dir)
 	})
 }
+
+// identityRules returns the includeIf identity rules of every file of the
+// global configuration, in the order Git reads them. Rules outside the
+// global file itself carry their File: GitPersona does not edit it.
+func (e Env) identityRules(ctx context.Context) []discover.Rule {
+	main := e.resolvedUserGitConfig()
+	var rules []discover.Rule
+	for _, file := range e.globalFiles() {
+		for _, r := range discover.IdentityRules(ctx, e.Home, file, e.Run) {
+			if file != main {
+				r.File = e.display(file)
+			}
+			rules = append(rules, r)
+		}
+	}
+	return rules
+}
+
+// otherIdentityRules returns the identity rules that are not directory rules
+// (onbranch, hasconfig, the whole home) of every global file.
+func (e Env) otherIdentityRules(ctx context.Context) []discover.Rule {
+	var rules []discover.Rule
+	for _, file := range e.globalFiles() {
+		rules = append(rules, discover.OtherIdentityRules(ctx, e.Home, file, e.Run)...)
+	}
+	return rules
+}
+
+// existingIdentities returns the identities of the includeIf rules of every
+// global file; one identity set in several files is one, with all its
+// directories.
+func (e Env) existingIdentities(ctx context.Context) []discover.Identity {
+	var ids []discover.Identity
+	for _, file := range e.globalFiles() {
+		found, _ := discover.Existing(ctx, e.Home, file, e.Run)
+		for _, id := range found {
+			i := slices.IndexFunc(ids, func(x discover.Identity) bool { return x.Email == id.Email && x.Name == id.Name })
+			if i < 0 {
+				ids = append(ids, id)
+				continue
+			}
+			for _, d := range id.Dirs {
+				if !slices.Contains(ids[i].Dirs, d) {
+					ids[i].Dirs = append(slices.Clone(ids[i].Dirs), d)
+				}
+			}
+		}
+	}
+	return ids
+}
+
+// ExistingIdentities is existingIdentities, for the configuration page.
+func (e Env) ExistingIdentities(ctx context.Context) []discover.Identity {
+	return e.existingIdentities(ctx)
+}

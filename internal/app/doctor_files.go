@@ -1,6 +1,7 @@
 package app
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -9,7 +10,6 @@ import (
 	"strings"
 
 	"github.com/weikxs/gitpersona/internal/config"
-	"github.com/weikxs/gitpersona/internal/discover"
 	"github.com/weikxs/gitpersona/internal/paths"
 )
 
@@ -100,9 +100,14 @@ func (e Env) checkOldRules(ctx context.Context, cfg config.Config) []check {
 	owners := ownersOf(cfg)
 	var checks []check
 	var replaced []string
-	for _, r := range discover.IdentityRules(ctx, e.Home, e.GlobalGitConfigPath(), e.Run) {
+	for _, r := range e.identityRules(ctx) {
 		by, overridden := e.overriddenBy(r.Dir, owners, cfg.Default)
+		file := cmp.Or(r.File, e.display(e.GlobalGitConfigPath()))
 		switch {
+		case e.takenOver(r, owners) && r.Keep == "" && r.File != "":
+			checks = append(checks, check{warn: true,
+				label:  fmt.Sprintf("profile %s takes over your includeIf rule for %s in %s", by.id, r.Dir, r.File),
+				advice: "it is no longer needed; remove it from " + r.File + " yourself (GitPersona does not change that file)"})
 		case e.takenOver(r, owners) && r.Keep == "":
 			replaced = append(replaced, r.Dir)
 		case e.takenOver(r, owners):
@@ -112,7 +117,7 @@ func (e Env) checkOldRules(ctx context.Context, cfg config.Config) []check {
 				label:  fmt.Sprintf("profile %s covers your includeIf rule for %s, which does more than a profile can (%s); that is lost there", by.id, r.Dir, r.Keep),
 				advice: fmt.Sprintf("take %s out of the profile (`gitpersona remove` there) to let your rule decide", r.Dir)})
 		case overridden && !by.sameIdentity(r.Email, r.Name):
-			advice := fmt.Sprintf("give %s to a profile with that identity, or remove the rule from %s", r.Dir, e.display(e.GlobalGitConfigPath()))
+			advice := fmt.Sprintf("give %s to a profile with that identity, or remove the rule from %s", r.Dir, file)
 			if by.id == cfg.Default && !coversWith(e.comparisonKey, by.dirs, r.Dir) {
 				advice += "; or set no default profile, which applies everywhere"
 			}
@@ -128,7 +133,7 @@ func (e Env) checkOldRules(ctx context.Context, cfg config.Config) []check {
 			checks = append(checks, check{ok: true, label: label})
 		}
 	}
-	for _, r := range discover.OtherIdentityRules(ctx, e.Home, e.GlobalGitConfigPath(), e.Run) {
+	for _, r := range e.otherIdentityRules(ctx) {
 		if cfg.Default != "" {
 			checks = append(checks, check{warn: true,
 				label: fmt.Sprintf("the default profile %s overrides your includeIf rule %q, which sets %s",

@@ -62,6 +62,9 @@ type SetupProposal struct {
 	// while there are any. SuggestedDefault is the profile it would propose.
 	OwnRules         []string `json:"own_rules"`
 	SuggestedDefault string   `json:"suggested_default"`
+	// Shadowed are changes setup makes to folders where a rule of the user's
+	// never applied (a later rule of theirs overrode it).
+	Shadowed []string `json:"shadowed"`
 	// Pins are repositories whose own settings name another profile than
 	// their directory; Unassigned are folders the user must choose for.
 	Pins       []PinSuggestion `json:"pins"`
@@ -131,7 +134,7 @@ func ProposeSetup(ctx context.Context, e Env) (SetupProposal, error) {
 	if err != nil {
 		return SetupProposal{}, err
 	}
-	existing, _ := discover.Existing(ctx, e.Home, e.GlobalGitConfigPath(), e.Run)
+	existing := e.existingIdentities(ctx)
 	used := make([]bool, len(existing))
 	global := e.globalIdentity(ctx)
 

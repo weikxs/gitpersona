@@ -234,8 +234,10 @@ func TestEscapeGlob(t *testing.T) {
 func TestProfilesWithoutSigningRestoreTheUsersGlobalSigning(t *testing.T) {
 	opts := demoOptions()
 	opts.FallbackSigning = Signing{GPGSign: "true", SigningKey: "/tmp/home/.ssh/global.pub", Format: "ssh"}
+	cfg := demoConfig()
+	cfg.Default = "personal" // personal signs and applies under every rule, so acme must restore the user's own
 
-	files, err := Generate(demoConfig(), opts)
+	files, err := Generate(cfg, opts)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -316,6 +318,44 @@ func TestSigningNoneMakesGitCommitSRefuse(t *testing.T) {
 	for _, want := range []string{`signingkey = ""`, "gpgsign = false", "gpgSign = false"} {
 		if !strings.Contains(b.String(), want) {
 			t.Errorf("signing none should write %q:\n%s", want, b.String())
+		}
+	}
+}
+
+func TestAProfileNothingReachesLeavesSigningAndSSHAlone(t *testing.T) {
+	// globex's folder lies outside every other profile's, and the default acme sets neither.
+	files, err := Generate(demoConfig(), demoOptions())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range files {
+		if f.Name == ProfileFile("acme") && (strings.Contains(f.Content, "sshCommand") || strings.Contains(f.Content, "gpgsign")) {
+			t.Errorf("acme is reached by no profile with a key; it must leave GIT_SSH and signing alone:\n%s", f.Content)
+		}
+	}
+}
+
+func TestAProfileBehindASymlinkStillResetsWhatItWouldInherit(t *testing.T) {
+	cfg := config.Config{Version: config.CurrentVersion, Profiles: []config.Profile{
+		{ID: "a", Provider: config.ProviderGitHub, Host: "github.com", Account: "a", Name: "A", Email: "a@demo.example",
+			SSHKey: "~/.ssh/id_a", Dirs: []string{"~/link"}},
+		{ID: "b", Provider: config.ProviderGitHub, Host: "github.com", Account: "b", Name: "B", Email: "b@demo.example",
+			Dirs: []string{"~/real/sub"}},
+	}}
+	opts := demoOptions()
+	opts.Canonicalize = func(p string) string { return strings.Replace(p, "/tmp/home/link", "/tmp/home/real", 1) }
+
+	files, err := Generate(cfg, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, f := range files {
+		if f.Name == ProfileFile("b") && !strings.Contains(f.Content, "sshCommand = ssh") {
+			t.Errorf("~/link is ~/real, which contains b's folder, so b must reset the SSH command:\n%s", f.Content)
+		}
+		if f.Name == RulesFile && strings.Index(f.Content, "gitdir:/tmp/home/real/\"") > strings.Index(f.Content, "gitdir:/tmp/home/real/sub/\"") {
+			t.Errorf("a's real-path entry must come before b's more specific folder:\n%s", f.Content)
 		}
 	}
 }

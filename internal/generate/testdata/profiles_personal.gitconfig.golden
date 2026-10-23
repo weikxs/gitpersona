@@ -9,8 +9,6 @@
 	format = ssh
 [commit]
 	gpgsign = true
-[core]
-	sshCommand = ssh
 [credential "https://github.com"]
 	helper = ""
 	helper = !'/opt/tools/gitpersona' credential --provider github --host 'github.com' --account 'octo-alex'

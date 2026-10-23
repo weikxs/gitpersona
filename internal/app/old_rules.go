@@ -127,9 +127,9 @@ func (e Env) withoutOldRules(ctx context.Context, text string, owners []ruleOwne
 func (e Env) classifyOldRules(ctx context.Context, owners []ruleOwner, only []string) ([]discover.Rule, []KeptRule) {
 	var replaced []discover.Rule
 	kept := []KeptRule{}
-	for _, r := range discover.IdentityRules(ctx, e.Home, e.resolvedUserGitConfig(), e.Run) {
+	for _, r := range e.identityRules(ctx) {
 		switch {
-		case only != nil && !slices.Contains(only, r.Dir), !e.takenOver(r, owners):
+		case only != nil && !slices.Contains(only, r.Dir), !e.takenOver(r, owners), r.File != "": // GitPersona edits only the global file
 		case r.Keep != "":
 			kept = append(kept, KeptRule{Dir: r.Dir, Why: r.Keep})
 		default:
@@ -147,6 +147,8 @@ type KeptRule struct {
 	// OverriddenBy names the profile whose folder around it (or the
 	// default) applies there instead, so what the rule does more is lost.
 	OverriddenBy string `json:"overridden_by,omitempty"`
+	// ReplacedIn are profile directories inside its folder.
+	ReplacedIn []string `json:"replaced_in,omitempty"`
 }
 
 // includeIfHeader matches an includeIf section header and captures its
