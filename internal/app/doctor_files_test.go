@@ -57,8 +57,8 @@ func TestDoctorReportsMissingKeysMissingDirectoriesAndOldRules(t *testing.T) {
 		"✗ profile acme: signing key ~/.ssh/acme.pub does not exist",
 		"! profile globex: directory ~/Projects/clients/globex does not exist yet",
 		"! ~/.gitconfig still has includeIf identity rules that your profiles take over (~/Projects/personal)",
-		// No profile has that identity, and the default acme applies there instead.
-		"! profile acme overrides your includeIf rule for ~/old, so commits there do not use <old@example.com>",
+		// No profile has that identity; GitPersona keeps the rule working there.
+		"✓ your includeIf rule for ~/old keeps applying there (<old@example.com>)",
 	} {
 		if !strings.Contains(report, want) {
 			t.Errorf("doctor should report %q:\n%s", want, report)
@@ -238,9 +238,7 @@ func TestAnOldRuleWithTheDefaultsEmailIsNotReportedAsOverridden(t *testing.T) {
 
 func TestDoctorCatchesSigningThatCannotWork(t *testing.T) {
 	w := newWorld(t)
-	cfg := strings.Replace(demoConfig, `email   = "1000002+acme-alex@users.noreply.github.com"`,
-		`email   = "1000002+acme-alex@users.noreply.github.com"`+"\n"+`signing = { method = "gpg", key = "~/.ssh/acme.pub" }`, 1)
-	cfg = strings.Replace(cfg, `email   = "1000001+octo-alex@users.noreply.github.com"`,
+	cfg := strings.Replace(demoConfig, `email   = "1000001+octo-alex@users.noreply.github.com"`,
 		`email   = "1000001+octo-alex@users.noreply.github.com"`+"\n"+`signing = { method = "ssh", key = "~/.ssh/octo.pub" }`, 1)
 	withDefault := strings.Replace(cfg, `default = "acme"`, `default = "personal"`, 1)
 	mustWrite(t, filepath.Join(w.home, ".config", "gitpersona", "config.toml"), withDefault, 0o600)
@@ -252,18 +250,10 @@ func TestDoctorCatchesSigningThatCannotWork(t *testing.T) {
 	}
 	out.Reset()
 
-	ok := Doctor(context.Background(), env)
+	Doctor(context.Background(), env)
 
-	for _, want := range []string{
-		"✗ profile acme signs with GPG, but its key ~/.ssh/acme.pub is a file",
-		"! profile globex has no signing, so `git commit -S` in its directories uses profile personal's SSH key",
-	} {
-		if !strings.Contains(out.String(), want) {
-			t.Errorf("doctor should report %q:\n%s", want, out.String())
-		}
-	}
-	if ok {
-		t.Error("GPG signing with a file key fails every commit, so doctor must fail")
+	if want := "! profile acme has no signing, so `git commit -S` in its directories uses profile personal's SSH key"; !strings.Contains(out.String(), want) {
+		t.Errorf("doctor should report %q:\n%s", want, out.String())
 	}
 
 	// With acme as the default, personal's key applies only in its own

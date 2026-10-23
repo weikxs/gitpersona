@@ -41,6 +41,25 @@ type Options struct {
 	// includeIf against the real path of the repository, so when a rule's
 	// directory goes through a symlink an entry for the real path is added.
 	Canonicalize func(string) string
+	// UserRules are the includeIf rules of the user's own Git configuration.
+	// They are included again among GitPersona's rules, so that in their
+	// folders they still win over less specific rules and the default.
+	UserRules []UserRule
+}
+
+// UserRule is an includeIf rule of the user's own configuration, with its
+// path made absolute (or ~/...) so it can be included from elsewhere.
+type UserRule struct {
+	Condition string // as Git reads it, such as "gitdir:~/oss/" or "onbranch:release/**"
+	Path      string
+	// Dir is the absolute directory a gitdir rule covers ("/" for a pattern
+	// Git matches anywhere, the least specific), or "" for other rules
+	// (onbranch, hasconfig, a single repository), which come after every
+	// directory rule.
+	Dir string
+	// Yield puts the rule before GitPersona's rule for the same directory:
+	// the user gave that directory to a profile with another identity.
+	Yield bool
 }
 
 // Signing holds the user's global commit-signing settings.
@@ -137,7 +156,7 @@ func writeSigning(b *strings.Builder, p config.Profile, u usage, opts Options) e
 		return nil
 	}
 	key := p.Signing.Key
-	if p.Signing.Method == config.SigningSSH {
+	if p.Signing.Method == config.SigningSSH && !config.LiteralSSHKey(key) {
 		expanded, err := paths.Normalize(key, opts.Home)
 		if err != nil {
 			return fmt.Errorf("profile %q signing key: %w", p.ID, err)
@@ -210,7 +229,8 @@ func writeCredential(b *strings.Builder, p config.Profile, opts Options) {
 func rulesIndex(cfg config.Config, opts Options) string {
 	var b strings.Builder
 	b.WriteString(header)
-	b.WriteString("# Order is precedence: default, then directory rules from least to most specific, then pins.\n")
+	b.WriteString("# Order is precedence: default, then directory rules (yours and GitPersona's) from least to most\n" +
+		"# specific, then your other includeIf rules, then pins.\n")
 
 	if cfg.Default != "" {
 		fmt.Fprintf(&b, "\n# Default profile: %s\n[include]\n", cfg.Default)
@@ -221,9 +241,18 @@ func rulesIndex(cfg config.Config, opts Options) string {
 	if opts.CaseInsensitive {
 		gitdir = "gitdir/i:"
 	}
-	for _, r := range sortedRules(cfg, opts.Home) {
+	for _, r := range sortedRules(cfg, opts) {
+		if r.user != nil {
+			writeUserRule(&b, *r.user)
+			continue
+		}
 		fmt.Fprintf(&b, "\n# Rule: %s -> %s\n", r.written, r.profile)
 		opts.writeIncludeIf(&b, gitdir, r.norm, "/", r.profile)
+	}
+	for _, u := range opts.UserRules {
+		if u.Dir == "" {
+			writeUserRule(&b, u)
+		}
 	}
 	for _, pin := range cfg.Pins {
 		norm, _ := paths.Normalize(pin.Repo, opts.Home) // validated in Generate
@@ -253,20 +282,53 @@ func (o Options) pathForms(dir string) []string {
 	return []string{dir}
 }
 
-type rule struct {
-	written, norm, profile string
+// writeUserRule includes one of the user's own rules again.
+func writeUserRule(b *strings.Builder, u UserRule) {
+	fmt.Fprintf(b, "\n# Your own rule from your Git configuration: %s\n", u.Condition)
+	fmt.Fprintf(b, "[includeIf %s]\n", quoteSubsection(u.Condition))
+	writeKV(b, "path", u.Path)
 }
 
-func sortedRules(cfg config.Config, home string) []rule {
+// rule is a directory rule: a profile's, or one of the user's own (user).
+type rule struct {
+	written, norm, profile string
+	user                   *UserRule
+}
+
+// sortedRules orders the directory rules from least to most specific; at
+// the same directory the user's own rule comes last, so it still wins,
+// unless it yields to a profile the user gave that directory.
+func sortedRules(cfg config.Config, opts Options) []rule {
 	var rules []rule
 	for _, p := range cfg.Profiles {
 		for _, d := range p.Dirs {
-			norm, _ := paths.Normalize(d, home) // validated in Generate
+			norm, _ := paths.Normalize(d, opts.Home) // validated in Generate
 			rules = append(rules, rule{written: d, norm: norm, profile: p.ID})
 		}
 	}
+	for i, u := range opts.UserRules {
+		if u.Dir != "" {
+			rules = append(rules, rule{norm: u.Dir, user: &opts.UserRules[i]})
+		}
+	}
+	rank := func(r rule) int {
+		switch {
+		case r.user == nil:
+			return 0
+		case r.user.Yield:
+			return -1
+		}
+		return 1
+	}
+	// On a case-insensitive disk ~/Work and ~/work are one folder.
+	key := func(r rule) string {
+		if opts.CaseInsensitive {
+			return strings.ToLower(r.norm)
+		}
+		return r.norm
+	}
 	slices.SortStableFunc(rules, func(a, b rule) int {
-		return cmp.Or(cmp.Compare(len(a.norm), len(b.norm)), cmp.Compare(a.norm, b.norm))
+		return cmp.Or(cmp.Compare(len(a.norm), len(b.norm)), cmp.Compare(key(a), key(b)), cmp.Compare(rank(a), rank(b)))
 	})
 	return rules
 }

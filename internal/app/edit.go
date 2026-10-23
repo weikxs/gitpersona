@@ -170,7 +170,7 @@ func (e Env) saveEdited(ctx context.Context, command, edited string, want config
 	if err := got.Validate(e.Home, e.CaseInsensitive); err != nil {
 		return err
 	}
-	generated, err := e.planWith(ctx, got)
+	generated, err := e.planWith(ctx, got, nil)
 	if err != nil {
 		return err
 	}

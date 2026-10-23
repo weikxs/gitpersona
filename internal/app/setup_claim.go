@@ -10,13 +10,15 @@ import (
 )
 
 // LeftOut is an identity of the user's existing includeIf setup that no
-// profile takes over. OverriddenBy names the profile that applies in its
+// profile takes over. Its rule keeps applying in its folder; AccountFrom
+// names the profile GitPersona applies around it there, whose account is
+// used for what the rule does not set (such as pushes), or is "". The old
 // directory instead (GitPersona's rules come last), or is "". Replaceable
 // are the directories whose rules could go once a profile takes it over.
 type LeftOut struct {
 	discover.Identity
-	OverriddenBy string   `json:"overridden_by,omitempty"`
-	Replaceable  []string `json:"replaceable"`
+	AccountFrom string   `json:"account_from,omitempty"`
+	Replaceable []string `json:"replaceable"`
 }
 
 // Evidence weights for tying an identity to an account. A single repository
@@ -152,7 +154,8 @@ func setupOwners(profiles []SetupProfile) []ruleOwner {
 
 // leftOut describes the identities no profile takes over: what overrides
 // them, and which of their rules could go if one did.
-func (e Env) leftOut(ctx context.Context, ids []discover.Identity, used []bool, owners []ruleOwner, defaultID string) []LeftOut {
+// An identity without a name is shown with globalName, which it commits with.
+func (e Env) leftOut(ctx context.Context, ids []discover.Identity, used []bool, owners []ruleOwner, defaultID, globalName string) []LeftOut {
 	rules := discover.IdentityRules(ctx, e.Home, e.resolvedUserGitConfig(), e.Run)
 	out := []LeftOut{}
 	for i, id := range ids {
@@ -164,14 +167,17 @@ func (e Env) leftOut(ctx context.Context, ids []discover.Identity, used []bool, 
 		id.SSHKey, id.Signing = key, discover.Signing{Method: signing.Method, Key: signing.Key}
 		l := LeftOut{Identity: id, Replaceable: []string{}}
 		for _, d := range id.Dirs {
-			if by, ok := e.overriddenBy(d, owners, defaultID); ok && l.OverriddenBy == "" && !by.sameIdentity(id.Email, id.Name) {
-				l.OverriddenBy = by.id
+			if by, ok := e.overriddenBy(d, owners, defaultID); ok && l.AccountFrom == "" {
+				l.AccountFrom = by.id
 			}
 		}
 		for _, r := range rules {
 			if strings.EqualFold(r.Email, id.Email) && r.Name == id.Name && r.Keep == "" {
 				l.Replaceable = append(l.Replaceable, r.Dir)
 			}
+		}
+		if l.Name == "" {
+			l.Name = globalName
 		}
 		out = append(out, l)
 	}

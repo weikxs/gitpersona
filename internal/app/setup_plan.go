@@ -10,7 +10,6 @@ import (
 
 	"github.com/weikxs/gitpersona/internal/config"
 	"github.com/weikxs/gitpersona/internal/discover"
-	"github.com/weikxs/gitpersona/internal/fsutil"
 	"github.com/weikxs/gitpersona/internal/provider"
 	"github.com/weikxs/gitpersona/internal/shell"
 )
@@ -68,6 +67,8 @@ type SetupProposal struct {
 	// ScanIncomplete is set when the scan stopped at its time limit, so
 	// some folders were not looked at.
 	ScanIncomplete bool `json:"scan_incomplete"`
+	// ScanUnfinished are the scanned folders it did not finish, with ~.
+	ScanUnfinished []string `json:"scan_unfinished"`
 	// ScanTooDeep is set when folders below the depth limit were not looked in.
 	ScanTooDeep bool `json:"scan_too_deep"`
 	// OldRules are the directories of hand-made includeIf rules whose
@@ -259,7 +260,7 @@ func (e Env) setupChanges(ctx context.Context, plan SetupPlan) ([]change, error)
 			return nil, fmt.Errorf("profile %s: %w", p.ID, err)
 		}
 	}
-	generated, err := e.planWith(ctx, cfg)
+	generated, err := e.planWith(ctx, cfg, e.oldRulesEdit(ctx, plan))
 	if err != nil {
 		return nil, err
 	}
@@ -271,53 +272,27 @@ func (e Env) setupChanges(ctx context.Context, plan SetupPlan) ([]change, error)
 	if err != nil {
 		return nil, err
 	}
-	generated, err = e.retireOldRules(ctx, generated, plan)
-	if err != nil {
-		return nil, err
-	}
 	changes := append([]change{{path: e.configFile(), content: text, create: true}}, generated...)
 	return append(changes, shells...), nil
 }
 
-// retireOldRules removes the hand-made includeIf rules the plan asks to
-// remove and its profiles take over from the global Git configuration,
-// within the change apply already makes to it, so the whole setup stays one
-// backup.
-func (e Env) retireOldRules(ctx context.Context, changes []change, plan SetupPlan) ([]change, error) {
+// oldRulesEdit removes from the global Git configuration the hand-made
+// includeIf rules the plan asks to remove and its profiles take over, in the
+// same change (and backup) as the rest of the setup. The user ticked these
+// rules for removal, perhaps after editing the name, so a profile with the
+// email covering the folder is enough.
+func (e Env) oldRulesEdit(ctx context.Context, plan SetupPlan) func(string) string {
 	if len(plan.RemoveOldRules) == 0 {
-		return changes, nil
+		return nil
 	}
-	path := e.resolvedUserGitConfig()
-	out := slices.Clone(changes)
-	i := slices.IndexFunc(out, func(c change) bool { return c.path == path })
-	if i < 0 {
-		// Apply leaves the file alone (it already has GitPersona's include).
-		current, err := readOptional(path)
-		if err != nil {
-			return nil, err
-		}
-		perm := fsutil.FilePerm
-		if info, err := os.Stat(path); err == nil {
-			perm = info.Mode().Perm() // the file belongs to the user; keep its mode
-			if perm&userWritablePerm == 0 {
-				return nil, fmt.Errorf("%s is read-only, so the old includeIf rules cannot be removed; "+
-					"make it writable (chmod u+w) or keep them (--keep-old-rules)", e.display(e.userGitConfig()))
-			}
-		}
-		out, i = append(out, change{path: path, content: current, perm: perm}), len(out)
-	}
-	// The user ticked these rules for removal, perhaps after editing the
-	// name, so a profile with the email covering the folder is enough.
 	owners := setupOwners(plan.Profiles)
 	for k := range owners {
 		owners[k].anyName = true
 	}
-	updated, _, _ := e.withoutOldRules(ctx, out[i].content, owners, plan.RemoveOldRules)
-	if updated == out[i].content && i == len(changes) {
-		return changes, nil // nothing to remove after all
+	return func(text string) string {
+		updated, _, _ := e.withoutOldRules(ctx, text, owners, plan.RemoveOldRules)
+		return updated
 	}
-	out[i].content = updated
-	return out, nil
 }
 
 // ParseShells parses shell names such as "zsh".

@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/weikxs/gitpersona/internal/config"
 	"github.com/weikxs/gitpersona/internal/paths"
@@ -31,6 +33,9 @@ type WhoamiReport struct {
 	EnvOverride string `json:"env_override,omitempty"`
 	// LocalEmail is a repository-local user.email, which also overrides profiles.
 	LocalEmail string `json:"local_email,omitempty"`
+	// OwnRule is the file of the user's own includeIf rule that sets the
+	// author here; GitPersona keeps such rules working in their folders.
+	OwnRule string `json:"own_rule,omitempty"`
 	// NewRepositories, outside a repository, is the profile that repositories
 	// created or cloned here will use.
 	NewRepositories *NewRepositories `json:"new_repositories,omitempty"`
@@ -119,8 +124,38 @@ func (e Env) whoami(ctx context.Context, cfg config.Config) WhoamiReport {
 			break
 		}
 	}
-	report.Consistent = report.EnvOverride == "" && (!inRepo || !r.Found || report.EffectiveEmail == report.Email)
+	if inRepo && r.Found && report.EffectiveEmail != report.Email && report.LocalEmail == "" {
+		report.OwnRule = e.ownRule(ctx, cfg, root)
+	}
+	report.Consistent = report.EnvOverride == "" &&
+		(!inRepo || !r.Found || report.EffectiveEmail == report.Email || report.OwnRule != "")
 	return report
+}
+
+// ownRule returns the file of the user's own includeIf rule that sets
+// user.email in the repository at root, or "" when the email comes from
+// anywhere else (GitPersona's files, the repository, the global settings).
+func (e Env) ownRule(ctx context.Context, cfg config.Config, root string) string {
+	out, err := e.git(ctx, root, "config", "--show-origin", "--get", "user.email")
+	origin, _, ok := strings.Cut(out, "\t")
+	file, isFile := strings.CutPrefix(origin, "file:")
+	if err != nil || !ok || !isFile {
+		return ""
+	}
+	if !filepath.IsAbs(file) {
+		file = filepath.Join(root, file)
+	}
+	text, err := readOptional(e.resolvedUserGitConfig())
+	if err != nil {
+		return ""
+	}
+	rules, _ := e.userRules(ctx, cfg, text)
+	for _, r := range rules {
+		if norm, err := paths.Normalize(r.Path, e.Home); err == nil && paths.ResolveSymlinks(norm) == paths.ResolveSymlinks(file) {
+			return e.display(file)
+		}
+	}
+	return ""
 }
 
 // mismatchAdvice explains why Git does not use the profile and how to fix it.
@@ -162,6 +197,10 @@ func printProfile(e Env, r WhoamiReport) {
 	}
 	fmt.Fprintf(e.Stdout, "  reason  %s\n", reason)
 	fmt.Fprintf(e.Stdout, "  path    %s\n", e.display(r.Path))
+	if r.OwnRule != "" {
+		fmt.Fprintf(e.Stdout, "  note    Git uses %s here, from your own includeIf rule (%s), which GitPersona keeps working\n",
+			r.EffectiveEmail, r.OwnRule)
+	}
 	if !r.Consistent {
 		fmt.Fprintf(e.Stdout, "  warning %s\n", mismatchAdvice(r))
 	}

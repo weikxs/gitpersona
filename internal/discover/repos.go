@@ -32,6 +32,9 @@ type Found struct {
 	Complete bool
 	// TooDeep is set when folders below the depth limit were not looked in.
 	TooDeep bool
+	// Unfinished are the roots the scan did not finish (it stopped in the
+	// first and never reached the others).
+	Unfinished []string
 }
 
 // Repos finds the repositories under roots and reads, from each .git/config,
@@ -41,9 +44,11 @@ func Repos(ctx context.Context, roots []string, limits ScanLimits) Found {
 	defer cancel()
 	var repos []Repo
 	tooDeep, stoppedAt := false, ""
+	var unfinished []string
 	for _, root := range roots {
 		if ctx.Err() != nil {
-			break
+			unfinished = append(unfinished, root)
+			continue
 		}
 		deep, stopped := walkRepos(ctx, root, limits.MaxDepth, func(dir string, lone bool) {
 			data, err := os.ReadFile(filepath.Join(dir, ".git", "config"))
@@ -55,12 +60,15 @@ func Repos(ctx context.Context, roots []string, limits ScanLimits) Found {
 			repos = append(repos, Repo{Dir: dir, Host: host, Owner: owner, Email: email, User: user, Lone: lone})
 		})
 		tooDeep = tooDeep || deep
-		stoppedAt = cmp.Or(stoppedAt, stopped)
+		if stopped != "" {
+			stoppedAt = cmp.Or(stoppedAt, stopped)
+			unfinished = append(unfinished, root)
+		}
 	}
-	if ctx.Err() == nil {
+	if ctx.Err() == nil && len(unfinished) == 0 {
 		return Found{Repos: repos, Complete: true, TooDeep: tooDeep}
 	}
-	return Found{Repos: markPartial(repos, stoppedAt), TooDeep: tooDeep}
+	return Found{Repos: markPartial(repos, stoppedAt), TooDeep: tooDeep, Unfinished: unfinished}
 }
 
 // markPartial marks the repositories in the folders the scan was still

@@ -402,8 +402,14 @@ func TestTheLinkWorksOnceAndClosingStopsGitPersona(t *testing.T) {
 // run runs gitpersona to completion and returns its combined output.
 func (s *sandbox) run(args ...string) string {
 	s.t.Helper()
+	return s.runIn(s.home, args...)
+}
+
+// runIn runs gitpersona in dir and returns its output.
+func (s *sandbox) runIn(dir string, args ...string) string {
+	s.t.Helper()
 	cmd := exec.Command(gitpersonaBin, args...)
-	cmd.Env, cmd.Dir = s.env, s.home
+	cmd.Env, cmd.Dir = s.env, dir
 	out, _ := cmd.CombinedOutput()
 	return string(out)
 }

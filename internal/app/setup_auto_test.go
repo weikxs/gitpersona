@@ -41,7 +41,7 @@ func TestInferLayoutUsesOwnersAliasesAndRepositoryEmails(t *testing.T) {
 	}
 	aliases := []discover.SSHAlias{{Alias: "github-acme", IdentityFile: "~/.ssh/id_acme"}, {Alias: "github.com", IdentityFile: "~/.ssh/id"}}
 
-	got := inferLayout(profiles, repos, aliases, testKey, nil)
+	got := inferLayout(profiles, repos, aliases, testKey, layoutHints{})
 
 	wantFound := map[string][]DirSuggestion{
 		"octo-alex": {
@@ -82,7 +82,7 @@ func TestInferLayoutNeverGivesAFolderTwoProfiles(t *testing.T) {
 		{Dir: "~/work/z", Host: "github.com", Owner: "b", Email: "b@demo.example"},
 	}
 
-	got := inferLayout(profiles, repos, nil, testKey, nil)
+	got := inferLayout(profiles, repos, nil, testKey, layoutHints{})
 
 	if len(got.found) != 0 {
 		t.Errorf("found = %+v; ~/work already belongs to a (written /tmp/home/Work)", got.found)
@@ -106,7 +106,7 @@ func TestInferLayoutHandlesAliasesItCannotTieToAnAccount(t *testing.T) {
 	}
 	aliases := []discover.SSHAlias{{Alias: "github-client"}, {Alias: "GitHub-Work", IdentityFile: "~/.ssh/id_a"}}
 
-	got := inferLayout(profiles, repos, aliases, testKey, nil)
+	got := inferLayout(profiles, repos, aliases, testKey, layoutHints{})
 
 	if len(got.unassigned) != 1 || got.unassigned[0].Dir != "~/client" || got.unassigned[0].Owner != "client-org" {
 		t.Errorf("unassigned = %+v, want ~/client to be asked about", got.unassigned)
@@ -117,7 +117,7 @@ func TestInferLayoutHandlesAliasesItCannotTieToAnAccount(t *testing.T) {
 }
 
 func TestInferLayoutWithoutRepositoriesSuggestsNothing(t *testing.T) {
-	got := inferLayout([]SetupProfile{{ID: "a", Account: "a", Email: "a@x.example"}}, nil, nil, testKey, nil)
+	got := inferLayout([]SetupProfile{{ID: "a", Account: "a", Email: "a@x.example"}}, nil, nil, testKey, layoutHints{})
 	if len(got.found) != 0 || len(got.pins) != 0 || len(got.unassigned) != 0 {
 		t.Fatalf("inferLayout() = %+v", got)
 	}

@@ -149,7 +149,7 @@ func TestCommandFailsWithoutConfig(t *testing.T) {
 
 	code := run([]string{"apply"}, strings.NewReader(""), &stdout, &stderr)
 
-	if code != 1 || !strings.Contains(stderr.String(), "configuration file not found") {
+	if code != 1 || !strings.Contains(stderr.String(), "no configuration yet") {
 		t.Fatalf("apply without config: exit %d, stderr %q", code, stderr.String())
 	}
 }

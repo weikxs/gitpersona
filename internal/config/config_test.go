@@ -317,3 +317,24 @@ func TestValidateRejectsValuesGitWouldRefuseOrMisread(t *testing.T) {
 		})
 	}
 }
+
+func TestValidateAcceptsLiteralSSHKeysAndRefusesGPGKeyFiles(t *testing.T) {
+	for key, wantErr := range map[string]bool{
+		"ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDemo":      false,
+		"key::ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDemo": false,
+		"~/.ssh/id_ed25519.pub":                          false,
+	} {
+		p := validProfile("personal", "~/Projects/p")
+		p.Signing = Signing{Method: SigningSSH, Key: key}
+		cfg := Config{Version: CurrentVersion, Profiles: []Profile{p}}
+		if err := cfg.Validate(home, false); (err != nil) != wantErr {
+			t.Errorf("ssh signing key %q: Validate() = %v", key, err)
+		}
+	}
+	p := validProfile("personal", "~/Projects/p")
+	p.Signing = Signing{Method: SigningGPG, Key: "~/.ssh/id_ed25519.pub"}
+	err := Config{Version: CurrentVersion, Profiles: []Profile{p}}.Validate(home, false)
+	if err == nil || !strings.Contains(err.Error(), `use method "ssh"`) {
+		t.Errorf("a GPG key that is a file: Validate() = %v", err)
+	}
+}

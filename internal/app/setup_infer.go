@@ -40,10 +40,18 @@ type inference struct {
 	key          func(string) string
 	githubAlias  map[string]bool   // lowercase SSH aliases that connect to github.com
 	aliasAccount map[string]string // lowercase SSH alias -> account
+	layoutHints
+}
+
+// layoutHints are what the inference must respect besides the repositories.
+type layoutHints struct {
 	// reserved are the folders of existing identities no account took:
 	// their own rule stays in force there unless a more specific rule
 	// clearly belongs to an account.
 	reserved []string
+	// roots are the scanned folders: a rule for one of them covers much the
+	// scan did not see, so a single repository there is pinned instead.
+	roots []string
 }
 
 // newInference prepares the comparison of profiles with the repositories on
@@ -60,10 +68,9 @@ func newInference(profiles []SetupProfile, repos []discover.Repo, aliases []disc
 // inferLayout works out directory rules and pins from the repositories on
 // disk. Repository directories are written the way the configuration writes
 // them (~/...); key compares them with the profiles' directories.
-// reserved are the folders of existing identities left out (see inference).
-func inferLayout(profiles []SetupProfile, repos []discover.Repo, aliases []discover.SSHAlias, key func(string) string, reserved []string) layout {
+func inferLayout(profiles []SetupProfile, repos []discover.Repo, aliases []discover.SSHAlias, key func(string) string, hints layoutHints) layout {
 	in := newInference(profiles, repos, aliases, key)
-	in.reserved = reserved
+	in.layoutHints = hints
 	out := layout{found: map[string][]DirSuggestion{}, aliasAccount: in.aliasAccount}
 	byParent := map[string][]attribution{}
 	var all []attribution
@@ -153,6 +160,9 @@ func (in inference) suggest(out *layout, parent string, repos []attribution) {
 	}
 	account, n := majority(counts)
 	total := len(repos)
+	if total == 1 && slices.ContainsFunc(in.roots, func(r string) bool { return in.key(r) == in.key(parent) }) {
+		return // one repository does not speak for a whole scanned folder; it is pinned if needed
+	}
 	if n*2 > total {
 		if !in.covers(profileOf(in.profiles, account).Dirs, parent) {
 			why := reason(repos, account, n, total)

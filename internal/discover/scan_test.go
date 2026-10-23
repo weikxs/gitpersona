@@ -32,7 +32,7 @@ func TestScanSuggestsDirectoriesPerAccount(t *testing.T) {
 	}
 	accounts := []string{"octo-alex", "acme-alex"}
 
-	got := Scan(context.Background(), []string{root}, accounts, ScanLimits{MaxDepth: 4, Timeout: time.Second})
+	got := Scan(context.Background(), []string{root}, accounts, ScanLimits{MaxDepth: 4, Timeout: testScanTimeout})
 
 	if len(got) != 2 {
 		t.Fatalf("Scan() = %+v, want two suggestions", got)
@@ -49,7 +49,7 @@ func TestScanRespectsDepthAndSkipsMissingRoots(t *testing.T) {
 	root := t.TempDir()
 	repo(t, filepath.Join(root, "a", "b", "c", "deep"), "https://github.com/octo-alex/deep")
 
-	got := Scan(context.Background(), []string{root, filepath.Join(root, "absent")}, []string{"octo-alex"}, ScanLimits{MaxDepth: 2, Timeout: time.Second})
+	got := Scan(context.Background(), []string{root, filepath.Join(root, "absent")}, []string{"octo-alex"}, ScanLimits{MaxDepth: 2, Timeout: testScanTimeout})
 
 	if len(got) != 0 {
 		t.Fatalf("Scan() went deeper than allowed: %+v", got)
@@ -61,7 +61,7 @@ func TestAFolderThatIsItselfARepositorySuggestsNoFolder(t *testing.T) {
 	repo(t, root, "https://github.com/octo-alex/everything")
 	repo(t, filepath.Join(root, "nested"), "https://github.com/octo-alex/nested")
 
-	if got := Scan(context.Background(), []string{root}, []string{"octo-alex"}, ScanLimits{MaxDepth: 4, Timeout: time.Second}); len(got) != 0 {
+	if got := Scan(context.Background(), []string{root}, []string{"octo-alex"}, ScanLimits{MaxDepth: 4, Timeout: testScanTimeout}); len(got) != 0 {
 		t.Fatalf("Scan() = %+v; a root that is a repository would suggest its parent, often the home", got)
 	}
 }
@@ -77,7 +77,7 @@ func TestScanReportsDirectoriesOwnedByAnOrganization(t *testing.T) {
 		repo(t, filepath.Join(root, r.dir), r.url)
 	}
 
-	got := Scan(context.Background(), []string{root}, []string{"Acme-Alex"}, ScanLimits{MaxDepth: 4, Timeout: time.Second})
+	got := Scan(context.Background(), []string{root}, []string{"Acme-Alex"}, ScanLimits{MaxDepth: 4, Timeout: testScanTimeout})
 
 	if len(got) != 1 {
 		t.Fatalf("Scan() = %+v, want one suggestion (no owner has most of mixed/)", got)
@@ -91,9 +91,13 @@ func TestScanMatchesAccountsWhateverTheirCase(t *testing.T) {
 	root := t.TempDir()
 	repo(t, filepath.Join(root, "p", "blog"), "https://github.com/octo-alex/blog")
 
-	got := Scan(context.Background(), []string{root}, []string{"Octo-Alex"}, ScanLimits{MaxDepth: 4, Timeout: time.Second})
+	got := Scan(context.Background(), []string{root}, []string{"Octo-Alex"}, ScanLimits{MaxDepth: 4, Timeout: testScanTimeout})
 
 	if len(got) != 1 || got[0].Account != "Octo-Alex" || got[0].Owner != "octo-alex" {
 		t.Fatalf("Scan() = %+v, want the account as gh knows it", got)
 	}
 }
+
+// testScanTimeout is generous: a scan that hits it under -race on a busy
+// machine would make a test fail for the wrong reason.
+const testScanTimeout = 30 * time.Second

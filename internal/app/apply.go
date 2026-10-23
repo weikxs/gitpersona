@@ -118,15 +118,23 @@ func planApply(ctx context.Context, e Env) ([]change, error) {
 	if err != nil {
 		return nil, err
 	}
-	return e.planWith(ctx, cfg)
+	return e.planWith(ctx, cfg, nil)
 }
 
-// planWith computes the changes that generate the files for cfg.
-func (e Env) planWith(ctx context.Context, cfg config.Config) ([]change, error) {
+// planWith computes the changes that generate the files for cfg. edit, when
+// set, also changes the global Git configuration (such as removing old
+// rules); the user's rules are read from the result, so the generated files
+// match it.
+func (e Env) planWith(ctx context.Context, cfg config.Config, edit func(string) string) ([]change, error) {
+	gitconfig, err := e.gitConfigWithBlock(edit)
+	if err != nil {
+		return nil, err
+	}
 	opts, err := e.generateOptions(ctx)
 	if err != nil {
 		return nil, err
 	}
+	opts.UserRules, _ = e.userRules(ctx, cfg, gitconfig.content)
 	files, err := generate.Generate(cfg, opts)
 	if err != nil {
 		return nil, err
@@ -135,10 +143,6 @@ func (e Env) planWith(ctx context.Context, cfg config.Config) ([]change, error) 
 	desired := make([]change, 0, len(files)+1)
 	for _, f := range files {
 		desired = append(desired, change{path: filepath.Join(e.ConfigDir, f.Name), content: f.Content})
-	}
-	gitconfig, err := e.gitConfigWithBlock()
-	if err != nil {
-		return nil, err
 	}
 	desired = append(desired, gitconfig)
 
@@ -192,16 +196,27 @@ func (e Env) generateOptions(ctx context.Context) (generate.Options, error) {
 }
 
 // loadConfig reads the configuration and, when it is missing, says how to
-// create it.
+// create it. Errors show the home as ~.
 func (e Env) loadConfig() (config.Config, error) {
 	cfg, err := config.Load(e.configFile())
-	if errors.Is(err, config.ErrNotFound) {
-		return cfg, fmt.Errorf("%w; create it as shown in the quick start: %s", err, quickStartURL)
+	switch {
+	case errors.Is(err, config.ErrNotFound):
+		return cfg, noConfigError{shown: e.display(e.configFile())}
+	case err != nil:
+		return cfg, errors.New(strings.ReplaceAll(err.Error(), e.configFile(), e.display(e.configFile())))
 	}
-	return cfg, err
+	return cfg, nil
 }
 
-const quickStartURL = "https://github.com/weikxs/gitpersona#quick-start"
+// noConfigError says that there is no configuration yet and how to create
+// one; it is a config.ErrNotFound.
+type noConfigError struct{ shown string }
+
+func (n noConfigError) Error() string {
+	return "no configuration yet (" + n.shown + "); run `gitpersona setup` to create it from what you already have"
+}
+
+func (n noConfigError) Unwrap() error { return config.ErrNotFound }
 
 // resolvedUserGitConfig follows symbolic links, so dotfiles managers keep
 // working when GitPersona writes the global Git configuration.
@@ -251,7 +266,7 @@ func (e Env) includePath() string {
 	return rules
 }
 
-func (e Env) gitConfigWithBlock() (change, error) {
+func (e Env) gitConfigWithBlock(edit func(string) string) (change, error) {
 	link := e.userGitConfig()
 	if link == os.DevNull {
 		return change{}, errGlobalConfigDisabled
@@ -261,7 +276,14 @@ func (e Env) gitConfigWithBlock() (change, error) {
 	if err != nil {
 		return change{}, err
 	}
-	updated, err := block.UpsertLast(current, generate.IncludeBody(e.includePath()))
+	// The edit comes first, so placing the block afterwards gives the same
+	// text the next time.
+	base := current
+	if edit != nil {
+		base = edit(current)
+	}
+	edited := base != current
+	updated, err := block.UpsertLast(base, generate.IncludeBody(e.includePath()))
 	if err != nil {
 		return change{}, fmt.Errorf("%s: %w. Open the file and keep exactly one pair of the lines %q and %q "+
 			"(or delete both), then run `gitpersona apply` again", e.display(link), err, block.Begin, block.End)
@@ -270,6 +292,10 @@ func (e Env) gitConfigWithBlock() (change, error) {
 	perm := fsutil.FilePerm
 	if info, err := os.Stat(path); err == nil {
 		perm = info.Mode().Perm() // the file belongs to the user; keep its mode
+		if perm&userWritablePerm == 0 && edited {
+			return change{}, fmt.Errorf("%s is read-only, so the old includeIf rules cannot be removed; "+
+				"make it writable (chmod u+w) or keep them (setup --keep-old-rules)", e.display(link))
+		}
 		if perm&userWritablePerm == 0 && updated != current {
 			return change{}, fmt.Errorf("%s is read-only; make it writable (chmod u+w), or add these lines at its end "+
 				"yourself (keep the marker lines so GitPersona recognizes them):\n\n%s",

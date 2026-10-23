@@ -67,7 +67,8 @@ func (e Env) organize(ctx context.Context, p SetupProposal, existing []discover.
 		profiles[k] = e.adopt(profiles[k], existing[i], p.Global.Name)
 	}
 
-	l := inferLayout(profiles, repos, aliases, e.comparisonKey, identityDirs(unused(existing, used)))
+	l := inferLayout(profiles, repos, aliases, e.comparisonKey,
+		layoutHints{reserved: identityDirs(unused(existing, used)), roots: roots.Shown})
 	for i, prof := range profiles {
 		prof.Found = l.found[prof.Account]
 		if prof.SSHKey == "" {
@@ -76,6 +77,10 @@ func (e Env) organize(ctx context.Context, p SetupProposal, existing []discover.
 		profiles[i] = prof
 	}
 	p.Profiles, p.Roots, p.ScanIncomplete, p.ScanTooDeep = profiles, roots.Shown, !found.Complete, found.TooDeep
+	p.ScanUnfinished = []string{}
+	for _, r := range found.Unfinished {
+		p.ScanUnfinished = append(p.ScanUnfinished, roots.Written(e, r))
+	}
 	p.Pins = append([]PinSuggestion{}, l.pins...)
 	p.Unassigned = append([]UnassignedDir{}, l.unassigned...)
 
@@ -85,7 +90,7 @@ func (e Env) organize(ctx context.Context, p SetupProposal, existing []discover.
 	for _, r := range replaced {
 		p.OldRules = append(p.OldRules, r.Dir)
 	}
-	p.Unmatched = e.leftOut(ctx, existing, used, owners, p.Default)
+	p.Unmatched = e.leftOut(ctx, existing, used, owners, p.Default, p.Global.Name)
 
 	p.Shells = []string{}
 	if k := e.loginShell(ctx).Kind; k != shell.Unknown {
@@ -151,7 +156,7 @@ func (e Env) existingKeys(id discover.Identity) (string, config.Signing, []strin
 		notes = append(notes, "the SSH key "+e.displayPath(id.SSHKey)+" of your includeIf setup does not exist, so it is left out")
 	}
 	signing := config.Signing{Method: id.Signing.Method, Key: id.Signing.Key}
-	if signing.Method == config.SigningSSH && !e.keyExists(signing.Key) {
+	if signing.Method == config.SigningSSH && !config.LiteralSSHKey(signing.Key) && !e.keyExists(signing.Key) {
 		notes = append(notes, "the signing key "+e.displayPath(signing.Key)+" of your includeIf setup does not exist, so signing is left out")
 		signing = config.Signing{}
 	}

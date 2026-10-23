@@ -3,14 +3,12 @@ package app
 import (
 	"context"
 	"fmt"
-	"os"
 	"regexp"
 	"slices"
 	"strings"
 
 	"github.com/weikxs/gitpersona/internal/config"
 	"github.com/weikxs/gitpersona/internal/discover"
-	"github.com/weikxs/gitpersona/internal/fsutil"
 )
 
 // oldRulesCommand names the backups RemoveOldRules makes.
@@ -26,12 +24,11 @@ func RemoveOldRules(ctx context.Context, e Env) error {
 	if err != nil {
 		return err
 	}
-	path := e.resolvedUserGitConfig()
-	current, err := readOptional(path)
+	current, err := readOptional(e.resolvedUserGitConfig())
 	if err != nil {
 		return err
 	}
-	updated, removed, kept := e.withoutOldRules(ctx, current, ownersOf(cfg), nil)
+	_, removed, kept := e.withoutOldRules(ctx, current, ownersOf(cfg), nil)
 	for _, k := range kept {
 		fmt.Fprintf(e.Stdout, "Kept the includeIf rule for %s: %s.\n", k.Dir, k.Why)
 	}
@@ -39,15 +36,16 @@ func RemoveOldRules(ctx context.Context, e Env) error {
 		fmt.Fprintln(e.Stdout, "No old includeIf identity rules that a profile takes over; nothing to change.")
 		return nil
 	}
-	perm := fsutil.FilePerm
-	if info, err := os.Stat(path); err == nil {
-		perm = info.Mode().Perm() // the file belongs to the user; keep its mode
-		if perm&userWritablePerm == 0 {
-			return fmt.Errorf("%s is read-only; make it writable (chmod u+w) to remove the old rules", e.display(e.userGitConfig()))
-		}
+	// GitPersona's files include the user's rules again, so they are
+	// regenerated in the same backup.
+	changes, err := e.planWith(ctx, cfg, func(text string) string {
+		updated, _, _ := e.withoutOldRules(ctx, text, ownersOf(cfg), nil)
+		return updated
+	})
+	if err != nil {
+		return err
 	}
-	if err := e.applyChanges([]change{{path: path, content: updated, perm: perm}},
-		ApplyOptions{Command: oldRulesCommand}); err != nil {
+	if err := e.applyChanges(changes, ApplyOptions{Command: oldRulesCommand}); err != nil {
 		return err
 	}
 	for _, dir := range removed {

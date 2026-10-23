@@ -95,8 +95,9 @@ func (e Env) printProposal(p SetupProposal) {
 	}
 	fmt.Fprintln(w, ":")
 	if p.ScanIncomplete {
-		fmt.Fprintf(w, "\n  ! Looking for repositories stopped after %s; folders it did not reach are not included.\n",
-			discover.DefaultScanLimits.Timeout)
+		fmt.Fprintf(w, "\n  ! Looking for repositories stopped after %s, before it finished %s; repositories it did not reach "+
+			"are not included. Add their folders with `gitpersona use`.\n",
+			discover.DefaultScanLimits.Timeout, strings.Join(p.ScanUnfinished, ", "))
 	}
 	if p.ScanTooDeep {
 		fmt.Fprintf(w, "\n  Repositories nested more than %d folders deep were not looked at; add their folders with `gitpersona use`.\n",
@@ -131,10 +132,11 @@ func (e Env) printProposal(p SetupProposal) {
 	}
 	printUnassigned(w, p)
 	for _, u := range p.Unmatched {
-		fmt.Fprintf(w, "\n  ! Left out: %s <%s> for %s (from %s); no signed-in account could be tied to it. "+
-			"To use it, choose its account with `gitpersona setup --web`.\n", u.Name, u.Email, strings.Join(u.Dirs, ", "), u.Source)
-		if u.OverriddenBy != "" {
-			fmt.Fprintf(w, "    Commits there would use profile %s instead, because GitPersona's rules come after yours.\n", u.OverriddenBy)
+		fmt.Fprintf(w, "\n  Not taken over: %s for %s (from %s); no signed-in account could be tied to it, so your rule keeps "+
+			"applying there. To make it a profile, choose its account with `gitpersona setup --web`.\n",
+			author(u.Name, u.Email), strings.Join(u.Dirs, ", "), u.Source)
+		if u.AccountFrom != "" {
+			fmt.Fprintf(w, "    What your rule does not set, such as the account for pushes, comes from profile %s there.\n", u.AccountFrom)
 		}
 	}
 }

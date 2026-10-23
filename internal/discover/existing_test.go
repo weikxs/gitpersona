@@ -75,6 +75,7 @@ func TestGitdirPatternToDirectory(t *testing.T) {
 	for in, want := range map[string]string{
 		"gitdir:~/Projects/a/":     "~/Projects/a",
 		"gitdir/i:~/Projects/b/**": "~/Projects/b",
+		"gitdir:~/Projects/g/**/":  "~/Projects/g",
 		"gitdir:/srv/code/":        "/srv/code",
 		"gitdir:~/Projects/c/.git": "",
 		"gitdir:relative/":         "",

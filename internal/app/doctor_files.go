@@ -21,7 +21,7 @@ func missingKeyFiles(p config.Profile, home string) []string {
 	if p.SSHKey != "" && !exists(p.SSHKey) {
 		missing = append(missing, "SSH key "+p.SSHKey)
 	}
-	if p.Signing.Method == config.SigningSSH && p.Signing.Key != "" && !exists(p.Signing.Key) {
+	if p.Signing.Method == config.SigningSSH && p.Signing.Key != "" && !config.LiteralSSHKey(p.Signing.Key) && !exists(p.Signing.Key) {
 		missing = append(missing, "signing key "+p.Signing.Key)
 	}
 	return missing
@@ -91,36 +91,50 @@ func (e Env) checkDirs(cfg config.Config) []check {
 const FixOldRules = "old-rules"
 
 // checkOldRules looks at the hand-made includeIf identity rules in the
-// global Git configuration. Rules a profile takes over are a warning with a
-// fix (they are only confusing); rules that stay because they do more are
-// fine; a rule whose identity no profile has is a warning when a profile
-// overrides it, because GitPersona's rules come last.
+// global Git configuration. GitPersona includes them again among its rules,
+// so they keep applying in their folders. Rules a profile takes over are a
+// warning with a fix (they are only confusing); the others are fine.
+// Rules GitPersona cannot include again, or that yield to a profile given
+// their folder, are a warning: GitPersona's rules replace them there.
 func (e Env) checkOldRules(ctx context.Context, cfg config.Config) []check {
 	owners := ownersOf(cfg)
 	var checks []check
 	var replaced []string
+	text, _ := readOptional(e.resolvedUserGitConfig())
+	included, skipped := e.userRules(ctx, cfg, text)
+	overridden := map[string]bool{}
+	for _, k := range skipped {
+		overridden[k.Condition] = true
+		checks = append(checks, check{warn: true,
+			label: fmt.Sprintf("GitPersona's rules override your includeIf rule %q: %s", k.Condition, k.Why),
+			advice: "GitPersona cannot include it again after its own rules; move those settings out of the rule's file, " +
+				"or give its folder to a profile"})
+	}
+	for _, u := range included {
+		if u.Yield {
+			overridden[u.Condition] = true
+			checks = append(checks, check{warn: true,
+				label:  fmt.Sprintf("your includeIf rule %q is replaced there by the profile you gave that folder", u.Condition),
+				advice: "remove the rule from " + e.display(e.GlobalGitConfigPath()) + " if you no longer need it"})
+		}
+	}
 	for _, r := range discover.IdentityRules(ctx, e.Home, e.GlobalGitConfigPath(), e.Run) {
-		by, overridden := e.overriddenBy(r.Dir, owners, cfg.Default)
-		overridden = overridden && !by.sameIdentity(r.Email, r.Name) // the same identity is no loss
 		switch {
+		case overridden[r.Condition]:
 		case e.takenOver(r, owners) && r.Keep == "":
 			replaced = append(replaced, r.Dir)
 		case e.takenOver(r, owners):
 			checks = append(checks, check{ok: true, label: fmt.Sprintf("your includeIf rule for %s stays: %s", r.Dir, r.Keep)})
-		case overridden:
-			checks = append(checks, check{warn: true,
-				label: fmt.Sprintf("profile %s overrides your includeIf rule for %s, so commits there do not use %s", by.id, r.Dir, author(r.Name, r.Email)),
-				advice: fmt.Sprintf("add %s to a profile with that identity (or pin its repositories); remove the rule from %s by hand if you no longer need it",
-					r.Dir, e.display(e.GlobalGitConfigPath()))})
 		default:
-			checks = append(checks, check{ok: true, label: fmt.Sprintf("your includeIf rule for %s still applies there (%s)", r.Dir, r.Email)})
+			checks = append(checks, check{ok: true, label: fmt.Sprintf("your includeIf rule for %s keeps applying there (%s)",
+				r.Dir, author(r.Name, r.Email))})
 		}
 	}
 	if len(replaced) > 0 {
 		checks = append(checks, check{warn: true,
 			label: fmt.Sprintf("%s still has includeIf identity rules that your profiles take over (%s)",
 				e.display(e.GlobalGitConfigPath()), strings.Join(replaced, ", ")),
-			advice: "GitPersona's rules come after them and win; `gitpersona doctor --fix` removes them (after a backup)",
+			advice: "a profile with the same identity covers them; `gitpersona doctor --fix` removes them (after a backup)",
 			fix:    RemoveOldRules, fixKey: FixOldRules})
 	}
 	return checks
@@ -134,8 +148,8 @@ func author(name, email string) string {
 	return name + " <" + email + ">"
 }
 
-// checkSigning catches signing that cannot work: a GPG key written as a
-// file path (a key from an SSH setup read as GPG), and a profile without
+// checkSigning catches signing that goes wrong (a GPG key written as a file
+// is already refused by the configuration's validation): a profile without
 // signing whose directories or pins lie inside an SSH-signing profile's
 // (or that profile is the default): there `git commit -S` uses that key,
 // because Git cannot unset a key and the user has none of their own.
@@ -143,11 +157,6 @@ func (e Env) checkSigning(ctx context.Context, cfg config.Config) []check {
 	var checks []check
 	var signers []config.Profile
 	for _, p := range cfg.Profiles {
-		if p.Signing.Method == config.SigningGPG && (strings.ContainsRune(p.Signing.Key, '/') || strings.HasSuffix(p.Signing.Key, ".pub")) {
-			checks = append(checks, check{
-				label:  fmt.Sprintf("profile %s signs with GPG, but its key %s is a file, as SSH signing uses", p.ID, p.Signing.Key),
-				advice: "Git fails every commit there; set signing = { method = \"ssh\", key = \"" + p.Signing.Key + "\" }"})
-		}
 		if p.Signing.Method == config.SigningSSH {
 			signers = append(signers, p)
 		}

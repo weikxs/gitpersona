@@ -162,7 +162,7 @@ func (e Env) printDoctor(checks []check) bool {
 }
 
 func (e Env) checkConfig() (config.Config, check) {
-	cfg, err := config.Load(e.configFile())
+	cfg, err := e.loadConfig()
 	if err == nil {
 		err = cfg.Validate(e.Home, e.CaseInsensitive)
 	}

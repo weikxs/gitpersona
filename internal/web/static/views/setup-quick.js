@@ -34,9 +34,7 @@ export function quickView(ctx) {
   const form = h("form", { class: "stack" },
     h("h3", { tabindex: "-1" }, "Your setup is ready"),
     h("p", { class: "muted" }, foundText(wizard)),
-    wizard.scanIncomplete ? h("div", { class: "notice warn" }, badge("warn"),
-      " Looking for repositories stopped at its time limit, so folders it did not reach are not included. " +
-      "Add them under Adjust step by step.") : null,
+    scanLimitNotice(wizard),
     wizard.scanTooDeep ? h("p", { class: "muted" }, "Repositories nested more than five folders deep were not looked at; " +
       "add their directories under Adjust step by step.") : null,
     included.length === 0
@@ -90,11 +88,12 @@ export function leftOutChoices(get, set, redraw) {
   // A profile that already has an identity of the setup keeps it.
   const chosen = wizard.profiles.map((p, i) => [p, i]).filter(([p]) => p.include && p.source !== "existing");
   return h("div", { class: "notice warn" },
-    h("p", {}, badge("warn"), " GitPersona could not tie these identities of your Git configuration to an account signed in to gh:"),
+    h("p", {}, badge("warn"), " GitPersona could not tie these identities of your Git configuration to an account signed in to gh. " +
+      "Choose an account to make one a profile:"),
     h("ul", {}, wizard.unmatched.map((u, k) => h("li", {},
       `${u.name || "(no name)"} <${u.email}> · ${u.dirs.join(", ")} (${u.source})`,
-      u.overridden_by ? h("p", {}, `Unless you choose its account, profile ${u.overridden_by} applies there instead, ` +
-        "because GitPersona's rules come after yours.") : null,
+      h("p", {}, "Your rule keeps applying there.",
+        u.account_from ? ` What it does not set, such as the account for pushes, comes from profile ${u.account_from}.` : ""),
       chosen.length === 0 ? h("p", {}, "Every chosen profile already uses an identity of your setup.")
         : accountSelect(u, chosen, (i) => {
           set(adoptIdentity(get(), k, i));
@@ -145,6 +144,15 @@ function outsideText(wizard) {
   }
   return h("p", { class: "muted" }, `Outside these directories, commits use ${chosen.id} (${chosen.name} <${chosen.email}>)`,
     today ? ` instead of ${today} (choose "No default" under Adjust to keep it).` : ".");
+}
+
+// scanLimitNotice says which folders the scan did not finish, if any.
+export function scanLimitNotice(wizard) {
+  if (!wizard.scanIncomplete) return null;
+  const where = wizard.scanUnfinished?.length ? ` before it finished ${wizard.scanUnfinished.join(", ")}` : "";
+  return h("div", { class: "notice warn" }, badge("warn"),
+    ` Looking for repositories stopped at its time limit${where}, so repositories it did not reach are not included. ` +
+    "Add their folders to a profile.");
 }
 
 // pinNeeded reports whether a pin changes anything: one for a repository

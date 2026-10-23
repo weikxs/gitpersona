@@ -106,11 +106,15 @@ func validateProfile(p Profile, home string) []error {
 			add("ssh_key %q is a public key; use the private key file (without .pub)", p.SSHKey)
 		}
 	}
-	// An SSH signing key is a file; a GPG signing key is a key ID, not a path.
-	if p.Signing.Method == SigningSSH && p.Signing.Key != "" {
+	// An SSH signing key is a file or the key itself (as with an SSH agent);
+	// a GPG signing key is a key ID, not a path.
+	if p.Signing.Method == SigningSSH && p.Signing.Key != "" && !LiteralSSHKey(p.Signing.Key) {
 		if _, err := paths.Normalize(p.Signing.Key, home); err != nil {
 			add("signing key: %v", err)
 		}
+	}
+	if p.Signing.Method == SigningGPG && (strings.ContainsRune(p.Signing.Key, '/') || strings.HasSuffix(p.Signing.Key, ".pub")) {
+		add("signing key %q is a file, as SSH signing uses; use method \"ssh\" (GPG takes a key ID)", p.Signing.Key)
 	}
 	seen := map[string]bool{}
 	for _, d := range p.Dirs {
@@ -186,4 +190,16 @@ func comparisonKey(normalized string, caseInsensitive bool) string {
 		return strings.ToLower(normalized)
 	}
 	return normalized
+}
+
+// LiteralSSHKey reports whether an SSH signing key is written as the key
+// itself ("ssh-ed25519 AAAA…" or "key::…"), as Git accepts, rather than as
+// a file.
+func LiteralSSHKey(key string) bool {
+	for _, prefix := range []string{"key::", "ssh-", "ecdsa-sha2-", "sk-ssh-", "sk-ecdsa-"} {
+		if strings.HasPrefix(key, prefix) {
+			return true
+		}
+	}
+	return false
 }

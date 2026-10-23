@@ -62,6 +62,15 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 - `signing = { method = "none" }` now also makes `git commit -S` refuse, instead of signing with a key from your
   global settings or another profile.
+- Your own `includeIf` rules in your global Git configuration keep working in their folders: GitPersona includes them
+  again among its rules, ordered by how specific they are, instead of overriding them with `default` or a less
+  specific rule. Rules setup cannot turn into a profile (an identity no account is tied to, x509 signing, a key used
+  only for tags, extra `ssh` options, `onbranch`, a chain of includes inside the rule's file, single repositories)
+  therefore keep their effect. A rule whose files set settings Git collects as lists (credential helpers, extra HTTP
+  headers, remotes) is not included twice, and `doctor` says that GitPersona's rules override it; so are rules in
+  files your global configuration includes, or in `~/.config/git/config`, which GitPersona does not read yet.
+  `whoami` says when your own rule sets the author.
+- A configuration whose GPG signing key is a file is refused (it made every commit fail); use `method = "ssh"`.
 
 ### Fixed
 
@@ -102,6 +111,12 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
   looks five levels deep) or when a folder was cut off by the time limit, and `--print` lists what it leaves out.
 - `doctor` warns when `git commit -S` in a profile without signing would use another profile's SSH key (the default
   or an enclosing directory's; Git cannot unset a key).
+- Identities whose SSH signing key is written as the key itself (`ssh-ed25519 …` or `key::…`, as with an SSH agent or
+  a password manager) are imported; the configuration accepts such keys, and refuses a GPG key that is a file.
+- `gitdir:…/**/` rules are read as their folder; a single repository directly in a scanned folder is pinned instead
+  of making the whole folder a rule; when the scan hits its time limit it names the folders it did not finish.
+- Commands without a configuration show `~` and suggest `gitpersona setup`; identities without a name show the global
+  name; the setup page suggests the shells only while they lack the integration.
 - `doctor` without a configuration suggests `gitpersona setup`; the page's Profiles and Review & apply sections
   point to setup until there is a configuration; long checkbox labels wrap beside the box at phone width.
 - `signing = { method = "none" }` turns commit and tag signing off even when you sign everything globally; before,

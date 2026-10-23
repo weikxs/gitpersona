@@ -170,7 +170,13 @@ func readIdentity(ctx context.Context, file string, global globals, run provider
 		}
 		return global
 	}
-	if key := values["user.signingkey"]; key != "" && gitTrue(inherit("commit.gpgsign", global.gpgSign)) {
+	key := values["user.signingkey"]
+	if key != "" && !gitTrue(inherit("commit.gpgsign", global.gpgSign)) && keep == "" {
+		// A profile that signs signs every commit; this key serves tags and
+		// `git commit -S` only, so the rule stays.
+		keep = "it sets a signing key without signing every commit"
+	}
+	if key != "" && gitTrue(inherit("commit.gpgsign", global.gpgSign)) {
 		format := inherit("gpg.format", global.format)
 		switch format {
 		case "", "openpgp":
@@ -298,7 +304,8 @@ func gitdirToDir(condition string) string {
 	if !ok {
 		return ""
 	}
-	pattern = strings.TrimSuffix(strings.TrimSuffix(pattern, "**"), "/")
+	// "dir/", "dir/**" and "dir/**/" all cover dir.
+	pattern = strings.TrimSuffix(strings.TrimSuffix(strings.TrimSuffix(pattern, "/"), "**"), "/")
 	if !strings.HasSuffix(condition, "/") && !strings.HasSuffix(condition, "/**") {
 		return "" // an exact .git directory: a single repository, not a directory rule
 	}

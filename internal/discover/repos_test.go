@@ -5,7 +5,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 )
 
 func TestReposReportRemoteHostOwnerAndTheirOwnEmail(t *testing.T) {
@@ -24,7 +23,7 @@ func TestReposReportRemoteHostOwnerAndTheirOwnEmail(t *testing.T) {
 	repo(t, filepath.Join(root, "fun", "game"), "https://github.com/demo-personal/game")
 	repo(t, filepath.Join(root, "local"), "")
 
-	found := Repos(context.Background(), []string{root}, ScanLimits{MaxDepth: 4, Timeout: time.Second})
+	found := Repos(context.Background(), []string{root}, ScanLimits{MaxDepth: 4, Timeout: testScanTimeout})
 	got := found.Repos
 
 	if !found.Complete || found.TooDeep {
@@ -73,7 +72,7 @@ func TestReposInsideRepositoriesAndAScannedRepositoryAreLone(t *testing.T) {
 	repo(t, filepath.Join(root, "outer", "inner"), "git@github-work:demo-work/inner.git")
 	write(t, filepath.Join(root, "outer", "sub", ".git"), "gitdir: ../.git/modules/sub\n") // a submodule
 
-	got := Repos(context.Background(), []string{root}, ScanLimits{MaxDepth: 4, Timeout: time.Second}).Repos
+	got := Repos(context.Background(), []string{root}, ScanLimits{MaxDepth: 4, Timeout: testScanTimeout}).Repos
 
 	lone := map[string]bool{}
 	for _, r := range got {
@@ -96,7 +95,7 @@ func TestReposSaysWhenFoldersWereTooDeepToLookIn(t *testing.T) {
 	repo(t, filepath.Join(root, "a", "shallow"), "https://github.com/demo-work/shallow")
 	repo(t, filepath.Join(root, "a", "b", "c", "deep"), "https://github.com/demo-work/deep")
 
-	found := Repos(context.Background(), []string{root}, ScanLimits{MaxDepth: 2, Timeout: time.Second})
+	found := Repos(context.Background(), []string{root}, ScanLimits{MaxDepth: 2, Timeout: testScanTimeout})
 
 	if len(found.Repos) != 1 || !found.TooDeep {
 		t.Errorf("Repos() = %+v, want only the shallow repository and TooDeep", found)
@@ -126,5 +125,17 @@ func TestWalkReposSaysWhereItStopped(t *testing.T) {
 
 	if stoppedAt == "" || !strings.HasPrefix(stoppedAt, root) {
 		t.Errorf("stoppedAt = %q, want the folder it was about to look in", stoppedAt)
+	}
+}
+
+func TestReposNamesTheRootsItDidNotFinish(t *testing.T) {
+	a, b := t.TempDir(), t.TempDir()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	found := Repos(ctx, []string{a, b}, ScanLimits{MaxDepth: 4, Timeout: testScanTimeout})
+
+	if found.Complete || len(found.Unfinished) != 2 || found.Unfinished[0] != a || found.Unfinished[1] != b {
+		t.Errorf("Repos() = %+v, want both roots unfinished", found)
 	}
 }

@@ -89,7 +89,7 @@ func TestALeftOutIdentityCanBeGivenAnAccountOnTheReadyPage(t *testing.T) {
 	b.waitFor("the ready page", `document.querySelector("#view h3")?.innerText === "Your setup is ready"`)
 
 	page := b.text("#view")
-	for _, want := range []string{"Side Person <side@demo.example> · ~/side", "Unless you choose its account, profile demo-work applies there instead"} {
+	for _, want := range []string{"Side Person <side@demo.example> · ~/side", "Your rule keeps applying there. What it does not set, such as the account for pushes, comes from profile demo-work."} {
 		if !strings.Contains(page, want) {
 			t.Errorf("the ready page should say %q:\n%s", want, page)
 		}

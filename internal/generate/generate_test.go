@@ -319,3 +319,55 @@ func TestSigningNoneMakesGitCommitSRefuse(t *testing.T) {
 		}
 	}
 }
+
+func TestTheUsersOwnRulesKeepWinningInTheirFolders(t *testing.T) {
+	opts := demoOptions()
+	opts.UserRules = []UserRule{
+		{Condition: "gitdir:~/Projects/acme/x509/", Path: "/tmp/home/.gitconfig-x509", Dir: "/tmp/home/Projects/acme/x509"},
+		{Condition: "gitdir:~/Projects/", Path: "/tmp/home/.gitconfig-projects", Dir: "/tmp/home/Projects"},
+		{Condition: "onbranch:release/**", Path: "/tmp/home/.gitconfig-release"},
+	}
+	files, err := Generate(demoConfig(), opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var rules string
+	for _, f := range files {
+		if f.Name == RulesFile {
+			rules = f.Content
+		}
+	}
+	order := []string{
+		"gitdir:~/Projects/\"",           // less specific than every profile directory
+		"-> acme",                        // ~/Projects/acme
+		"gitdir:~/Projects/acme/x509/\"", // inside acme's directory: wins there
+		"onbranch:release/**",            // after every directory rule
+		"# Pin:",                         // pins stay last
+	}
+	last := -1
+	for _, want := range order {
+		i := strings.Index(rules, want)
+		if i < 0 || i < last {
+			t.Fatalf("%q is missing or out of order in:\n%s", want, rules)
+		}
+		last = i
+	}
+}
+
+func TestOnACaseInsensitiveDiskTheUsersRuleStillComesAfterTheSameFolder(t *testing.T) {
+	opts := demoOptions()
+	opts.CaseInsensitive = true
+	opts.UserRules = []UserRule{{Condition: "gitdir/i:~/Projects/ACME/", Path: "/tmp/home/.gitconfig-acme", Dir: "/tmp/home/Projects/ACME"}}
+
+	files, err := Generate(demoConfig(), opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, f := range files {
+		if f.Name == RulesFile && strings.Index(f.Content, "gitdir/i:~/Projects/ACME/") < strings.Index(f.Content, "-> acme") {
+			t.Errorf("the user's rule for the same folder must come after acme's:\n%s", f.Content)
+		}
+	}
+}

@@ -25,8 +25,8 @@ export function configProblem(state) {
 function setupCard() {
   return h("div", { class: "card" },
     h("h3", {}, "Get started"),
-    h("p", {}, "No configuration yet. Setup takes three steps: confirm one profile for each account signed in to gh, " +
-      "choose the directories each one covers, then review and apply."),
+    h("p", {}, "No configuration yet. Setup looks at your accounts, Git settings and repositories, " +
+      "and puts them together for you to check and apply."),
     h("a", { class: "button primary", href: "#setup" }, "Start setup"));
 }
 

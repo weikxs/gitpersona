@@ -6,7 +6,7 @@ import { api, normalizePath } from "../api.js";
 import { h, replace, badge, field, busy, status, clearStatus } from "../dom.js";
 import { doctorCard, configProblem } from "./overview.js";
 import { diffBlock } from "./apply.js";
-import { quickView, pinChoices, shellChoices, oldRulesChoice, leftOutChoices, profileNotes, pinNeeded, QUICK } from "./setup-quick.js";
+import { quickView, pinChoices, shellChoices, oldRulesChoice, leftOutChoices, profileNotes, pinNeeded, scanLimitNotice, QUICK } from "./setup-quick.js";
 
 const STEPS = ["Identities", "Directories", "Review & apply"];
 
@@ -104,6 +104,7 @@ function fromProposal(p) {
     roots: p.roots.join(", "),
     scanned: p.roots.length > 0,
     scanIncomplete: p.scan_incomplete,
+    scanUnfinished: p.scan_unfinished ?? [],
     scanTooDeep: p.scan_too_deep,
   };
 }
@@ -255,6 +256,7 @@ function directories(body, run) {
     h("h3", { tabindex: "-1" }, "2. Choose directories"),
     h("p", { class: "muted" }, "Every repository under a chosen directory uses that profile. You can change this later."),
     scanCard(body, run),
+    scanLimitNotice(wizard),
     wizard.unassigned.length > 0 ? unassignedCard(included, body, run) : null,
     included.map(([p, i]) => dirFields(p, i, body, run)),
     pinChoices(() => wizard, setWizard),
@@ -443,6 +445,8 @@ function finished(state, run) {
     h("div", { class: "card" },
       h("h3", {}, "Next"),
       h("ul", {},
-        h("li", {}, h("a", { href: "#shells" }, "Load GitPersona in your shells"), " for gh switching and the prompt."),
+        // Only while the default shell does not load GitPersona yet.
+        state.shells?.installed?.some((sh) => sh.kind === state.shells.default?.kind && !sh.integrated)
+          ? h("li", {}, h("a", { href: "#shells" }, "Load GitPersona in your shells"), " for gh switching and the prompt.") : null,
         h("li", {}, h("a", { href: "#overview" }, "Check which identity applies"), " to any directory."))));
 }

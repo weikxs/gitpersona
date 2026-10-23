@@ -116,6 +116,12 @@ Prompt and plugin-manager setups (tide, Powerlevel10k, Starship, fisher, oh-my-z
 - **Precedence:** a pin, then the most specific directory rule, then `default`. Git applies the rules by the
   location of the repository's `.git` directory, so a **worktree follows its main repository**. Outside any
   repository only `default` applies; `whoami` also tells you which profile new clones will get.
+- **Your own `includeIf` rules keep working:** GitPersona includes them again among its rules in the same order of
+  specificity, so in their folders they still win over a less specific rule and over `default` (`whoami` says when
+  one sets the author). A more specific GitPersona rule or a pin wins inside them, and giving exactly their folder to
+  a profile with another identity replaces them. `setup` and `doctor --fix` remove the rules a profile fully takes
+  over. Only rules written in your global Git configuration itself are included again, and not those whose files set
+  settings Git collects as lists (`doctor` lists them). After editing those rules by hand, run `gitpersona apply`.
 - **Credentials:** for GitHub profiles, GitPersona is the only credential helper for that host and borrows the
   token `gh` already holds, so no other helper stores a copy. If an account is not signed in to `gh`, Git asks
   for a password; `gitpersona doctor` tells you which account to sign in.

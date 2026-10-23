@@ -27,7 +27,7 @@ func TestInferLayoutPinsRepositoriesOfAnotherAccountInSubfolders(t *testing.T) {
 		{Dir: "~/code/mix/x", Host: "github.com", Owner: "demo-work"},
 	}
 
-	got := inferLayout(profiles, repos, nil, testKey, nil)
+	got := inferLayout(profiles, repos, nil, testKey, layoutHints{})
 
 	wantPins := []PinSuggestion{
 		{Repo: "~/code/mix/y", Profile: "personal", Why: "the repository belongs to demo-personal"},
@@ -56,7 +56,7 @@ func TestInferLayoutPinsLoneRepositoriesInsteadOfMakingFolderRules(t *testing.T)
 	}
 	aliases := []discover.SSHAlias{{Alias: "github-work"}}
 
-	got := inferLayout(profiles, repos, aliases, testKey, nil)
+	got := inferLayout(profiles, repos, aliases, testKey, layoutHints{})
 
 	if len(got.found["demo-work"]) != 0 || len(got.found["demo-personal"]) != 1 || got.found["demo-personal"][0].Dir != "~/Projects" {
 		t.Errorf("found = %+v; neither ~ nor a repository may become a folder rule", got.found)
@@ -79,7 +79,7 @@ func TestReasonsNameEveryAliasTheRepositoriesUse(t *testing.T) {
 	}
 	aliases := []discover.SSHAlias{{Alias: "gh-w", IdentityFile: "~/.ssh/id_work"}, {Alias: "github-missing", IdentityFile: "~/.ssh/id_work"}}
 
-	got := inferLayout(profiles, repos, aliases, testKey, nil)
+	got := inferLayout(profiles, repos, aliases, testKey, layoutHints{})
 
 	want := "all 3 repositories belong to demo-work; 1 uses demo-work's SSH alias gh-w, 1 uses demo-work's SSH alias github-missing"
 	if f := got.found["demo-work"]; len(f) != 1 || f[0].Why != want {
@@ -147,8 +147,10 @@ func TestAnIdentityOnlyItsRepositoriesExplainIsTiedThroughThem(t *testing.T) {
 	}
 }
 
-func TestAnIdentityNothingTiesToAnAccountIsLeftOutWithAWarning(t *testing.T) {
-	_, env := identityWorld(t, "")
+func TestAnIdentityNothingTiesToAnAccountKeepsWorkingInItsFolder(t *testing.T) {
+	w, env := identityWorld(t, "")
+	repo := filepath.Join(w.home, "oss", "notes")
+	runGit(t, w.home, "init", "-q", repo)
 	out := &strings.Builder{}
 	env.Stdout = out
 
@@ -156,21 +158,25 @@ func TestAnIdentityNothingTiesToAnAccountIsLeftOutWithAWarning(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got.Unmatched) != 1 || got.Unmatched[0].OverriddenBy != got.Default || got.Default == "" ||
+	if len(got.Unmatched) != 1 || got.Unmatched[0].AccountFrom != got.Default || got.Default == "" ||
 		!slices.Equal(got.Unmatched[0].Replaceable, []string{"~/oss"}) || len(got.OldRules) != 0 {
-		t.Fatalf("unmatched = %+v, old rules = %v; want ~/oss left out, overridden by the default", got.Unmatched, got.OldRules)
+		t.Fatalf("unmatched = %+v, old rules = %v; want ~/oss left to its own rule", got.Unmatched, got.OldRules)
 	}
-	env.Stdin = strings.NewReader("n\n")
-	if err := Setup(context.Background(), env, SetupOptions{}); err != nil {
+	if err := Setup(context.Background(), env, SetupOptions{Yes: true, NoShell: true}); err != nil {
 		t.Fatal(err)
 	}
+
 	for _, want := range []string{
-		"Left out: Demo Personal <personal@demo.example> for ~/oss",
-		"Commits there would use profile " + got.Default + " instead",
+		"Not taken over: Demo Personal <personal@demo.example> for ~/oss",
+		"your rule keeps applying there",
 	} {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("setup should say %q:\n%s", want, out.String())
 		}
+	}
+	// GitPersona's default comes first; the user's own rule still wins in ~/oss.
+	if got := runGit(t, repo, "config", "user.email"); got != "personal@demo.example" {
+		t.Errorf("~/oss/notes commits as %q after setup, want personal@demo.example as before", got)
 	}
 }
 
@@ -270,7 +276,7 @@ func TestAnOwnerAloneDoesNotPinAForkInASubfolderOfItsRule(t *testing.T) {
 		{Dir: "~/work/team/fork", Host: "github.com", Owner: "demo-personal"},
 	}
 
-	got := inferLayout(profiles, repos, nil, testKey, nil)
+	got := inferLayout(profiles, repos, nil, testKey, layoutHints{})
 
 	if len(got.pins) != 0 {
 		t.Errorf("pins = %+v; ~/work/team mostly belongs to work, so its fork stays with work", got.pins)
@@ -312,7 +318,7 @@ func TestAnAliasUsedForTwoAccountsIsNobodys(t *testing.T) {
 		{Dir: "~/src/q", Host: "gh-w", Owner: "demo-personal"},
 	}
 
-	got := inferLayout(profiles, repos, []discover.SSHAlias{{Alias: "gh-w", IdentityFile: "~/.ssh/id_w"}}, testKey, nil)
+	got := inferLayout(profiles, repos, []discover.SSHAlias{{Alias: "gh-w", IdentityFile: "~/.ssh/id_w"}}, testKey, layoutHints{})
 
 	if got.aliasAccount["gh-w"] != "" {
 		t.Errorf("gh-w was tied to %q; its repositories belong to both accounts", got.aliasAccount["gh-w"])
@@ -334,7 +340,7 @@ func TestNestedRulesForTheSameProfileAreMerged(t *testing.T) {
 		{Dir: "~/code/a/w/y/l3", Host: "github.com", Owner: "demo-personal"},
 	}
 
-	got := inferLayout(profiles, repos, nil, testKey, nil)
+	got := inferLayout(profiles, repos, nil, testKey, layoutHints{})
 
 	var dirs []string
 	for _, f := range got.found["demo-personal"] {
@@ -414,12 +420,29 @@ func TestAFolderInsideALeftOutIdentitysFolderStillGetsItsRule(t *testing.T) {
 		{Dir: "~/code/work/b", Host: "github.com", Owner: "demo-work"},
 	}
 
-	got := inferLayout(profiles, repos, nil, testKey, []string{"~/code"})
+	got := inferLayout(profiles, repos, nil, testKey, layoutHints{reserved: []string{"~/code"}})
 
 	if f := got.found["demo-work"]; len(f) != 1 || f[0].Dir != "~/code/work" {
 		t.Errorf("found = %+v; ~/code keeps the user's rule, ~/code/work clearly belongs to work", got.found)
 	}
 	if len(got.pins) != 0 {
 		t.Errorf("pins = %+v; ~/code/one keeps the user's rule", got.pins)
+	}
+}
+
+func TestOneRepositoryDirectlyInAScannedFolderIsPinnedNotARule(t *testing.T) {
+	profiles := []SetupProfile{
+		{ID: "work", Account: "demo-work", Email: "worker@demo.example"},
+		{ID: "personal", Account: "demo-personal", Email: "person@demo.example"},
+	}
+	repos := []discover.Repo{{Dir: "~/code/lone", Host: "github.com", Owner: "demo-personal"}}
+
+	got := inferLayout(profiles, repos, nil, testKey, layoutHints{roots: []string{"~/code"}})
+
+	if len(got.found) != 0 {
+		t.Errorf("found = %+v; one repository does not make all of ~/code personal", got.found)
+	}
+	if len(got.pins) != 1 || got.pins[0].Repo != "~/code/lone" || !got.pins[0].Outside {
+		t.Errorf("pins = %+v, want ~/code/lone pinned while the default is another profile", got.pins)
 	}
 }
