@@ -85,15 +85,11 @@ func inferLayout(profiles []SetupProfile, repos []discover.Repo, aliases []disco
 			byParent[parent] = append(byParent[parent], a)
 		}
 	}
-	folderAccount := map[string]string{} // folder -> the account most of its repositories belong to
 	for _, parent := range slices.Sorted(maps.Keys(byParent)) {
 		in.suggest(&out, parent, byParent[parent])
-		if account, n := majority(accountCounts(byParent[parent])); n*2 > len(byParent[parent]) {
-			folderAccount[in.key(parent)] = account
-		}
 	}
 	out.found = in.withoutNestedRules(out.found)
-	out.pins = in.pins(out.found, all, folderAccount)
+	out.pins = in.pins(out.found, all)
 	return out
 }
 
@@ -129,17 +125,6 @@ func sum(counts map[string]int) int {
 		total += n
 	}
 	return total
-}
-
-// accountCounts counts repositories per account.
-func accountCounts(repos []attribution) map[string]int {
-	counts := map[string]int{}
-	for _, a := range repos {
-		if a.account != "" {
-			counts[a.account]++
-		}
-	}
-	return counts
 }
 
 // suggest adds a directory rule for parent when most of its repositories
@@ -180,12 +165,11 @@ func (in inference) suggest(out *layout, parent string, repos []attribution) {
 
 // pins pins repositories that belong to another account than the one that
 // would apply to them: the most specific directory rule, or else the
-// default. Where no rule applies, the pin is marked Outside, since it is
-// needed only while the default is another profile. An owner alone does not
-// pin a repository against a rule for its own folder, or one whose folder
-// mostly belongs to the rule's account; its own email, SSH alias or remote
-// user still do.
-func (in inference) pins(found map[string][]DirSuggestion, repos []attribution, folderAccount map[string]string) []PinSuggestion {
+// default. A repository's owner alone is enough: without the pin, pushing
+// would use another account's credentials. Where no rule applies, the pin is
+// marked Outside, since it is needed only while the default is another
+// profile.
+func (in inference) pins(found map[string][]DirSuggestion, repos []attribution) []PinSuggestion {
 	var pins []PinSuggestion
 	for _, a := range repos {
 		if a.account == "" {
@@ -193,11 +177,6 @@ func (in inference) pins(found map[string][]DirSuggestion, repos []attribution, 
 		}
 		ruled, ruleDir := in.ruleAccount(a.repo.Dir, found)
 		if ruleDir != "" && ruled == a.account || in.keptByReservedRule(a.repo.Dir, ruleDir) {
-			continue
-		}
-		parent := in.key(filepath.Dir(a.repo.Dir))
-		outvoted := ruleDir != "" && !a.repo.Lone && (parent == in.key(ruleDir) || folderAccount[parent] == ruled)
-		if a.how == byOwner && outvoted {
 			continue
 		}
 		p := profileOf(in.profiles, a.account)

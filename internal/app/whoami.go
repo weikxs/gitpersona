@@ -196,7 +196,11 @@ func printProfile(e Env, r WhoamiReport) {
 	if r.InRepository && r.EffectiveEmail != "" {
 		name, email = r.EffectiveName, r.EffectiveEmail // what commits really use
 	}
-	fmt.Fprintf(e.Stdout, "  author  %s <%s>%s\n", name, email, fromFile(r.EmailSource))
+	source := fromFile(r.EmailSource)
+	if env := os.Getenv("GIT_AUTHOR_EMAIL"); env != "" {
+		email, source = env, " (from GIT_AUTHOR_EMAIL)" // set for every commit, whatever the configuration says
+	}
+	fmt.Fprintf(e.Stdout, "  author  %s <%s>%s\n", name, email, source)
 	reason := resolve.Reason(r.Reason).Describe()
 	if r.Match != "" {
 		reason += " " + r.Match

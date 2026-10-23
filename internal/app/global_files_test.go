@@ -3,10 +3,9 @@ package app
 import (
 	"context"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
-
-	"github.com/weikxs/gitpersona/internal/config"
 )
 
 func keptRuleWorld(t *testing.T, special string) (world, Env, string) {
@@ -378,31 +377,30 @@ func TestARuleForTheWholeHomeIsYourOwnRuleToo(t *testing.T) {
 
 func TestOnlyProfilesYourRulesReachResetTheSSHCommand(t *testing.T) {
 	w := newWorld(t)
-	// The rule covers personal's folders only; acme and globex are elsewhere and the default is acme.
+	// The rule covers personal's folder only; globex is elsewhere and the default is acme.
 	mustWrite(t, filepath.Join(w.home, ".gitconfig"), "[includeIf \"gitdir:~/Projects/personal/\"]\n\tpath = ~/.gc-p\n", 0o600)
 	mustWrite(t, filepath.Join(w.home, ".gc-p"), "[core]\n\tsshCommand = ssh -i ~/.ssh/p\n[tag]\n\tgpgSign = true\n", 0o600)
 	env, _ := w.env(t, w.home)
 
-	signing, ssh := env.resets(context.Background(), mustConfig(t, w), readFile(t, filepath.Join(w.home, ".gitconfig")))
-
-	if !ssh["personal"] || !signing["personal"] || !ssh["acme"] || ssh["globex"] {
-		t.Errorf("resets: signing %v, ssh %v; want personal (its folder) and acme (the default), not globex", signing, ssh)
-	}
-}
-
-func mustConfig(t *testing.T, w world) config.Config {
-	t.Helper()
-	cfg, err := config.Load(filepath.Join(w.home, ".config", "gitpersona", "config.toml"))
-	if err != nil {
+	if err := Apply(context.Background(), env, ApplyOptions{}); err != nil {
 		t.Fatal(err)
 	}
-	return cfg
+
+	// In personal's folder the rule's key must not stay; elsewhere nothing reaches, so GIT_SSH keeps working.
+	for repo, want := range map[string]string{"blog": "ssh", "billing": "", "hotfix": ""} {
+		if got := runGit(t, w.repos[repo], "config", "core.sshCommand"); got != want {
+			t.Errorf("%s: core.sshCommand = %q, want %q", repo, got, want)
+		}
+	}
 }
 
 func TestRulesInTheXDGConfigAndDotfilesAreYourOwnToo(t *testing.T) {
 	for name, place := range map[string]func(w world){
 		"xdg": func(w world) {
-			mustWrite(t, filepath.Join(w.home, ".config", "git", "config"), "[includeIf \"gitdir:~/oss/\"]\n\tpath = ~/.gc-rule\n", 0o600)
+			// The global identity comes first here, so the rule applies in ~/oss.
+			mustWrite(t, filepath.Join(w.home, ".config", "git", "config"), "[user]\n\tname = Global Me\n\temail = global@demo.example\n"+
+				"[includeIf \"gitdir:~/oss/\"]\n\tpath = ~/.gc-rule\n", 0o600)
+			mustWrite(t, filepath.Join(w.home, ".gitconfig"), "", 0o600)
 		},
 		"dotfile include": func(w world) {
 			mustWrite(t, filepath.Join(w.home, "dotfiles", "git"), "[includeIf \"gitdir:~/oss/\"]\n\tpath = ../.gc-rule\n", 0o600)
@@ -513,5 +511,75 @@ func TestAPlainRuleInTheXDGConfigIsTakenOverAndReportedAsNoLongerNeeded(t *testi
 	}
 	if !strings.Contains(readFile(t, filepath.Join(w.home, ".config", "git", "config")), "gitdir:~/Projects/personal/") {
 		t.Error("GitPersona must not change ~/.config/git/config")
+	}
+}
+
+func TestARuleOverriddenByALaterGlobalIdentityNeverApplied(t *testing.T) {
+	w := newWorld(t)
+	withoutConfig(t, w)
+	// Git reads ~/.config/git/config first, so ~/.gitconfig's [user] wins in ~/oss too.
+	mustWrite(t, filepath.Join(w.home, ".config", "git", "config"), "[includeIf \"gitdir:~/oss/\"]\n\tpath = ~/.gc-rule\n", 0o600)
+	mustWrite(t, filepath.Join(w.home, ".gitconfig"), "[user]\n\tname = Global Me\n\temail = global@demo.example\n", 0o600)
+	mustWrite(t, filepath.Join(w.home, ".gc-rule"), "[user]\n\tname = Rule Me\n\temail = rule@demo.example\n", 0o600)
+	env, _ := w.env(t, w.home)
+
+	got, err := ProposeSetup(context.Background(), env)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(got.Unmatched) != 1 || !strings.Contains(got.Unmatched[0].NeverApplied, "the identity set for everything in ~/.gitconfig comes after it") {
+		t.Errorf("unmatched = %+v; the rule never applies", got.Unmatched)
+	}
+	if got.Default == "" {
+		t.Error("a rule that never applies is nothing to protect from a default")
+	}
+}
+
+func TestARuleGoesBackBeforeTheNextRuleWhenTheSectionAfterItIsGone(t *testing.T) {
+	// ~/w stood before [alias], which the user has since removed; ~/w/special came after.
+	text := "[user]\n\tname = Demo\n[includeIf \"gitdir:~/w/special/\"]\n\tpath = special\n[push]\n\tdefault = simple\n"
+	removed := []ruleSection{{condition: "gitdir:~/w/", text: "[includeIf \"gitdir:~/w/\"]\n\tpath = w\n",
+		before: "[alias]", beforeN: 1, nextRule: "gitdir:~/w/special/"}}
+
+	got := withRules(text, removed)
+
+	if strings.Index(got, "gitdir:~/w/\"") > strings.Index(got, "gitdir:~/w/special/") {
+		t.Errorf("~/w must go back before ~/w/special, which came after it:\n%s", got)
+	}
+}
+
+func TestOnlyTheFoldersWhoseRuleNeverAppliesAreLeftUnprotected(t *testing.T) {
+	w := newWorld(t)
+	withoutConfig(t, w)
+	// The same identity for ~/x/a and ~/b; a later rule for ~/x overrides it in ~/x/a only.
+	mustWrite(t, filepath.Join(w.home, ".gitconfig"), "[includeIf \"gitdir:~/x/a/\"]\n\tpath = ~/.gc-me\n"+
+		"[includeIf \"gitdir:~/b/\"]\n\tpath = ~/.gc-me\n[includeIf \"gitdir:~/x/\"]\n\tpath = ~/.gc-x\n", 0o600)
+	mustWrite(t, filepath.Join(w.home, ".gc-me"), "[user]\n\tname = Me\n\temail = me@demo.example\n", 0o600)
+	mustWrite(t, filepath.Join(w.home, ".gc-x"), "[user]\n\tname = X\n\temail = x@demo.example\n", 0o600)
+	env, _ := w.env(t, w.home)
+
+	got, err := ProposeSetup(context.Background(), env)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if got.Default != "" || !slices.ContainsFunc(got.OwnRules, func(r string) bool { return strings.Contains(r, "~/b") }) {
+		t.Errorf("default = %q, own rules = %v; Me's rule for ~/b applies, so no default may override it", got.Default, got.OwnRules)
+	}
+}
+
+func TestAProxyOnlySSHCommandIsNotResetInAProfileFolderInsideIt(t *testing.T) {
+	w := newWorld(t)
+	mustWrite(t, filepath.Join(w.home, ".gitconfig"), "[includeIf \"gitdir:~/Projects/\"]\n\tpath = ~/.gc-proxy\n", 0o600)
+	mustWrite(t, filepath.Join(w.home, ".gc-proxy"), "[core]\n\tsshCommand = ssh -o ProxyCommand=demo-proxy\n", 0o600)
+	env, _ := w.env(t, w.home)
+
+	if err := Apply(context.Background(), env, ApplyOptions{}); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := runGit(t, w.repos["blog"], "config", "core.sshCommand"); got != "ssh -o ProxyCommand=demo-proxy" {
+		t.Errorf("a proxy is no other identity's key; core.sshCommand = %q", got)
 	}
 }

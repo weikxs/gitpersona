@@ -100,6 +100,7 @@ func (e Env) checkOldRules(ctx context.Context, cfg config.Config) []check {
 	owners := ownersOf(cfg)
 	var checks []check
 	var replaced []string
+	never := e.neverApplied(ctx)
 	for _, r := range e.identityRules(ctx) {
 		by, overridden := e.overriddenBy(r.Dir, owners, cfg.Default)
 		file := cmp.Or(r.File, e.display(e.GlobalGitConfigPath()))
@@ -125,6 +126,10 @@ func (e Env) checkOldRules(ctx context.Context, cfg config.Config) []check {
 				label: fmt.Sprintf("profile %s overrides your includeIf rule for %s: commits there use %s instead of %s",
 					by.id, r.Dir, author(by.name, by.email), author(r.Name, r.Email)),
 				advice: advice})
+		case never[ruleKey(r.File, r.Condition)] != "":
+			checks = append(checks, check{warn: true,
+				label:  fmt.Sprintf("your includeIf rule for %s (%s) never applies: %s", r.Dir, author(r.Name, r.Email), never[ruleKey(r.File, r.Condition)]),
+				advice: "Git applies what it reads last; move the rule after that in " + file + ", or remove it"})
 		default:
 			label := fmt.Sprintf("your includeIf rule for %s applies there (%s)", r.Dir, author(r.Name, r.Email))
 			if inside := e.profileDirsInside(r.Dir, owners); len(inside) > 0 {
@@ -133,7 +138,14 @@ func (e Env) checkOldRules(ctx context.Context, cfg config.Config) []check {
 			checks = append(checks, check{ok: true, label: label})
 		}
 	}
+	checks = append(checks, e.checkCoveredKeptRules(ctx, cfg)...)
 	for _, r := range e.otherIdentityRules(ctx) {
+		if cfg.Default == "" && len(ownerDirs(owners)) > 0 && refining(r.Condition) {
+			checks = append(checks, check{warn: true,
+				label: fmt.Sprintf("your includeIf rule %q (%s) does not apply in your profiles' folders, where the profile decides",
+					r.Condition, author(r.Name, r.Email)),
+				advice: "pin the repositories where it should apply to a profile with that identity, or remove the rule"})
+		}
 		if cfg.Default != "" {
 			checks = append(checks, check{warn: true,
 				label: fmt.Sprintf("the default profile %s overrides your includeIf rule %q, which sets %s",
@@ -227,4 +239,46 @@ func (e Env) enclosingSigner(p config.Profile, cfg config.Config, signers []conf
 		}
 	}
 	return "", false
+}
+
+// checkCoveredKeptRules warns about rules of the user's that do more than a
+// profile can (a key for tags, x509 signing, an SSH port) where a profile's
+// directory or pin lies in their folder: there the profile wins, and that
+// is lost. Identity rules a profile covers whole are reported above.
+func (e Env) checkCoveredKeptRules(ctx context.Context, cfg config.Config) []check {
+	var checks []check
+	for _, r := range e.keptRules(ctx) {
+		var places []string
+		for _, p := range cfg.Profiles {
+			for _, d := range p.Dirs {
+				inside := coversWith(e.comparisonKey, []string{r.Dir}, d)
+				around := coversWith(e.comparisonKey, []string{d}, r.Dir)
+				same := e.comparisonKey(d) == e.comparisonKey(r.Dir)
+				if (inside || around) && (r.Email == "" || !same) { // an identity rule a profile covers whole is reported above
+					places = append(places, d+" ("+p.ID+")")
+				}
+			}
+		}
+		for _, pin := range cfg.Pins {
+			if coversWith(e.comparisonKey, []string{r.Dir}, pin.Repo) {
+				places = append(places, pin.Repo+" (pin, "+pin.Profile+")")
+			}
+		}
+		if len(places) > 0 {
+			checks = append(checks, check{warn: true,
+				label: fmt.Sprintf("your includeIf rule for %s does more than a profile can (%s); that is lost in %s",
+					r.Dir, r.Keep, strings.Join(places, ", ")),
+				advice: "take those folders out of the profiles (`gitpersona remove`, `gitpersona unpin`) to let your rule decide there"})
+		}
+	}
+	return checks
+}
+
+// ownerDirs returns every profile directory.
+func ownerDirs(owners []ruleOwner) []string {
+	var dirs []string
+	for _, o := range owners {
+		dirs = append(dirs, o.dirs...)
+	}
+	return dirs
 }

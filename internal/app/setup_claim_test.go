@@ -285,7 +285,7 @@ func TestTheStrongestEvidenceClaimsAnAccountFirst(t *testing.T) {
 	}
 }
 
-func TestAnOwnerAloneDoesNotPinAForkInASubfolderOfItsRule(t *testing.T) {
+func TestARepositoryOfAnotherAccountInsideARuleIsPinned(t *testing.T) {
 	profiles := []SetupProfile{
 		{ID: "work", Account: "demo-work", Email: "worker@demo.example", Dirs: []string{"~/work"}},
 		{ID: "personal", Account: "demo-personal", Email: "person@demo.example"},
@@ -298,8 +298,9 @@ func TestAnOwnerAloneDoesNotPinAForkInASubfolderOfItsRule(t *testing.T) {
 
 	got := inferLayout(profiles, repos, nil, testKey, layoutHints{})
 
-	if len(got.pins) != 0 {
-		t.Errorf("pins = %+v; ~/work/team mostly belongs to work, so its fork stays with work", got.pins)
+	// Without the pin, pushing to demo-personal's fork would use work's credentials.
+	if len(got.pins) != 1 || got.pins[0].Repo != "~/work/team/fork" || got.pins[0].Profile != "personal" {
+		t.Errorf("pins = %+v, want the fork pinned to personal", got.pins)
 	}
 }
 

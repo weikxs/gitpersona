@@ -75,6 +75,19 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ### Fixed
 
+- Your rules that set no identity but a signing key, `tag.gpgsign`, `gpg.format` or an SSH command keep their folder
+  like the rules that do more than a profile can; `use`, `pin` and `doctor` warn when a profile still covers one.
+- Resets are written per folder: a profile includes its reset (signing, SSH command) only in the folders and pins that
+  another profile's key or one of your rules can reach, also through symbolic links, so `GIT_SSH` keeps working
+  everywhere else; the default resets only under your rules that set an identity.
+- Whether one of your rules applies is judged in Git's real read order across `~/.config/git/config`,
+  `~/.gitconfig` and the files they include: a rule a later global identity or rule overrides never applied, and setup
+  and `doctor` say so instead of protecting it. Branch and remote rules (`onbranch`, `hasconfig`) that set an identity
+  are announced as not applying in the profiles' folders.
+- A repository of another signed-in account is pinned even when only its owner says so, so it pushes with that
+  account's credentials.
+- `uninstall` puts a rule back before the next rule that followed it when the section after it is gone; `remove`
+  shows `~`; `whoami`'s author follows `GIT_AUTHOR_EMAIL`.
 - `includeIf` rules in `~/.config/git/config` and in files your global configuration includes count as your own rules
   (no default is proposed over them, `doctor` reports overrides, the same identity in several files is one); a plain
   one a profile takes over is reported as no longer needed, since GitPersona does not edit those files.

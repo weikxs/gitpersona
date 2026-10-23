@@ -98,7 +98,8 @@ func (e Env) organize(ctx context.Context, p SetupProposal, existing []discover.
 	p.Unmatched = e.leftOut(ctx, existing, used, owners, "", p.Global.Name)
 	p.KeptRules = e.keptOverrides(kept, owners, "")
 	p.Shadowed = append([]string{}, e.shadowedRules(ctx, owners)...)
-	p.OwnRules, p.SuggestedDefault = e.ownRules(ctx, p.Unmatched, p.KeptRules), p.Default
+	p.Shadowed = append(p.Shadowed, e.refiningRulesInProfiles(ctx, owners, p.Global.Name)...)
+	p.OwnRules, p.SuggestedDefault = e.ownRules(ctx, p.Unmatched, p.KeptRules, p.Global.Name), p.Default
 	if len(p.OwnRules) > 0 {
 		p = e.withDefault(p, "")
 	} else {

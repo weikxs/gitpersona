@@ -119,10 +119,14 @@ Prompt and plugin-manager setups (tide, Powerlevel10k, Starship, fisher, oh-my-z
 - **Your own `includeIf` rules:** GitPersona's rules come after yours, so in the directories you give to profiles
   (and in pins) the profile decides; everywhere else your own rules work exactly as before. A default profile applies
   everywhere, so while you keep identity rules of your own, `setup` proposes none (`--default <profile>` sets one
-  anyway, and says which of your rules it overrides). `setup` leaves the folders of rules that do more than a profile
-  can (such as x509 signing or extra `ssh` options) to those rules (and says so when a profile's folder around one
-  still overrides it), removes the rules a profile fully takes over, and
-  `uninstall` puts those back before the section that followed them. `doctor` says which of your rules a profile overrides.
+  anyway, and says which of your rules it overrides). Rules that do more than a profile can — x509 signing, an SSH
+  command with a port or proxy, a key used only for tags, with or without an identity — keep their folders, and so do
+  the folders around them. A rule that never applies today (a later rule or global identity of yours overrides it,
+  in the order Git reads `~/.config/git/config`, `~/.gitconfig` and the files they include) is not protected.
+  Profiles reset signing and the SSH command only where another identity's key could otherwise reach them. A
+  repository of another signed-in account is pinned to it, so it pushes with that account. `setup` removes the
+  rules a profile fully takes over; `uninstall` puts them back before the section (or rule) that followed them.
+  `doctor` says which of your rules a profile overrides.
 - **Credentials:** for GitHub profiles, GitPersona is the only credential helper for that host and borrows the
   token `gh` already holds, so no other helper stores a copy. If an account is not signed in to `gh`, Git asks
   for a password; `gitpersona doctor` tells you which account to sign in.

@@ -1,6 +1,7 @@
 package app
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"maps"
@@ -18,7 +19,12 @@ import (
 // profile takes it over.
 type LeftOut struct {
 	discover.Identity
-	OverriddenBy string   `json:"overridden_by,omitempty"`
+	OverriddenBy string `json:"overridden_by,omitempty"`
+	// NeverApplied says why its rules never apply today (see overriddenAt),
+	// when none of them does; Shadowed are the folders whose rule never
+	// applies. Those are nothing of the user's to protect.
+	NeverApplied string   `json:"never_applied,omitempty"`
+	Shadowed     []string `json:"shadowed,omitempty"`
 	Replaceable  []string `json:"replaceable"`
 	// ReplacedIn are profile directories inside its folder, where the
 	// profile's identity applies instead.
@@ -161,6 +167,7 @@ func setupOwners(profiles []SetupProfile) []ruleOwner {
 // An identity without a name is shown with globalName, which it commits with.
 func (e Env) leftOut(ctx context.Context, ids []discover.Identity, used []bool, owners []ruleOwner, defaultID, globalName string) []LeftOut {
 	rules := e.identityRules(ctx)
+	never := e.neverApplied(ctx)
 	out := []LeftOut{}
 	for i, id := range ids {
 		if used[i] {
@@ -175,6 +182,19 @@ func (e Env) leftOut(ctx context.Context, ids []discover.Identity, used []bool, 
 				l.OverriddenBy = by.id
 			}
 			l.ReplacedIn = append(l.ReplacedIn, e.profileDirsInside(d, owners)...)
+			why := ""
+			for _, r := range rules {
+				if r.Dir == d && strings.EqualFold(r.Email, id.Email) && r.Name == id.Name {
+					why = cmp.Or(why, never[ruleKey(r.File, r.Condition)])
+				}
+			}
+			if why != "" {
+				l.Shadowed = append(l.Shadowed, d)
+				l.NeverApplied = why
+			}
+		}
+		if len(l.Shadowed) < len(id.Dirs) {
+			l.NeverApplied = "" // some of its rules apply
 		}
 		for _, r := range rules {
 			if strings.EqualFold(r.Email, id.Email) && r.Name == id.Name && r.Keep == "" {
@@ -195,20 +215,22 @@ func sortedClaims(claims map[int]string) []int { return slices.Sorted(maps.Keys(
 // ownRules describes the user's own includeIf identity rules that stay:
 // those of the identities left out, those kept because they do more than a
 // profile, and rules that are not directory rules (onbranch, hasconfig).
-func (e Env) ownRules(ctx context.Context, left []LeftOut, kept []KeptRule) []string {
+func (e Env) ownRules(ctx context.Context, left []LeftOut, kept []KeptRule, globalName string) []string {
 	out := []string{}
 	for _, l := range left {
-		if l.OverriddenBy == "" { // a profile's folder around it decides there anyway
-			out = append(out, author(l.Name, l.Email)+" for "+strings.Join(l.Dirs, ", "))
+		live := slices.DeleteFunc(slices.Clone(l.Dirs), func(d string) bool { return slices.Contains(l.Shadowed, d) })
+		if l.OverriddenBy == "" && len(live) > 0 { // otherwise it decides nothing to protect
+			out = append(out, author(l.Name, l.Email)+" for "+strings.Join(live, ", "))
 		}
 	}
 	for _, k := range kept {
-		if k.OverriddenBy == "" {
+		left := slices.ContainsFunc(left, func(l LeftOut) bool { return slices.Contains(l.Dirs, k.Dir) })
+		if k.OverriddenBy == "" && !left {
 			out = append(out, "your rule for "+k.Dir)
 		}
 	}
 	for _, r := range e.otherIdentityRules(ctx) {
-		out = append(out, author(r.Name, r.Email)+" for "+r.Condition)
+		out = append(out, author(cmp.Or(r.Name, globalName), r.Email)+" for "+r.Condition)
 	}
 	return out
 }
@@ -220,11 +242,9 @@ func (e Env) ownRules(ctx context.Context, left []LeftOut, kept []KeptRule) []st
 func (e Env) withoutKeptDirs(ctx context.Context, profiles []SetupProfile) ([]SetupProfile, []KeptRule) {
 	why := map[string]string{}
 	var keptRules []string
-	for _, r := range e.identityRules(ctx) {
-		if r.Keep != "" {
-			why[e.comparisonKey(r.Dir)] = r.Keep
-			keptRules = append(keptRules, r.Dir)
-		}
+	for _, r := range e.keptRules(ctx) {
+		why[e.comparisonKey(r.Dir)] = r.Keep
+		keptRules = append(keptRules, r.Dir)
 	}
 	reason := func(d string) (string, bool) {
 		if r, ok := why[e.comparisonKey(d)]; ok {
@@ -237,12 +257,24 @@ func (e Env) withoutKeptDirs(ctx context.Context, profiles []SetupProfile) ([]Se
 		}
 		return "", false
 	}
+	// Every kept rule is listed, also one no profile had a claim on, so its
+	// folder is reserved and counts as the user's own rule.
 	kept := []KeptRule{}
+	listed := map[string]bool{}
+	add := func(dir, why string) {
+		if !listed[e.comparisonKey(dir)] {
+			listed[e.comparisonKey(dir)] = true
+			kept = append(kept, KeptRule{Dir: dir, Why: why})
+		}
+	}
+	for _, k := range keptRules {
+		add(k, why[e.comparisonKey(k)])
+	}
 	out := make([]SetupProfile, len(profiles))
 	for i, p := range profiles {
 		p.Dirs = slices.DeleteFunc(slices.Clone(p.Dirs), func(d string) bool {
 			if r, ok := reason(d); ok {
-				kept = append(kept, KeptRule{Dir: d, Why: r})
+				add(d, r)
 				return true
 			}
 			return false
@@ -276,34 +308,49 @@ func (e Env) keptOverrides(kept []KeptRule, owners []ruleOwner, defaultID string
 	return out
 }
 
-// shadowedRules describes the user's directory rules that never applied in
-// their folder, because a later rule of theirs for a folder around it sets
-// another identity, but that a profile now applies there: after setup that
-// folder's identity changes.
+// shadowedRules describes the user's identity rules that never applied in
+// their folder (see overriddenAt) but that a profile with their identity
+// now applies there: after setup that folder's identity changes.
 func (e Env) shadowedRules(ctx context.Context, owners []ruleOwner) []string {
-	rules := e.identityRules(ctx)
+	never := e.neverApplied(ctx)
 	var out []string
-	for i, inner := range rules {
-		// Git applies the last rule that matches: the last later rule whose
-		// folder contains this one decides there.
-		last := -1
-		for j := i + 1; j < len(rules); j++ {
-			if coversWith(e.comparisonKey, []string{rules[j].Dir}, inner.Dir) {
-				last = j
-			}
-		}
-		if last < 0 {
+	for _, r := range e.identityRules(ctx) {
+		why, ok := never[ruleKey(r.File, r.Condition)]
+		if !ok {
 			continue
 		}
-		outer := rules[last]
-		if strings.EqualFold(inner.Email, outer.Email) && inner.Name == outer.Name {
-			continue
-		}
-		if by, ok := e.overriddenBy(inner.Dir, owners, ""); ok && by.sameIdentity(inner.Email, inner.Name) {
-			out = append(out, fmt.Sprintf("your rule for %s (%s) never applied, because your later rule for %s (%s) overrides it; "+
-				"after setup %s uses %s", inner.Dir, author(inner.Name, inner.Email), outer.Dir, author(outer.Name, outer.Email),
-				inner.Dir, author(inner.Name, inner.Email)))
+		if by, covered := e.overriddenBy(r.Dir, owners, ""); covered && by.sameIdentity(r.Email, r.Name) {
+			out = append(out, fmt.Sprintf("your rule for %s (%s) never applied, because %s; after setup %s uses %s",
+				r.Dir, author(r.Name, r.Email), why, r.Dir, author(r.Name, r.Email)))
 		}
 	}
 	return out
+}
+
+// refiningRulesInProfiles describes the user's identity rules for branches
+// or remotes (onbranch, hasconfig): inside the profiles' folders the profile
+// decides, so on those branches the identity changes there.
+func (e Env) refiningRulesInProfiles(ctx context.Context, owners []ruleOwner, globalName string) []string {
+	dirs := []string{}
+	for _, o := range owners {
+		dirs = append(dirs, o.dirs...)
+	}
+	if len(dirs) == 0 {
+		return nil
+	}
+	var out []string
+	for _, r := range e.otherIdentityRules(ctx) {
+		if !refining(r.Condition) {
+			continue
+		}
+		out = append(out, fmt.Sprintf("your rule %s (%s) no longer applies in your profiles' folders (%s), where the profile decides",
+			r.Condition, author(cmp.Or(r.Name, globalName), r.Email), strings.Join(dirs, ", ")))
+	}
+	return out
+}
+
+// refining reports whether a condition picks repositories by branch or by
+// remote rather than by folder.
+func refining(condition string) bool {
+	return strings.HasPrefix(condition, "onbranch:") || strings.HasPrefix(condition, "hasconfig:")
 }

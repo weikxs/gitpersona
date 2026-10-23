@@ -189,6 +189,11 @@ func (e Env) printProposal(p SetupProposal) {
 // take over: its rule keeps applying, or a profile replaces it.
 func printLeftOut(w io.Writer, p SetupProposal, u LeftOut) {
 	where := strings.Join(u.Dirs, ", ")
+	if u.NeverApplied != "" {
+		fmt.Fprintf(w, "\n  Not taken over: %s for %s (from %s). It never applies today, because %s; setup leaves it as it is.\n",
+			author(u.Name, u.Email), where, u.Source, u.NeverApplied)
+		return
+	}
 	if k := slices.IndexFunc(p.Profiles, func(x SetupProfile) bool { return x.ID == u.OverriddenBy }); k >= 0 {
 		fmt.Fprintf(w, "\n  ! Replaced: %s for %s (from %s). Profile %s (%s) applies there instead, because GitPersona's rules "+
 			"come after yours. To keep it, choose its account with `gitpersona setup --web`.\n",

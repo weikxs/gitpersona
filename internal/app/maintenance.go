@@ -177,6 +177,7 @@ func (e Env) planUninstall() ([]change, error) {
 type ruleSection struct {
 	condition, text, before string
 	beforeN                 int
+	nextRule                string // the condition of the next includeIf rule
 }
 
 // removedRules returns the includeIf sections that setup or `doctor --fix`
@@ -213,10 +214,14 @@ func (e Env) removedRules(current string) []ruleSection {
 // removed rules, a beforeMarker line ("<occurrence> <header>") says that.
 func includeIfSections(text string) []ruleSection {
 	var out []ruleSection
-	inside, marked, markedN := false, "", 0
+	inside, marked, markedN, markedNext := false, "", 0, ""
 	seen := map[string]int{} // header -> occurrences so far
 	for _, line := range strings.SplitAfter(text, "\n") {
 		trimmed := strings.TrimSpace(line)
+		if rest, ok := strings.CutPrefix(trimmed, strings.TrimSpace(nextRuleMarker)); ok {
+			markedNext = strings.TrimSpace(rest)
+			continue
+		}
 		if rest, ok := strings.CutPrefix(trimmed, strings.TrimSpace(beforeMarker)); ok {
 			n, header, _ := strings.Cut(strings.TrimSpace(rest), " ")
 			markedN, _ = strconv.Atoi(n)
@@ -231,8 +236,12 @@ func includeIfSections(text string) []ruleSection {
 			m := includeIfHeader.FindStringSubmatch(trimmed)
 			inside = m != nil
 			if inside {
-				out = append(out, ruleSection{condition: unescapeSubsection(m[1]), before: marked, beforeN: markedN})
-				marked, markedN = "", 0
+				condition := unescapeSubsection(m[1])
+				for k := len(out) - 1; k >= 0 && out[k].nextRule == "" && markedNext == "" && marked == ""; k-- {
+					out[k].nextRule = condition // the first rule after each earlier one
+				}
+				out = append(out, ruleSection{condition: condition, before: marked, beforeN: markedN, nextRule: markedNext})
+				marked, markedN, markedNext = "", 0, ""
 			}
 		}
 		if inside && trimmed != "" && !strings.HasPrefix(trimmed, "#") && !strings.HasPrefix(trimmed, ";") {
@@ -255,7 +264,14 @@ func withRules(text string, sections []ruleSection) string {
 		placed = false
 		for i := len(pending) - 1; i >= 0; i-- {
 			s := pending[i]
-			if at := sectionLine(text, s.before, s.beforeN); s.before != "" && at >= 0 {
+			at := -1
+			if s.before != "" {
+				at = sectionLine(text, s.before, s.beforeN)
+			}
+			if at < 0 && s.nextRule != "" {
+				at = ruleLine(text, s.nextRule) // the section after it is gone: before the next rule
+			}
+			if at >= 0 {
 				text = text[:at] + s.text + text[at:]
 				pending = slices.Delete(pending, i, i+1)
 				placed = true
@@ -269,6 +285,19 @@ func withRules(text string, sections []ruleSection) string {
 		text += s.text
 	}
 	return text
+}
+
+// ruleLine returns where the header of the includeIf rule for condition
+// starts in text, or -1.
+func ruleLine(text, condition string) int {
+	at := 0
+	for _, line := range strings.SplitAfter(text, "\n") {
+		if m := includeIfHeader.FindStringSubmatch(strings.TrimSpace(line)); m != nil && unescapeSubsection(m[1]) == condition {
+			return at
+		}
+		at += len(line)
+	}
+	return -1
 }
 
 // sectionLine returns where the n-th line whose trimmed text is header

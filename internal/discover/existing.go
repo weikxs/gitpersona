@@ -84,6 +84,8 @@ type RuleSettings struct {
 	Condition string
 	Dir       string
 	Keys      map[string]bool
+	// SSHKey is set when its core.sshCommand names a key (-i, IdentityFile).
+	SSHKey bool
 }
 
 // RulesSettings returns the includeIf rules of a configuration file, in
@@ -100,6 +102,10 @@ func RulesSettings(ctx context.Context, home, gitconfig string, run provider.Run
 			for _, key := range strings.Fields(string(out)) {
 				r.Keys[key] = true
 			}
+		}
+		if r.Keys["core.sshcommand"] {
+			cmd, _ := run(ctx, "git", "config", "--file", file, "--get", "core.sshCommand")
+			r.SSHKey = sshCommandKey(strings.TrimSpace(string(cmd))) != ""
 		}
 		out = append(out, r)
 	}

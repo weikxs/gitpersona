@@ -57,12 +57,15 @@ func Use(ctx context.Context, e Env, profileID string) error {
 }
 
 // warnAboutCoveredRules says which rules of the user's that do more than a
-// profile can are now overridden inside dir.
-func (e Env) warnAboutCoveredRules(ctx context.Context, dir, profileID string) {
-	for _, r := range e.identityRules(ctx) {
-		if r.Keep != "" && coversWith(e.comparisonKey, []string{dir}, r.Dir) {
-			fmt.Fprintf(e.Stdout, "! Your includeIf rule for %s does more than a profile can (%s); profile %s now applies there, "+
-				"so that is lost. Run `gitpersona remove %s` to undo.\n", r.Dir, r.Keep, profileID, dir)
+// profile can the profile now overrides at place: rules for folders inside
+// it, and the rule whose folder contains it.
+func (e Env) warnAboutCoveredRules(ctx context.Context, place, profileID string) {
+	for _, r := range e.keptRules(ctx) {
+		inside := coversWith(e.comparisonKey, []string{place}, r.Dir)
+		around := coversWith(e.comparisonKey, []string{r.Dir}, place)
+		if inside || around {
+			fmt.Fprintf(e.Stdout, "! Your includeIf rule for %s does more than a profile can (%s); profile %s now applies in %s, "+
+				"so that is lost there.\n", r.Dir, r.Keep, profileID, place)
 		}
 	}
 }
@@ -88,7 +91,11 @@ func Remove(ctx context.Context, e Env, dir string) error {
 	if err := e.saveEdited(ctx, "remove "+dir, edited, withoutDir(cfg, owner, dir, opts)); err != nil {
 		return err
 	}
-	fmt.Fprintf(e.Stdout, "%s no longer uses profile %s.\n", dir, owner)
+	shown := dir
+	if norm, err := paths.Normalize(dir, e.Home); err == nil {
+		shown = e.display(norm)
+	}
+	fmt.Fprintf(e.Stdout, "%s no longer uses profile %s.\n", shown, owner)
 	return nil
 }
 
@@ -114,6 +121,7 @@ func Pin(ctx context.Context, e Env, profileID string) error {
 		return err
 	}
 	fmt.Fprintf(e.Stdout, "%s is pinned to profile %s.\n", repo, profileID)
+	e.warnAboutCoveredRules(ctx, repo, profileID)
 	return nil
 }
 

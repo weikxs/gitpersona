@@ -74,6 +74,9 @@ func (e Env) removedSections(changes []change) string {
 			if s.before != "" {
 				fmt.Fprintf(&b, "%s%d %s\n", beforeMarker, s.beforeN, s.before) // where it goes back
 			}
+			if s.nextRule != "" {
+				b.WriteString(nextRuleMarker + s.nextRule + "\n") // or else before this rule
+			}
 			b.WriteString(s.text)
 		}
 	}
@@ -83,6 +86,10 @@ func (e Env) removedSections(changes []change) string {
 // beforeMarker, in a backup's record of removed rules, names the section
 // header a removed rule stood before.
 const beforeMarker = "# gitpersona-before: "
+
+// nextRuleMarker names the next includeIf rule after a removed one, where
+// it goes back when the section that followed it is gone.
+const nextRuleMarker = "# gitpersona-next-rule: "
 
 // Apply regenerates every file from the configuration. Only files whose
 // content changes are backed up and written, so running it twice is a no-op.
@@ -152,7 +159,8 @@ func (e Env) applyChanges(changes []change, opts ApplyOptions) error {
 func (e Env) removals(changes []change) []string {
 	var names []string
 	for _, c := range changes {
-		if c.remove {
+		// A reset file only follows the rules; removing it needs no consent.
+		if c.remove && !strings.Contains(filepath.Base(c.path), ".reset-") {
 			names = append(names, e.display(c.path))
 		}
 	}
@@ -180,7 +188,7 @@ func (e Env) planWith(ctx context.Context, cfg config.Config, edit func(string) 
 	if err != nil {
 		return nil, err
 	}
-	opts.ResetSigning, opts.ResetSSH = e.resets(ctx, cfg, gitconfig.content)
+	opts.KeyRules = e.keyRules(ctx, gitconfig.content)
 	files, err := generate.Generate(cfg, opts)
 	if err != nil {
 		return nil, err

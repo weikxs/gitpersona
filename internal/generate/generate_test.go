@@ -241,7 +241,12 @@ func TestProfilesWithoutSigningRestoreTheUsersGlobalSigning(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	acme := files[0].Content
+	acme := ""
+	for _, f := range files {
+		if f.Name == ResetFile("acme", "signing") {
+			acme = f.Content
+		}
+	}
 
 	for _, want := range []string{"gpgsign = true", "signingkey = /tmp/home/.ssh/global.pub", "format = ssh"} {
 		if !strings.Contains(acme, want) {
@@ -311,7 +316,7 @@ func TestSigningNoneMakesGitCommitSRefuse(t *testing.T) {
 	var b strings.Builder
 	p := config.Profile{ID: "off", Signing: config.Signing{Method: config.SigningNone}}
 
-	if err := writeSigning(&b, p, usage{}, Options{}); err != nil {
+	if err := writeSigning(&b, p, Options{}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -350,12 +355,53 @@ func TestAProfileBehindASymlinkStillResetsWhatItWouldInherit(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	names := map[string]string{}
 	for _, f := range files {
-		if f.Name == ProfileFile("b") && !strings.Contains(f.Content, "sshCommand = ssh") {
-			t.Errorf("~/link is ~/real, which contains b's folder, so b must reset the SSH command:\n%s", f.Content)
-		}
+		names[f.Name] = f.Content
+	}
+	if !strings.Contains(names[ResetFile("b", "ssh")], "sshCommand = ssh") ||
+		!strings.Contains(names[RulesFile], "/tmp/home/.config/gitpersona/"+ResetFile("b", "ssh")) {
+		t.Errorf("~/link is ~/real, which contains b's folder, so b must reset the SSH command there:\n%s", names[RulesFile])
+	}
+	for _, f := range files {
 		if f.Name == RulesFile && strings.Index(f.Content, "gitdir:/tmp/home/real/\"") > strings.Index(f.Content, "gitdir:/tmp/home/real/sub/\"") {
 			t.Errorf("a's real-path entry must come before b's more specific folder:\n%s", f.Content)
 		}
+	}
+}
+
+func TestResetsGoOnlyWhereSomethingCanReachTheProfile(t *testing.T) {
+	cfg := config.Config{Version: config.CurrentVersion, Profiles: []config.Profile{
+		{ID: "work", Provider: config.ProviderGitHub, Host: "github.com", Account: "w", Name: "W", Email: "w@demo.example",
+			SSHKey: "~/.ssh/id_w", Dirs: []string{"~/w"}},
+		{ID: "personal", Provider: config.ProviderGitHub, Host: "github.com", Account: "p", Name: "P", Email: "p@demo.example",
+			Dirs: []string{"~/p", "~/w/inner"}},
+	}}
+	opts := demoOptions()
+	opts.KeyRules = []KeyRule{{Dir: "/tmp/home/corp", SSH: true, Identity: true}} // the default overrides it, keys included
+	cfg.Default = "personal"
+
+	files, err := Generate(cfg, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var rules string
+	for _, f := range files {
+		if f.Name == RulesFile {
+			rules = f.Content
+		}
+	}
+	reset := "/tmp/home/.config/gitpersona/" + ResetFile("personal", "ssh")
+	for _, want := range []string{
+		"[includeIf \"gitdir/i:/tmp/home/w/inner/\"]\n\tpath = /tmp/home/.config/gitpersona/profiles/personal.gitconfig\n\tpath = " + reset,
+		"[includeIf \"gitdir/i:/tmp/home/corp/\"]\n\tpath = " + reset, // the default, under the user's rule
+	} {
+		if !strings.Contains(rules, want) {
+			t.Errorf("rules should contain %q:\n%s", want, rules)
+		}
+	}
+	if strings.Contains(rules, "gitdir/i:/tmp/home/p/\"]\n\tpath = /tmp/home/.config/gitpersona/profiles/personal.gitconfig\n\tpath") {
+		t.Errorf("nothing reaches ~/p, so GIT_SSH must keep working there:\n%s", rules)
 	}
 }

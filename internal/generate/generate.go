@@ -37,11 +37,9 @@ type Options struct {
 	// FallbackSigning restores the user's own signing settings for profiles
 	// without signing. Empty fields are not restored; signing is then off.
 	FallbackSigning Signing
-	// ResetSigning and ResetSSH name the profiles that must set their
-	// signing and SSH command even when no profile changes them: a rule of
-	// the user's that sets them applies where the profile does, and the
-	// profile must not inherit its key.
-	ResetSigning, ResetSSH map[string]bool
+	// KeyRules are the user's own includeIf rules that set signing or an
+	// SSH command; profiles they reach reset those settings (see resets.go).
+	KeyRules []KeyRule
 	// Canonicalize, if set, resolves symbolic links in a path. Git matches
 	// includeIf against the real path of the repository, so when a rule's
 	// directory goes through a symlink an entry for the real path is added.
@@ -75,11 +73,12 @@ func Generate(cfg config.Config, opts Options) ([]File, error) {
 
 	files := make([]File, 0, len(cfg.Profiles)+1)
 	for _, p := range cfg.Profiles {
-		content, err := profileSnippet(p, usageFor(cfg, p, opts), opts)
+		content, err := profileSnippet(p, opts)
 		if err != nil {
 			return nil, err
 		}
 		files = append(files, File{Name: ProfileFile(p.ID), Content: content})
+		files = append(files, opts.resetFiles(cfg, p)...)
 	}
 	files = append(files, File{Name: RulesFile, Content: rulesIndex(cfg, opts)})
 
@@ -87,74 +86,7 @@ func Generate(cfg config.Config, opts Options) ([]File, error) {
 	return files, nil
 }
 
-// usage records the settings another profile (or a rule of the user's)
-// may set where profile p applies, so that p, when it does not use them,
-// must reset them instead of inheriting another identity's. Where nothing
-// reaches p, it leaves them alone (an SSH program from GIT_SSH keeps
-// working there).
-type usage struct {
-	signing bool
-	sshKeys bool
-}
-
-func usageFor(cfg config.Config, p config.Profile, opts Options) usage {
-	u := usage{signing: opts.ResetSigning[p.ID], sshKeys: opts.ResetSSH[p.ID]}
-	for _, other := range cfg.Profiles {
-		if other.ID != p.ID && opts.reaches(cfg, other, p) {
-			// "none" sets an empty key and signing off, which p must not inherit either.
-			u.signing = u.signing || other.Signing.Enabled() || other.Signing.Method == config.SigningNone
-			u.sshKeys = u.sshKeys || other.SSHKey != ""
-		}
-	}
-	return u
-}
-
-// reaches reports whether profile a's settings can apply in a repository
-// where profile b applies too: a is the default (included first, under
-// every rule), or one of a's directories (in any form Git matches it, see
-// pathForms) contains one of b's directories or pins (a's rule comes first
-// there, b's after). A pin of b on a's directory itself counts too.
-func (o Options) reaches(cfg config.Config, a, b config.Profile) bool {
-	if a.ID == cfg.Default {
-		return true
-	}
-	type place struct {
-		path string
-		pin  bool
-	}
-	var places []place
-	for _, d := range b.Dirs {
-		places = append(places, place{path: d})
-	}
-	for _, pin := range cfg.Pins {
-		if pin.Profile == b.ID {
-			places = append(places, place{path: pin.Repo, pin: true})
-		}
-	}
-	for _, d := range a.Dirs {
-		outer, err := paths.Normalize(d, o.Home)
-		if err != nil {
-			continue
-		}
-		for _, p := range places {
-			inner, err := paths.Normalize(p.path, o.Home)
-			if err != nil {
-				continue
-			}
-			for _, of := range o.pathForms(outer) {
-				for _, in := range o.pathForms(inner) {
-					ok, ik := o.compareKey(of), o.compareKey(in)
-					if strings.HasPrefix(ik, strings.TrimSuffix(ok, "/")+"/") || (p.pin && ik == ok) {
-						return true
-					}
-				}
-			}
-		}
-	}
-	return false
-}
-
-func profileSnippet(p config.Profile, u usage, opts Options) (string, error) {
+func profileSnippet(p config.Profile, opts Options) (string, error) {
 	var b strings.Builder
 	b.WriteString(header)
 	fmt.Fprintf(&b, "# Profile %s: %s on %s\n", p.ID, p.Account, p.Host)
@@ -163,17 +95,17 @@ func profileSnippet(p config.Profile, u usage, opts Options) (string, error) {
 	writeKV(&b, "name", p.Name)
 	writeKV(&b, "email", p.Email)
 
-	if err := writeSigning(&b, p, u, opts); err != nil {
+	if err := writeSigning(&b, p, opts); err != nil {
 		return "", err
 	}
-	if err := writeSSH(&b, p, u, opts); err != nil {
+	if err := writeSSH(&b, p, opts); err != nil {
 		return "", err
 	}
 	writeCredential(&b, p, opts)
 	return b.String(), nil
 }
 
-func writeSigning(b *strings.Builder, p config.Profile, u usage, opts Options) error {
+func writeSigning(b *strings.Builder, p config.Profile, opts Options) error {
 	if p.Signing.Method == config.SigningNone {
 		// "none" means off, even when the user signs everything globally;
 		// an empty key makes `git commit -S` refuse instead of signing with
@@ -187,10 +119,7 @@ func writeSigning(b *strings.Builder, p config.Profile, u usage, opts Options) e
 		return nil
 	}
 	if !p.Signing.Enabled() {
-		if u.signing {
-			writeFallbackSigning(b, opts.FallbackSigning, p.Email)
-		}
-		return nil
+		return nil // resets, where needed, are in its reset file
 	}
 	key := p.Signing.Key
 	if p.Signing.Method == config.SigningSSH && !config.LiteralSSHKey(key) {
@@ -229,13 +158,9 @@ func writeFallbackSigning(b *strings.Builder, s Signing, email string) {
 	writeKV(b, "gpgSign", cmp.Or(s.TagSign, "false"))
 }
 
-func writeSSH(b *strings.Builder, p config.Profile, u usage, opts Options) error {
+func writeSSH(b *strings.Builder, p config.Profile, opts Options) error {
 	if p.SSHKey == "" {
-		if u.sshKeys {
-			b.WriteString("[core]\n")
-			writeKV(b, "sshCommand", cmp.Or(opts.FallbackSSHCommand, "ssh"))
-		}
-		return nil
+		return nil // resets, where needed, are in its reset file
 	}
 	key, err := paths.Normalize(p.SSHKey, opts.Home)
 	if err != nil {
@@ -270,25 +195,31 @@ func rulesIndex(cfg config.Config, opts Options) string {
 	b.WriteString(header)
 	b.WriteString("# Order is precedence: default, then directory rules from least to most specific, then pins.\n")
 
-	if cfg.Default != "" {
-		fmt.Fprintf(&b, "\n# Default profile: %s\n[include]\n", cfg.Default)
-		writeKV(&b, "path", opts.profilePath(cfg.Default))
-	}
-
 	gitdir := "gitdir:"
 	if opts.CaseInsensitive {
 		gitdir = "gitdir/i:"
 	}
+	if def, ok := cfg.ProfileByID(cfg.Default); ok {
+		fmt.Fprintf(&b, "\n# Default profile: %s\n[include]\n", cfg.Default)
+		writeKV(&b, "path", opts.profilePath(cfg.Default))
+		opts.writeDefaultResets(&b, gitdir, def)
+	}
 	for _, r := range sortedRules(cfg, opts) {
+		p, _ := cfg.ProfileByID(r.profile)
 		fmt.Fprintf(&b, "\n# Rule: %s -> %s\n", r.written, r.profile)
 		fmt.Fprintf(&b, "[includeIf %s]\n", quoteSubsection(gitdir+escapeGlob(r.norm)+"/"))
 		writeKV(&b, "path", opts.profilePath(r.profile))
+		for _, reset := range opts.resetPaths(cfg, p, r.written, false) {
+			writeKV(&b, "path", reset)
+		}
 	}
 	for _, pin := range cfg.Pins {
 		norm, _ := paths.Normalize(pin.Repo, opts.Home) // validated in Generate
+		p, _ := cfg.ProfileByID(pin.Profile)
+		resets := opts.resetPaths(cfg, p, pin.Repo, true)
 		fmt.Fprintf(&b, "\n# Pin: %s -> %s (the repository and its worktrees)\n", pin.Repo, pin.Profile)
-		opts.writeIncludeIf(&b, gitdir, norm, "/.git", pin.Profile)
-		opts.writeIncludeIf(&b, gitdir, norm, "/.git/worktrees/", pin.Profile)
+		opts.writeIncludeIf(&b, gitdir, norm, "/.git", pin.Profile, resets)
+		opts.writeIncludeIf(&b, gitdir, norm, "/.git/worktrees/", pin.Profile, resets)
 	}
 	return b.String()
 }
@@ -304,10 +235,13 @@ func (o Options) compareKey(dir string) string {
 
 // writeIncludeIf writes the entry for dir, plus one for its real path when a
 // symbolic link makes the two differ.
-func (o Options) writeIncludeIf(b *strings.Builder, gitdir, dir, suffix, profile string) {
+func (o Options) writeIncludeIf(b *strings.Builder, gitdir, dir, suffix, profile string, resets []string) {
 	for _, d := range o.pathForms(dir) {
 		fmt.Fprintf(b, "[includeIf %s]\n", quoteSubsection(gitdir+escapeGlob(d)+suffix))
 		writeKV(b, "path", o.profilePath(profile))
+		for _, r := range resets {
+			writeKV(b, "path", r)
+		}
 	}
 }
 

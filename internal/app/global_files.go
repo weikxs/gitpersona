@@ -11,8 +11,8 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/weikxs/gitpersona/internal/config"
 	"github.com/weikxs/gitpersona/internal/discover"
+	"github.com/weikxs/gitpersona/internal/generate"
 	"github.com/weikxs/gitpersona/internal/paths"
 )
 
@@ -138,55 +138,49 @@ func plainIncludes(text string) []string {
 // sets them where the profile applies.
 var signingKeys = []string{"user.signingkey", "gpg.format", "commit.gpgsign", "tag.gpgsign"}
 
-// resets returns the profiles that must set their signing and their SSH
-// command because a rule of the user's sets them where the profile applies:
-// around one of its directories or pins, anywhere (onbranch, hasconfig, the
-// whole home), or anywhere at all for the default. text is the global
-// file's content as it will be; rules in it that are gone do not count.
-func (e Env) resets(ctx context.Context, cfg config.Config, text string) (signing, ssh map[string]bool) {
-	signing, ssh = map[string]bool{}, map[string]bool{}
+// keyRules returns the user's own includeIf rules that set signing or an
+// SSH command, from every global file; text is the global file's content
+// as it will be (rules in it that are gone do not count).
+func (e Env) keyRules(ctx context.Context, text string) []generate.KeyRule {
 	present := map[string]bool{}
 	for _, s := range includeIfSections(text) {
 		present[s.condition] = true
 	}
 	main := e.resolvedUserGitConfig()
+	var out []generate.KeyRule
 	for _, file := range e.globalFiles() {
 		for _, r := range discover.RulesSettings(ctx, e.Home, file, e.Run) {
 			if file == main && !present[r.Condition] {
 				continue
 			}
-			setsSigning := slices.ContainsFunc(signingKeys, func(k string) bool { return r.Keys[k] })
-			if !setsSigning && !r.Keys["core.sshcommand"] {
+			identity := r.Keys["user.email"] || r.Keys["user.name"]
+			k := generate.KeyRule{
+				Signing: slices.ContainsFunc(signingKeys, func(key string) bool { return r.Keys[key] }),
+				// An SSH command matters when it is another identity's key; a
+				// proxy or a port alone may stay.
+				SSH:      r.Keys["core.sshcommand"] && (identity || r.SSHKey),
+				Identity: identity,
+			}
+			if !k.Signing && !k.SSH {
 				continue
 			}
-			for _, p := range cfg.Profiles {
-				if e.ruleReaches(r.Dir, p, cfg) {
-					signing[p.ID] = signing[p.ID] || setsSigning
-					ssh[p.ID] = ssh[p.ID] || r.Keys["core.sshcommand"]
+			// The rule's own condition, unless it is relative to its file.
+			if !strings.Contains(r.Condition, ":./") {
+				k.Condition = r.Condition
+			}
+			// A folder compared as text: not for patterns, nor for a
+			// case-insensitive rule on a case-sensitive disk (it applies
+			// anywhere then, which is the safe side).
+			plain := !strings.ContainsAny(r.Dir, "*?[") && (!strings.HasPrefix(r.Condition, "gitdir/i:") || e.CaseInsensitive)
+			if r.Dir != "" && r.Dir != "~" && plain {
+				if norm, err := paths.Normalize(r.Dir, e.Home); err == nil {
+					k.Dir = norm
 				}
 			}
+			out = append(out, k)
 		}
 	}
-	return signing, ssh
-}
-
-// ruleReaches reports whether a rule of the user's for dir ("" or "~": any
-// repository) can apply in a repository where profile p applies too.
-func (e Env) ruleReaches(dir string, p config.Profile, cfg config.Config) bool {
-	if dir == "" || dir == "~" || p.ID == cfg.Default {
-		return true
-	}
-	places := slices.Clone(p.Dirs)
-	for _, pin := range cfg.Pins {
-		if pin.Profile == p.ID {
-			places = append(places, pin.Repo)
-		}
-	}
-	// Around the profile's folder, or inside it: either way the profile comes
-	// after the rule there.
-	return slices.ContainsFunc(places, func(place string) bool {
-		return coversWith(e.comparisonKey, []string{dir}, place) || coversWith(e.comparisonKey, []string{place}, dir)
-	})
+	return out
 }
 
 // identityRules returns the includeIf identity rules of every file of the
@@ -242,4 +236,169 @@ func (e Env) existingIdentities(ctx context.Context) []discover.Identity {
 // ExistingIdentities is existingIdentities, for the configuration page.
 func (e Env) ExistingIdentities(ctx context.Context) []discover.Identity {
 	return e.existingIdentities(ctx)
+}
+
+// keyOnlyRules returns the user's directory rules that set no identity but
+// signing or an SSH command for their folder (a key for tags, a port): they
+// do more than a profile can, so they are kept like such identity rules.
+func (e Env) keyOnlyRules(ctx context.Context) []discover.Rule {
+	main := e.resolvedUserGitConfig()
+	var out []discover.Rule
+	for _, file := range e.globalFiles() {
+		for _, r := range discover.RulesSettings(ctx, e.Home, file, e.Run) {
+			if r.Dir == "" || r.Dir == "~" || r.Keys["user.email"] || r.Keys["user.name"] {
+				continue
+			}
+			var set []string
+			for _, k := range append(slices.Clone(signingKeys), "core.sshcommand") {
+				if r.Keys[k] {
+					set = append(set, k)
+				}
+			}
+			if len(set) == 0 {
+				continue
+			}
+			rule := discover.Rule{Condition: r.Condition, Dir: r.Dir, Keep: "it sets " + strings.Join(set, ", ") + " for its folder"}
+			if file != main {
+				rule.File = e.display(file)
+			}
+			out = append(out, rule)
+		}
+	}
+	return out
+}
+
+// keptRules returns the user's rules that do more than a profile can: the
+// identity rules with a reason to keep, and the rules that only set keys.
+func (e Env) keptRules(ctx context.Context) []discover.Rule {
+	var out []discover.Rule
+	for _, r := range e.identityRules(ctx) {
+		if r.Keep != "" {
+			out = append(out, r)
+		}
+	}
+	return append(out, e.keyOnlyRules(ctx)...)
+}
+
+// ruleKey names one rule: the file it is in ("" for the global file) and
+// its condition.
+func ruleKey(file, condition string) string { return file + "\x00" + condition }
+
+// orderEvent is something in the global configuration, in the order Git
+// reads it, that decides the identity: an identity rule, or an identity set
+// for everything (a [user] email outside any rule), from file.
+type orderEvent struct {
+	rule   *discover.Rule // an identity rule, or nil
+	key    string         // the rule's ruleKey
+	global bool           // a [user] email set for everything
+	file   string         // with ~
+}
+
+// readOrder returns the identity rules and global identities of the global
+// configuration in the order Git reads them: ~/.config/git/config, then the
+// global file, each with the files it includes read where the include
+// stands (as often as it stands).
+func (e Env) readOrder(ctx context.Context) []orderEvent {
+	byRule := map[string]discover.Rule{}
+	for _, r := range e.identityRules(ctx) {
+		byRule[ruleKey(r.File, r.Condition)] = r
+	}
+	main := e.resolvedUserGitConfig()
+	var out []orderEvent
+	var walk func(text, file string, depth int)
+	walk = func(text, file string, depth int) {
+		fileKey := ""
+		if paths.ResolveSymlinks(file) != paths.ResolveSymlinks(main) {
+			fileKey = e.display(file)
+		}
+		section, condition := "", ""
+		for _, line := range strings.Split(text, "\n") {
+			trimmed := strings.TrimSpace(line)
+			if strings.HasPrefix(trimmed, "[") {
+				section, condition = "", ""
+				switch m := includeIfHeader.FindStringSubmatch(trimmed); {
+				case m != nil:
+					section, condition = "includeif", unescapeSubsection(m[1])
+					trimmed = strings.TrimSpace(trimmed[len(m[0]):])
+				case includeHeader.MatchString(trimmed):
+					section = "include"
+					trimmed = strings.TrimSpace(trimmed[len(includeHeader.FindString(trimmed)):])
+				case userHeader.MatchString(trimmed):
+					section = "user"
+					trimmed = strings.TrimSpace(trimmed[len(userHeader.FindString(trimmed)):])
+				}
+			}
+			key, value, ok := strings.Cut(trimmed, "=")
+			key = strings.ToLower(strings.TrimSpace(key))
+			switch {
+			case !ok:
+			case section == "user" && key == "email": // the email decides who commits
+				out = append(out, orderEvent{global: true, file: e.display(file)})
+			case section == "includeif" && key == "path":
+				k := ruleKey(fileKey, condition)
+				if r, known := byRule[k]; known {
+					out = append(out, orderEvent{rule: &r, key: k, file: e.display(file)})
+				}
+			case section == "include" && key == "path" && depth < maxIncludeDepth:
+				if included := e.includedFile(gitValue(value), file); included != "" {
+					if content, err := readOptional(included); err == nil {
+						walk(content, included, depth+1)
+					}
+				}
+			}
+		}
+	}
+	if xdg := e.xdgGitConfig(); xdg != "" {
+		if text, err := readOptional(xdg); err == nil {
+			walk(text, xdg, 0)
+		}
+	}
+	if text, err := readOptional(main); err == nil {
+		walk(text, e.userGitConfig(), 0)
+	}
+	return out
+}
+
+// userHeader matches a plain [user] section header.
+var userHeader = regexp.MustCompile(`(?i)^\s*\[\s*user\s*\]`)
+
+// overriddenAt says why the identity rule at position i of order never
+// applies in its folder, or "": a later identity set for everything, or a
+// later rule for a folder containing it with another identity (Git applies
+// what it reads last).
+func (e Env) overriddenAt(order []orderEvent, i int) string {
+	r := order[i].rule
+	reason := ""
+	for _, later := range order[i+1:] {
+		covers := later.rule != nil && coversWith(e.comparisonKey, []string{later.rule.Dir}, r.Dir)
+		same := later.rule != nil && strings.EqualFold(later.rule.Email, r.Email) && later.rule.Name == r.Name
+		switch {
+		case later.global:
+			reason = "the identity set for everything in " + later.file + " comes after it"
+		case covers && !same:
+			reason = "your later rule for " + later.rule.Dir + " (" + author(later.rule.Name, later.rule.Email) + ") overrides it"
+		case covers:
+			reason = "" // a later rule with the same identity puts it back
+		}
+	}
+	return reason
+}
+
+// neverApplied maps the identity rules (by ruleKey) that never apply in
+// Git's read order to the reason; a rule read more than once counts by its
+// last reading.
+func (e Env) neverApplied(ctx context.Context) map[string]string {
+	order := e.readOrder(ctx)
+	out := map[string]string{}
+	for i, ev := range order {
+		if ev.rule == nil {
+			continue
+		}
+		if why := e.overriddenAt(order, i); why != "" {
+			out[ev.key] = why
+		} else {
+			delete(out, ev.key)
+		}
+	}
+	return out
 }

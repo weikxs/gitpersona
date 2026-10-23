@@ -87,8 +87,9 @@ func TestInferLayoutNeverGivesAFolderTwoProfiles(t *testing.T) {
 	if len(got.found) != 0 {
 		t.Errorf("found = %+v; ~/work already belongs to a (written /tmp/home/Work)", got.found)
 	}
-	if len(got.pins) != 1 || got.pins[0].Repo != "~/work/z" || got.pins[0].Profile != "b" {
-		t.Errorf("pins = %+v, want only the repository that sets b's email", got.pins)
+	// ~/work is a's; b's repositories there are pinned, so they push as b.
+	if len(got.pins) != 3 || got.pins[2].Repo != "~/work/z" || got.pins[2].Profile != "b" {
+		t.Errorf("pins = %+v, want b's three repositories pinned", got.pins)
 	}
 }
 
