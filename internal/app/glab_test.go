@@ -108,3 +108,25 @@ func TestApplyCreatesTheGlabEntryForGitLabProfiles(t *testing.T) {
 		t.Error("uninstall should remove the glab entry")
 	}
 }
+
+func TestGlabTakesTheSameHostWrittenAsAURL(t *testing.T) {
+	w, env, _, call := glabWorld(t)
+	env.WorkDir = w.repos["hotfix"]
+	t.Setenv("GITLAB_HOST", "https://GitLab.Globex.example/")
+
+	if code := GlabShim(context.Background(), env, []string{"mr", "list"}); code != 0 {
+		t.Fatalf("code %d", code)
+	}
+
+	if token := envValue(call.env, "GITLAB_TOKEN"); token != "demo-token-for-globex" {
+		t.Errorf("GITLAB_HOST as a URL of the same host should still choose the account, got token %q", token)
+	}
+}
+
+func TestBareHost(t *testing.T) {
+	for in, want := range map[string]string{"gitlab.com": "gitlab.com", "https://gitlab.com/": "gitlab.com", "http://git.demo.example:8080/api/v4": "git.demo.example:8080", "HTTPS://GitLab.com": "gitlab.com", "https://u@gitlab.com/": "gitlab.com"} {
+		if got := bareHost(in); got != want {
+			t.Errorf("bareHost(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

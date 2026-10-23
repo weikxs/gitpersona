@@ -173,6 +173,43 @@ func (e Env) gitConfigAll(ctx context.Context, key string) ([]string, error) {
 	return values, nil
 }
 
+// gitConfigRegexp returns the global settings whose names match pattern,
+// as name/value pairs in the order Git reads them.
+// The system settings come first, as Git reads them (unless
+// GIT_CONFIG_NOSYSTEM is set): many installations set a credential helper
+// there.
+func (e Env) gitConfigRegexp(ctx context.Context, pattern string) ([][2]string, error) {
+	sources := [][]string{}
+	if os.Getenv("GIT_CONFIG_NOSYSTEM") == "" {
+		sources = append(sources, []string{"--system"})
+	}
+	for _, file := range e.globalFiles() {
+		if _, err := os.Stat(file); err == nil {
+			sources = append(sources, []string{"--file", file})
+		}
+	}
+	var entries [][2]string
+	for _, src := range sources {
+		args := append(append([]string{"config"}, src...), "--null", "--get-regexp", pattern)
+		out, err := e.git(ctx, e.Home, args...)
+		var exit *exec.ExitError
+		switch {
+		case errors.As(err, &exit) && exit.ExitCode() == gitConfigMissing:
+		case err != nil:
+			return nil, fmt.Errorf("read Git settings %s (%s): %w", pattern, e.display(src[len(src)-1]), err)
+		default:
+			for _, entry := range strings.Split(out, "\x00") {
+				// A name without a value ("helper" with no "=") is not
+				// a reset; Git refuses it.
+				if name, value, hasValue := strings.Cut(entry, "\n"); name != "" && hasValue {
+					entries = append(entries, [2]string{name, value})
+				}
+			}
+		}
+	}
+	return entries, nil
+}
+
 // repoRoot returns the top-level directory of the repository containing dir.
 func (e Env) repoRoot(ctx context.Context, dir string) (string, bool) {
 	root, err := e.git(ctx, dir, "rev-parse", "--show-toplevel")

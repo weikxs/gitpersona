@@ -169,9 +169,11 @@ func help(args []string, stdout, stderr io.Writer) int {
 
 func printCommandHelp(w io.Writer, cmd command, fs *flag.FlagSet) {
 	fmt.Fprintf(w, "Usage: gitpersona %s\n\n%s\n", cmd.synopsis, cmd.description)
+	width := 0
+	fs.VisitAll(func(f *flag.Flag) { width = max(width, len(f.Name)) })
 	var flags strings.Builder
 	fs.VisitAll(func(f *flag.Flag) {
-		fmt.Fprintf(&flags, "  --%-10s %s\n", f.Name, f.Usage)
+		fmt.Fprintf(&flags, "  --%-*s %s\n", width, f.Name, f.Usage)
 	})
 	if flags.Len() > 0 {
 		fmt.Fprintf(w, "\nFlags:\n%s", flags.String())

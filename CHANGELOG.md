@@ -24,6 +24,9 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 - `gitpersona check-ssh` connects to each profile's host with its SSH key (`ssh -T`, batch mode, only that key) and
   reports which account GitHub, GitLab or Bitbucket says it is. It runs only when you ask; ssh uses the key,
   GitPersona never opens it.
+- `doctor` warns when only the `cache` helper keeps the tokens of a host, and finds helpers set for a URL pattern
+  such as `credential.https://*.example.com.helper` or for one account (`https://<account>@host`), and the
+  system-wide helper many installations set.
 - `glab` follows your directories: in a GitLab profile's directory it runs with that account's token, which goes only
   to that one process.
 - One-step setup: `gitpersona setup` and `setup --web` look at what you already have — the accounts signed in to gh,

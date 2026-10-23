@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"slices"
 	"strings"
 
 	"golang.org/x/term"
@@ -35,7 +34,7 @@ func AuthLogin(ctx context.Context, e Env, opts AuthOptions) error {
 	if err != nil {
 		return err
 	}
-	if err := e.requireSafeHelper(ctx, p.Host); err != nil {
+	if err := e.requireSafeHelper(ctx, p); err != nil {
 		return err
 	}
 	token, err := e.readToken(fmt.Sprintf("Token for %s on %s (input is hidden): ", p.Account, p.Host))
@@ -45,8 +44,12 @@ func AuthLogin(ctx context.Context, e Env, opts AuthOptions) error {
 	if _, err := e.runInput()(ctx, credentialRequest(p, token), noPrompt, "git", "-C", e.Home, "credential", "approve"); err != nil {
 		return fmt.Errorf("the credential helper did not save the token: %w", err)
 	}
-	fmt.Fprintf(e.Stdout, "Saved the token for %s on %s in your credential store; Git and glab use it in profile %s's directories.\n",
-		p.Account, p.Host, p.ID)
+	users := "Git uses"
+	if p.Provider == config.ProviderGitLab {
+		users = "Git and glab use"
+	}
+	fmt.Fprintf(e.Stdout, "Saved the token for %s on %s in your credential store; %s it in profile %s's directories.\n",
+		p.Account, p.Host, users, p.ID)
 	return nil
 }
 
@@ -66,25 +69,38 @@ func AuthLogout(ctx context.Context, e Env, opts AuthOptions) error {
 // AuthStatus says, for each profile on a host other than GitHub, whether
 // the user's credential store has its token. It asks the store the way Git
 // does and throws the token away at once.
-func AuthStatus(ctx context.Context, e Env) error {
+// With a profile it checks that one only. It fails when a token is missing,
+// so scripts can tell.
+func AuthStatus(ctx context.Context, e Env, opts AuthOptions) error {
 	cfg, err := e.loadConfig()
 	if err != nil {
 		return err
 	}
-	shown := false
+	if opts.Profile != "" {
+		if err := knownProfile(cfg, opts.Profile, "auth status --profile"); err != nil {
+			return err
+		}
+	}
+	shown, missing := 0, 0
 	for _, p := range cfg.Profiles {
-		if p.Provider == config.ProviderGitHub {
+		if p.Provider == config.ProviderGitHub || (opts.Profile != "" && p.ID != opts.Profile) {
 			continue
 		}
-		shown = true
+		shown++
 		if _, err := e.profileToken(ctx, p); err != nil {
-			fmt.Fprintf(e.Stdout, "✗ %s: no token for %s on %s; run `gitpersona auth login --profile %s`\n", p.ID, p.Account, p.Host, p.ID)
+			missing++
+			fmt.Fprintf(e.Stdout, "✗ %s: no token for %s on %s (or your credential helper failed); run `gitpersona auth login --profile %s`\n", p.ID, p.Account, p.Host, p.ID)
 			continue
 		}
 		fmt.Fprintf(e.Stdout, "✓ %s: the credential store has a token for %s on %s\n", p.ID, p.Account, p.Host)
 	}
-	if !shown {
+	switch {
+	case shown == 0 && opts.Profile != "":
+		return fmt.Errorf("profile %s is a GitHub profile; check its account with `gh auth status`", opts.Profile)
+	case shown == 0:
 		fmt.Fprintln(e.Stdout, "No profile is on a host other than GitHub; GitHub accounts are signed in with `gh auth login`.")
+	case missing > 0:
+		return fmt.Errorf("%d of %d profiles have no token", missing, shown)
 	}
 	return nil
 }
@@ -141,25 +157,13 @@ func (e Env) authProfile(opts AuthOptions) (config.Profile, error) {
 
 // requireSafeHelper refuses to save a token where no helper would keep it,
 // or where the helper keeps it in a file in clear text.
-func (e Env) requireSafeHelper(ctx context.Context, host string) error {
-	helpers, err := e.hostHelpers(ctx, host)
+func (e Env) requireSafeHelper(ctx context.Context, p config.Profile) error {
+	helpers, err := e.hostHelpers(ctx, p.Host, p.Account)
 	if err != nil {
 		return err
 	}
-	kinds := make([]string, len(helpers))
-	for i, h := range helpers {
-		kinds[i] = helperKind(h)
-	}
-	switch {
-	case len(helpers) == 0:
-		return fmt.Errorf("no credential helper would keep the token for %s; set one up first, for example "+
-			"`git config --global credential.helper %s`", host, suggestedHelper())
-	case slices.Contains(kinds, "plain"):
-		return fmt.Errorf("your credential helper for %s (store) keeps tokens in a file in clear text; "+
-			"use the system keychain instead, for example `git config --global credential.helper %s`", host, suggestedHelper())
-	case !slices.ContainsFunc(kinds, func(k string) bool { return k != "memory" }):
-		return fmt.Errorf("your credential helper for %s (cache) forgets tokens after a while; "+
-			"use the system keychain instead, for example `git config --global credential.helper %s`", host, suggestedHelper())
+	if problem := helperProblem(p.Host, helpers); problem != "" {
+		return fmt.Errorf("%s; %s first", problem, helperAdvice())
 	}
 	return nil
 }

@@ -7,7 +7,7 @@
 在 `~/Projects/acme` 里，你用公司账户提交、推送、开 PR；
 换到 `~/Projects/personal`，你又自动变回个人账户。不用执行任何命令，也不用记着切换。
 
-> **状态：早期开发中，尚未发布。** GitHub 身份、命令行、配置 Web 页面、shell 集成和 `gh` 切换已可用；GitLab/Bitbucket 支持正在开发中。
+> **状态：早期开发中，尚未发布。** GitHub、GitLab、Bitbucket 及其他主机的身份、命令行、配置 Web 页面、shell 集成和 `gh` / `glab` 切换已可用。
 
 ## 为什么需要
 
@@ -94,10 +94,10 @@ Git、`gh`、`glab` 都假定只有一个全局的"当前账户"，于是很容�
 | `gitpersona pin <身份>` / `unpin` | 把当前仓库绑定到某个身份，或取消绑定 |
 | `gitpersona list [--json]` | 列出身份、目录和 Pin |
 | `gitpersona doctor [--fix] [--json]` | 检查配置并说明如何修复问题；`--fix` 自动修复能安全修复的问题 |
-| `gitpersona auth login\|logout\|status [--profile <id>]` | 在你自己的凭据存储（系统钥匙串或 Git Credential Manager）里为 GitLab、Bitbucket 等配置文件保存、删除或检查令牌，每个账户一个 |
+| `gitpersona auth login\|logout\|status [--profile <id>]` | 在你自己的凭据存储（系统钥匙串或 Git Credential Manager）里为 GitLab、Bitbucket 等配置文件保存、删除或检查令牌，每个账户一个；缺令牌时 `status` 返回失败 |
 | `gitpersona check-ssh [--profile <id>]` | 用每个配置文件的 SSH 密钥连接它的主机，报告主机认出的账户；只在你主动运行时执行，GitPersona 不打开密钥（由 ssh 使用） |
 | `gitpersona shells [--json]` | 显示默认 shell、当前正在用的 shell 和已安装的 shell |
-| `gitpersona install-shell [--shell fish,zsh,bash]` | 为 shell 加上提示符显示（以及 gh 切换）；默认只装你的登录 shell |
+| `gitpersona install-shell [--shell fish,zsh,bash]` | 为 shell 加上提示符显示（以及 gh / glab 切换）；默认只装你的登录 shell |
 | `gitpersona prompt [--format]` | 输出这里 Git 使用的账户，供提示符使用（`{account}`、`{profile}`、`{host}`） |
 | `gitpersona rollback [<名称>\|latest] [--yes]` | 列出备份，或恢复某个备份（恢复前会先备份当前状态） |
 | `gitpersona uninstall [--yes]` | 从 Git 配置中移除 GitPersona，并放回它接管过的 `includeIf` 规则；保留 config.toml |

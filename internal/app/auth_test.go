@@ -2,8 +2,10 @@ package app
 
 import (
 	"context"
+	"github.com/weikxs/gitpersona/internal/discover"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -60,7 +62,7 @@ func TestAuthKeepsOneTokenPerAccountInTheUsersOwnStore(t *testing.T) {
 		}
 	}
 	out.Reset()
-	if err := AuthStatus(context.Background(), env); err != nil || !strings.Contains(out.String(), "✓ globex: the credential store has a token for globex-alex") ||
+	if err := AuthStatus(context.Background(), env, AuthOptions{}); err != nil || !strings.Contains(out.String(), "✓ globex: the credential store has a token for globex-alex") ||
 		strings.Contains(out.String(), "demo-token") {
 		t.Errorf("auth status: %v\n%s", err, out.String())
 	}
@@ -69,9 +71,12 @@ func TestAuthKeepsOneTokenPerAccountInTheUsersOwnStore(t *testing.T) {
 		t.Fatal(err)
 	}
 	out.Reset()
-	_ = AuthStatus(context.Background(), env)
-	if !strings.Contains(out.String(), "✗ globex: no token for globex-alex") {
-		t.Errorf("after logout:\n%s", out.String())
+	err := AuthStatus(context.Background(), env, AuthOptions{Profile: "globex"})
+	if !strings.Contains(out.String(), "✗ globex: no token for globex-alex") || err == nil {
+		t.Errorf("after logout: %v\n%s", err, out.String())
+	}
+	if err := AuthStatus(context.Background(), env, AuthOptions{Profile: "personal"}); err == nil || !strings.Contains(err.Error(), "gh auth status") {
+		t.Errorf("auth status for a GitHub profile = %v", err)
 	}
 }
 
@@ -112,4 +117,116 @@ func appendConfig(t *testing.T, w world, text string) {
 	gitconfig := filepath.Join(w.home, ".gitconfig")
 	current, _ := os.ReadFile(gitconfig)
 	mustWrite(t, gitconfig, string(current)+text, 0o600)
+}
+
+func TestURLMatchesLikeGit(t *testing.T) {
+	for pattern, want := range map[string]bool{
+		"https://git.demo.example":         true,
+		"https://git.demo.example/":        true,
+		"https://*.demo.example":           true,
+		"https://GIT.demo.example":         true,
+		"HTTPS://git.demo.example":         true,
+		"https://git.demo.example:443":     true, // the default port
+		"git.demo.example":                 true, // a partial URL
+		"https://alice@git.demo.example":   true, // the account itself
+		"https://bob@git.demo.example":     false,
+		"https://Alice@git.demo.example":   false, // user names are exact
+		"https://git.demo.example:8443":    false,
+		"https://*.example":                false, // * is one label
+		"https://git.demo.example/team":    false, // some repositories only
+		"http://git.demo.example":          false,
+		"https://other.demo.example.extra": false,
+	} {
+		if got := urlMatches(pattern, "git.demo.example", "alice"); got != want {
+			t.Errorf("urlMatches(%q) = %v, want %v", pattern, got, want)
+		}
+	}
+	if !urlMatches("https://git.demo.example:8443", "git.demo.example:8443", "alice") || !urlMatches("https://[::1]:8443", "[::1]:8443", "alice") {
+		t.Error("the same port matches, IPv6 included")
+	}
+}
+
+func TestHelpersAreReadPerAccountInGitsOrder(t *testing.T) {
+	w := newWorld(t)
+	env, _ := w.env(t, w.home)
+	appendConfig(t, w, "[credential]\n\thelper = osxkeychain\n"+
+		"[credential \"https://alice@gitlab.globex.example\"]\n\thelper = store\n"+
+		"[credential \"https://other.example\"]\n\thelper =\n"+
+		"[credential \"https://gitlab.globex.example\"]\n\txhelper = ignored\n")
+
+	alice, err1 := env.hostHelpers(context.Background(), "gitlab.globex.example", "alice")
+	bob, err2 := env.hostHelpers(context.Background(), "gitlab.globex.example", "bob")
+
+	if err1 != nil || err2 != nil || !slices.Equal(alice, []string{"osxkeychain", "store"}) || !slices.Equal(bob, []string{"osxkeychain"}) {
+		t.Errorf("alice %v, bob %v (%v, %v); a user's helper and another host's reset apply to nobody else", alice, bob, err1, err2)
+	}
+}
+
+func TestDoctorWithoutAnyHelperSaysSo(t *testing.T) {
+	w := newWorld(t)
+	env, out := w.env(t, w.home)
+	if err := Apply(context.Background(), env, ApplyOptions{}); err != nil {
+		t.Fatal(err)
+	}
+
+	_ = Doctor(context.Background(), env)
+
+	if !strings.Contains(out.String(), "no credential helper would keep the token for gitlab.globex.example") ||
+		strings.Contains(out.String(), "(cache)") {
+		t.Errorf("doctor without a helper:\n%s", out.String())
+	}
+}
+
+func TestDoctorFindsHelpersForAWildcardURLAndWarnsAboutCache(t *testing.T) {
+	w := newWorld(t)
+	env, out := w.env(t, w.home)
+	if err := Apply(context.Background(), env, ApplyOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	appendConfig(t, w, "[credential \"https://*.globex.example\"]\n\thelper = /tmp/demo/git-credential-demo\n")
+
+	_ = Doctor(context.Background(), env)
+
+	if !strings.Contains(out.String(), "credentials for globex-alex on gitlab.globex.example come from /tmp/demo/git-credential-demo") {
+		t.Errorf("doctor should find the helper set for *.globex.example:\n%s", out.String())
+	}
+	out.Reset()
+	appendConfig(t, w, "[credential]\n\thelper =\n\thelper = cache\n")
+
+	_ = Doctor(context.Background(), env)
+
+	if !strings.Contains(out.String(), "(cache) forgets tokens after a while") {
+		t.Errorf("doctor should warn about the cache helper:\n%s", out.String())
+	}
+}
+
+func TestAuthStatusRefusesAnUnknownProfile(t *testing.T) {
+	w := newWorld(t)
+	env, _ := w.env(t, w.home)
+
+	if err := AuthStatus(context.Background(), env, AuthOptions{Profile: "nope"}); err == nil || !strings.Contains(err.Error(), `unknown profile "nope"`) {
+		t.Errorf("auth status --profile nope = %v", err)
+	}
+}
+
+func TestGitConfigRegexpKeepsNewlinesAndSkipsNamesWithoutValue(t *testing.T) {
+	w := newWorld(t)
+	env, _ := w.env(t, w.home)
+	appendConfig(t, w, "[credential]\n\thelper = \"one\\ntwo\"\n\thelper\n\thelper = three\n")
+
+	got, err := env.gitConfigRegexp(context.Background(), `^credential\.helper$`)
+
+	want := [][2]string{{"credential.helper", "one\ntwo"}, {"credential.helper", "three"}}
+	if err != nil || !slices.Equal(got, want) {
+		t.Errorf("gitConfigRegexp = %q, %v; want %q", got, err, want)
+	}
+}
+
+func TestAllKeptComparesFoldersAsTheDiskDoes(t *testing.T) {
+	p := SetupProposal{KeptRules: []KeptRule{{Dir: "~/Work"}}}
+	u := LeftOut{Identity: discover.Identity{Dirs: []string{"~/work"}}}
+
+	if !allKept(p, u, strings.ToLower) || allKept(p, u, func(s string) string { return s }) {
+		t.Error("allKept should follow the comparison key")
+	}
 }

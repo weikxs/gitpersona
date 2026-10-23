@@ -78,7 +78,7 @@ func Setup(ctx context.Context, e Env, opts SetupOptions) error {
 	plan := proposal.Plan()
 	if opts.Print {
 		fmt.Fprint(e.Stdout, renderPlan(plan))
-		printLeftOutComments(e.Stdout, proposal)
+		printLeftOutComments(e.Stdout, proposal, e.comparisonKey)
 		return nil
 	}
 	e.printProposal(proposal)
@@ -128,7 +128,7 @@ func (e Env) printProposal(p SetupProposal) {
 	}
 	fmt.Fprintln(w, ":")
 	if p.GitHubUnavailable != "" {
-		fmt.Fprintf(w, "\n  ! No GitHub profiles: %s.\n", strings.TrimSuffix(p.GitHubUnavailable, "."))
+		fmt.Fprintf(w, "\n  No GitHub profiles: %s.\n", strings.TrimSuffix(p.GitHubUnavailable, "."))
 	}
 	if p.ScanIncomplete {
 		fmt.Fprintf(w, "\n  ! Looking for repositories stopped after %s, before it finished %s; repositories it did not reach "+
@@ -193,13 +193,13 @@ func (e Env) printProposal(p SetupProposal) {
 	}
 	printUnassigned(w, p)
 	for _, u := range p.Unmatched {
-		printLeftOut(w, p, u)
+		printLeftOut(w, p, u, e.comparisonKey)
 	}
 }
 
 // printLeftOut says what happens in the folder of an identity setup does not
 // take over: its rule keeps applying, or a profile replaces it.
-func printLeftOut(w io.Writer, p SetupProposal, u LeftOut) {
+func printLeftOut(w io.Writer, p SetupProposal, u LeftOut, key func(string) string) {
 	where := strings.Join(u.Dirs, ", ")
 	if u.NeverApplied != "" {
 		fmt.Fprintf(w, "\n  Not taken over: %s for %s (from %s). It never applies today, because %s; setup leaves it as it is.\n",
@@ -212,11 +212,23 @@ func printLeftOut(w io.Writer, p SetupProposal, u LeftOut) {
 			author(u.Name, u.Email), where, u.Source, u.OverriddenBy, author(p.Profiles[k].Name, p.Profiles[k].Email))
 		return
 	}
-	fmt.Fprintf(w, "\n  Not taken over: %s for %s (from %s); no signed-in account could be tied to it, so your rule keeps "+
+	if allKept(p, u, key) {
+		return // listed with the kept rules, and why
+	}
+	fmt.Fprintf(w, "\n  Not taken over: %s for %s (from %s); GitPersona could not tie it to one account, so your rule keeps "+
 		"applying there. To make it a profile, choose its account with `gitpersona setup --web`.\n", author(u.Name, u.Email), where, u.Source)
 	if len(u.ReplacedIn) > 0 {
 		fmt.Fprintf(w, "    Except in %s, which go to profiles.\n", strings.Join(u.ReplacedIn, ", "))
 	}
+}
+
+// allKept reports whether every folder of a left-out identity is a kept
+// rule, which the proposal lists with its reason.
+// key compares paths as the disk does.
+func allKept(p SetupProposal, u LeftOut, key func(string) string) bool {
+	return len(u.Dirs) > 0 && !slices.ContainsFunc(u.Dirs, func(d string) bool {
+		return !slices.ContainsFunc(p.KeptRules, func(k KeptRule) bool { return key(k.Dir) == key(d) })
+	})
 }
 
 // printUnassigned lists, together, the folders whose repositories belong to
@@ -237,9 +249,11 @@ func printUnassigned(w io.Writer, p SetupProposal) {
 
 // printLeftOutComments adds to a printed configuration, as comments, what
 // it leaves out of the existing setup.
-func printLeftOutComments(w io.Writer, p SetupProposal) {
+func printLeftOutComments(w io.Writer, p SetupProposal, key func(string) string) {
 	for _, u := range p.Unmatched {
-		fmt.Fprintf(w, "\n# Left out: %s for %s; no signed-in account could be tied to it.\n", author(u.Name, u.Email), strings.Join(u.Dirs, ", "))
+		if !allKept(p, u, key) {
+			fmt.Fprintf(w, "\n# Left out: %s for %s; GitPersona could not tie it to one account.\n", author(u.Name, u.Email), strings.Join(u.Dirs, ", "))
+		}
 	}
 	for _, k := range p.KeptRules {
 		fmt.Fprintf(w, "# Kept: your includeIf rule for %s (%s).\n", k.Dir, k.Why)

@@ -122,7 +122,7 @@ var commands = map[string]command{
 				case "logout":
 					return fail(env.Stderr, app.AuthLogout(ctx, env, opts))
 				case "status", "":
-					return fail(env.Stderr, app.AuthStatus(ctx, env))
+					return fail(env.Stderr, app.AuthStatus(ctx, env, opts))
 				}
 				return fail(env.Stderr, fmt.Errorf("%w: auth takes login, logout or status", errUsage))
 			}

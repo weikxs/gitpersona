@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"slices"
@@ -67,6 +68,20 @@ func GlabShim(ctx context.Context, e Env, args []string) int {
 	return 0
 }
 
+// bareHost returns the host of a value such as gitlab.com,
+// https://gitlab.com/ or https://gitlab.com/api/v4.
+func bareHost(v string) string {
+	v = strings.ToLower(strings.TrimSpace(v))
+	if !strings.Contains(v, "://") {
+		v = "https://" + v
+	}
+	u, err := url.Parse(v)
+	if err != nil {
+		return ""
+	}
+	return u.Host
+}
+
 // glabTarget returns the GitLab profile glab should use here, if GitPersona
 // should choose at all.
 func (e Env) glabTarget() (config.Profile, bool) {
@@ -78,7 +93,7 @@ func (e Env) glabTarget() (config.Profile, bool) {
 		return config.Profile{}, false
 	}
 	for _, name := range []string{"GITLAB_HOST", "GITLAB_URI", "GL_HOST"} {
-		if host := os.Getenv(name); host != "" && !strings.EqualFold(strings.TrimPrefix(strings.TrimPrefix(host, "https://"), "http://"), p.Host) {
+		if host := os.Getenv(name); host != "" && !strings.EqualFold(bareHost(host), p.Host) {
 			return config.Profile{}, false
 		}
 	}

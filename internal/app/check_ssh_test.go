@@ -45,7 +45,7 @@ esac
 			t.Errorf("check-ssh should say %q:\n%s", want, out.String())
 		}
 	}
-	if err == nil || !strings.Contains(err.Error(), "1 of 2 SSH keys") {
+	if err == nil || !strings.Contains(err.Error(), "of 2 SSH keys, 1 signed in as another account") {
 		t.Errorf("check-ssh error = %v", err)
 	}
 }
@@ -63,6 +63,7 @@ func TestCheckSSHReadsEachHostsAnswer(t *testing.T) {
 			"the key is a deploy key for acme-corp/billing", false},
 		"another key": {"debug1: Server accepts key: /tmp/other/id_default ED25519 SHA256:demo explicit\n" +
 			"Welcome to GitLab, @globex-alex!\n", "ssh signed in with /tmp/other/id_default from your SSH settings instead", false},
+		"not authenticated": {"You are not authenticated.\n", "did not sign in to gitlab.globex.example: You are not authenticated.", false},
 		"refused": {"debug1: Next authentication method: publickey\ngit@gitlab.globex.example: Permission denied (publickey).\n",
 			"did not sign in to gitlab.globex.example: git@gitlab.globex.example: Permission denied (publickey).", false},
 	} {
@@ -103,5 +104,45 @@ func TestCheckSSHRefusesAMissingKeyWithoutRunningSSH(t *testing.T) {
 	}
 	if _, err := os.Stat(ran); err == nil {
 		t.Error("ssh ran although the key does not exist; it would sign in with another key")
+	}
+}
+
+func TestCheckSSHConnectsToTheHostWithoutTheHTTPSPort(t *testing.T) {
+	w := newWorld(t)
+	args := filepath.Join(filepath.Dir(w.home), "ssh-args")
+	mustWrite(t, filepath.Join(filepath.Dir(w.home), "bin", "ssh"), "#!/bin/sh\necho \"$*\" > '"+args+"'\necho 'Welcome to GitLab, @globex-alex!' >&2\n", 0o700)
+	cfg := strings.Replace(demoConfig, `host     = "gitlab.globex.example"`, `host     = "gitlab.globex.example:8443"`, 1)
+	cfg = strings.Replace(cfg, `email    = "alex@globex.example"`, `email    = "alex@globex.example"`+"\n"+`ssh_key  = "~/.ssh/id_globex"`, 1)
+	mustWrite(t, filepath.Join(w.home, ".config", "gitpersona", "config.toml"), cfg, 0o600)
+	mustWrite(t, filepath.Join(w.home, ".ssh", "id_globex"), "KEY PLACEHOLDER (never read)\n", 0o600)
+	env, out := w.env(t, w.home)
+
+	if err := CheckSSH(context.Background(), env, CheckSSHOptions{Profile: "globex"}); err != nil {
+		t.Fatalf("%v\n%s", err, out.String())
+	}
+
+	if got := readFile(t, args); !strings.HasSuffix(strings.TrimSpace(got), " git@gitlab.globex.example") {
+		t.Errorf("ssh should connect to the host alone, got %q", got)
+	}
+}
+
+func TestCheckSSHCountsFailuresApartFromOtherAccounts(t *testing.T) {
+	w := newWorld(t)
+	mustWrite(t, filepath.Join(filepath.Dir(w.home), "bin", "ssh"), `#!/bin/sh
+for a; do case "$a" in *id_globex) echo "Permission denied (publickey)." >&2; exit 255;; *id_acme) echo "Hi someone-else! You've successfully authenticated, but GitHub does not provide shell access." >&2; exit 1;; esac; done
+`, 0o700)
+	cfg := strings.Replace(demoConfig, `email    = "alex@globex.example"`, `email    = "alex@globex.example"`+"\n"+`ssh_key  = "~/.ssh/id_globex"`, 1)
+	cfg = strings.Replace(cfg, `email   = "1000002+acme-alex@users.noreply.github.com"`,
+		`email   = "1000002+acme-alex@users.noreply.github.com"`+"\n"+`ssh_key = "~/.ssh/id_acme"`, 1)
+	mustWrite(t, filepath.Join(w.home, ".config", "gitpersona", "config.toml"), cfg, 0o600)
+	for _, k := range []string{"id_globex", "id_acme"} {
+		mustWrite(t, filepath.Join(w.home, ".ssh", k), "KEY PLACEHOLDER (never read)\n", 0o600)
+	}
+	env, _ := w.env(t, w.home)
+
+	err := CheckSSH(context.Background(), env, CheckSSHOptions{})
+
+	if err == nil || err.Error() != "of 2 SSH keys, 1 signed in as another account and 1 did not sign in" {
+		t.Errorf("check-ssh error = %v", err)
 	}
 }

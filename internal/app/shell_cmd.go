@@ -224,7 +224,7 @@ func (e Env) checkShellIntegration(ctx context.Context, cfg config.Config) []che
 			return append(checks, check{ok: true, label: "shell integration is turned off (shell_integration = false in " + e.display(e.configFile()) + ")"})
 		} else {
 			checks = append(checks, check{warn: true,
-				label:  fmt.Sprintf("%s integration is not installed (prompt display and gh switching need it)", login.Kind),
+				label:  fmt.Sprintf("%s integration is not installed (prompt display and gh/glab switching need it)", login.Kind),
 				advice: "run `gitpersona install-shell`",
 				fix:    func(ctx context.Context, fixer Env) error { return InstallShell(ctx, fixer, nil, false) }, fixKey: "shell"})
 		}

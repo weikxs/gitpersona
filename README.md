@@ -7,7 +7,7 @@ English | [简体中文](README.zh-CN.md)
 Work in `~/Projects/acme` and you commit, push and open pull requests as your work account.
 Switch to `~/Projects/personal` and you are your personal account again. No commands to run, nothing to remember.
 
-> **Status: early development, not released yet.** GitHub profiles, the command line, the configuration web page, shell integration and `gh` switching work; GitLab/Bitbucket support is in progress.
+> **Status: early development, not released yet.** GitHub, GitLab, Bitbucket and other-host profiles, the command line, the configuration web page, shell integration and `gh` / `glab` switching work.
 
 ## Why
 
@@ -100,10 +100,10 @@ Paths must be absolute or start with `~/`.
 | `gitpersona pin <profile>` / `unpin` | Bind the current repository to a profile, or remove the pin |
 | `gitpersona list [--json]` | List profiles, directories and pins |
 | `gitpersona doctor [--fix] [--json]` | Check the setup and explain how to fix problems; `--fix` repairs what it safely can |
-| `gitpersona auth login\|logout\|status [--profile <id>]` | Save, remove or check the token of a GitLab, Bitbucket or other profile in your own credential store (the system keychain or Git Credential Manager), one per account |
+| `gitpersona auth login\|logout\|status [--profile <id>]` | Save, remove or check the token of a GitLab, Bitbucket or other profile in your own credential store (the system keychain or Git Credential Manager), one per account; `status` fails when a token is missing |
 | `gitpersona check-ssh [--profile <id>]` | Connect to each profile's host with its SSH key and report which account the host says it is; runs only when you ask, and GitPersona never opens the key (ssh uses it) |
 | `gitpersona shells [--json]` | Show your default shell, the shell you use right now, and installed shells |
-| `gitpersona install-shell [--shell fish,zsh,bash]` | Add prompt display (and gh switching) to your shells; defaults to your login shell |
+| `gitpersona install-shell [--shell fish,zsh,bash]` | Add prompt display (and gh / glab switching) to your shells; defaults to your login shell |
 | `gitpersona prompt [--format]` | Print the account Git uses here, for prompts (`{account}`, `{profile}`, `{host}`) |
 | `gitpersona rollback [<name>\|latest] [--yes]` | List backups, or restore one (the current state is backed up first) |
 | `gitpersona uninstall [--yes]` | Remove GitPersona from your Git configuration and put back the `includeIf` rules it took over; keeps config.toml |
