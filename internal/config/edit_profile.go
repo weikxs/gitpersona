@@ -1,10 +1,11 @@
 package config
 
 import (
-	"errors"
 	"fmt"
 	"slices"
 	"strings"
+
+	"github.com/weikxs/gitpersona/internal/i18n"
 )
 
 // editableFields are the profile keys SetProfileField may change. dirs are
@@ -15,7 +16,7 @@ var editableFields = []string{"account", "name", "email", "provider", "host", "s
 func AddProfile(text string, p Profile) (string, error) {
 	lines, nl := splitText(text)
 	if _, exists := findProfile(lines, p.ID); exists {
-		return "", fmt.Errorf("profile %q already exists", p.ID)
+		return "", i18n.Errorf("profile %q already exists", p.ID)
 	}
 	cr := eol(lines)
 	block := []string{profileHeader + cr}
@@ -66,12 +67,12 @@ func AddProfile(text string, p Profile) (string, error) {
 // SetProfileField sets one key of a profile; an empty value removes the key.
 func SetProfileField(text, profileID, key, value string) (string, error) {
 	if !slices.Contains(editableFields, key) {
-		return "", fmt.Errorf("%s cannot be set this way", key)
+		return "", i18n.Errorf("%s cannot be set this way", key)
 	}
 	lines, nl := splitText(text)
 	b, ok := findProfile(lines, profileID)
 	if !ok {
-		return "", fmt.Errorf("profile %q does not exist", profileID)
+		return "", i18n.Errorf("profile %q does not exist", profileID)
 	}
 	return joinText(setKey(lines, b, key, value), nl), nil
 }
@@ -81,10 +82,10 @@ func SetProfileSigning(text, profileID string, s Signing) (string, error) {
 	lines, nl := splitText(text)
 	b, ok := findProfile(lines, profileID)
 	if !ok {
-		return "", fmt.Errorf("profile %q does not exist", profileID)
+		return "", i18n.Errorf("profile %q does not exist", profileID)
 	}
 	if k := keyLine(lines, b, "signing"); k >= 0 && !strings.Contains(lines[k], "{") {
-		return "", errors.New("signing is written as a table; edit it by hand")
+		return "", i18n.Errorf("signing is written as a table; edit it by hand")
 	}
 	if s.Method == "" {
 		return joinText(setKey(lines, b, "signing", ""), nl), nil
@@ -97,7 +98,7 @@ func RemoveProfile(text, profileID string) (string, error) {
 	lines, nl := splitText(text)
 	b, ok := findProfile(lines, profileID)
 	if !ok {
-		return "", fmt.Errorf("profile %q does not exist", profileID)
+		return "", i18n.Errorf("profile %q does not exist", profileID)
 	}
 	out := append(append([]string{}, lines[:b.start]...), lines[b.end:]...)
 	return joinText(out, nl), nil

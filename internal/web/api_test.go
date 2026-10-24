@@ -103,6 +103,12 @@ func newAPIWorld(t *testing.T) *apiWorld {
 // call performs an authenticated API request and decodes the envelope.
 func (w *apiWorld) call(t *testing.T, method, path string, body any) envelope {
 	t.Helper()
+	return w.callIn(t, "", method, path, body)
+}
+
+// callIn is call from a page that shows lang ("" sends no language).
+func (w *apiWorld) callIn(t *testing.T, lang, method, path string, body any) envelope {
+	t.Helper()
 	var reader *bytes.Reader
 	if body != nil {
 		data, _ := json.Marshal(body)
@@ -113,6 +119,9 @@ func (w *apiWorld) call(t *testing.T, method, path string, body any) envelope {
 	req, _ := http.NewRequest(method, w.ts.URL+path, reader)
 	req.Header.Set("Origin", w.ts.URL)
 	req.Header.Set(csrfHeader, w.srv.CSRFToken())
+	if lang != "" {
+		req.Header.Set(langHeader, lang)
+	}
 	req.AddCookie(w.session(t))
 	resp, err := w.ts.Client().Do(req)
 	if err != nil {

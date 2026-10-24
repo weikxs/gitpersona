@@ -6,7 +6,6 @@ package config
 import (
 	"bytes"
 	"errors"
-	"fmt"
 	"io/fs"
 	"os"
 	"slices"
@@ -15,6 +14,7 @@ import (
 	"github.com/BurntSushi/toml"
 
 	"github.com/weikxs/gitpersona/internal/fsutil"
+	"github.com/weikxs/gitpersona/internal/i18n"
 )
 
 // CurrentVersion is the only configuration schema version this build reads.
@@ -39,7 +39,7 @@ const (
 )
 
 // ErrNotFound is returned by Load when the configuration file does not exist.
-var ErrNotFound = errors.New("configuration file not found")
+var ErrNotFound = i18n.Errorf("configuration file not found")
 
 // Config is the whole configuration file.
 type Config struct {
@@ -102,15 +102,15 @@ func (c Config) ProfileByID(id string) (Profile, bool) {
 func Load(path string) (Config, error) {
 	data, err := os.ReadFile(path)
 	if errors.Is(err, fs.ErrNotExist) {
-		return Config{}, fmt.Errorf("%w: %s", ErrNotFound, path)
+		return Config{}, i18n.Errorf("%w: %s", ErrNotFound, path)
 	}
 	if err != nil {
-		return Config{}, fmt.Errorf("read %s: %w", path, err)
+		return Config{}, i18n.Errorf("read %s: %w", path, err)
 	}
 
 	cfg, err := Parse(data)
 	if err != nil {
-		return Config{}, fmt.Errorf("parse %s: %w", path, err)
+		return Config{}, i18n.Errorf("parse %s: %w", path, err)
 	}
 	return cfg, nil
 }
@@ -128,7 +128,7 @@ func Parse(data []byte) (Config, error) {
 		for i, k := range undecoded {
 			keys[i] = k.String()
 		}
-		return Config{}, fmt.Errorf("unknown keys: %s", strings.Join(keys, ", "))
+		return Config{}, i18n.Errorf("unknown keys: %s", strings.Join(keys, ", "))
 	}
 	return withDefaults(cfg), nil
 }
@@ -137,7 +137,7 @@ func Parse(data []byte) (Config, error) {
 func Save(path string, cfg Config) error {
 	var buf bytes.Buffer
 	if err := toml.NewEncoder(&buf).Encode(cfg); err != nil {
-		return fmt.Errorf("encode configuration: %w", err)
+		return i18n.Errorf("encode configuration: %w", err)
 	}
 	return fsutil.WriteAtomic(path, buf.Bytes(), fsutil.FilePerm)
 }

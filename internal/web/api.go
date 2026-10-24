@@ -122,7 +122,7 @@ func (a api) handle(h handlerFunc) http.HandlerFunc {
 
 func (c call) decode(into any) error {
 	if err := json.NewDecoder(c.r.Body).Decode(into); err != nil {
-		return fmt.Errorf("invalid request: %w", err)
+		return i18n.Errorf("invalid request: %w", err)
 	}
 	return nil
 }
@@ -314,7 +314,7 @@ func (a api) addDir(c call) (any, error) {
 		return nil, err
 	}
 	if _, err := os.Stat(env.WorkDir); errors.Is(err, os.ErrNotExist) {
-		fmt.Fprintf(c.log, "Note: %s does not exist yet; the rule applies once it does.\n", c.env.Display(env.WorkDir))
+		fmt.Fprintln(c.log, i18n.T(c.env.Lang, "Note: %s does not exist yet; the rule applies once it does.", c.env.Display(env.WorkDir)))
 	}
 	return nil, nil
 }
@@ -378,7 +378,7 @@ func (a api) rollback(c call) (any, error) {
 		return nil, err
 	}
 	if req.Name == "" {
-		return nil, fmt.Errorf("choose a backup")
+		return nil, i18n.Errorf("choose a backup")
 	}
 	return nil, app.Rollback(c.ctx, c.env, req.Name, true)
 }
@@ -433,7 +433,7 @@ func (a api) verify(c call) (any, error) {
 		return nil, err
 	}
 	if len(req.Dirs) > maxVerifyFolders {
-		return nil, fmt.Errorf("at most %d folders at once", maxVerifyFolders)
+		return nil, i18n.Errorf("at most %d folders at once", maxVerifyFolders)
 	}
 	var dirs []string
 	for _, d := range req.Dirs {

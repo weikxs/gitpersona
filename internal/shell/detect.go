@@ -4,10 +4,11 @@ package shell
 
 import (
 	"context"
-	"fmt"
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	"github.com/weikxs/gitpersona/internal/i18n"
 )
 
 // Kind is a supported shell.
@@ -77,7 +78,7 @@ func Parse(name string) (Kind, error) {
 	if k := KindOf(name); k != Unknown {
 		return k, nil
 	}
-	return Unknown, fmt.Errorf("unsupported shell %q (supported: fish, zsh, bash)", name)
+	return Unknown, i18n.Errorf("unsupported shell %q (supported: fish, zsh, bash)", name)
 }
 
 // maxAncestors bounds the walk up the process tree.

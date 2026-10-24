@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/weikxs/gitpersona/internal/config"
+	"github.com/weikxs/gitpersona/internal/i18n"
 	"github.com/weikxs/gitpersona/internal/paths"
 )
 
@@ -68,7 +69,7 @@ func ProfileFile(id string) string {
 // Generate validates cfg and returns every generated file, sorted by name.
 func Generate(cfg config.Config, opts Options) ([]File, error) {
 	if err := cfg.Validate(opts.Home, opts.CaseInsensitive); err != nil {
-		return nil, fmt.Errorf("invalid configuration: %w", err)
+		return nil, i18n.Errorf("invalid configuration: %w", err)
 	}
 
 	files := make([]File, 0, len(cfg.Profiles)+1)
@@ -125,7 +126,7 @@ func writeSigning(b *strings.Builder, p config.Profile, opts Options) error {
 	if p.Signing.Method == config.SigningSSH && !config.LiteralSSHKey(key) {
 		expanded, err := paths.Normalize(key, opts.Home)
 		if err != nil {
-			return fmt.Errorf("profile %q signing key: %w", p.ID, err)
+			return i18n.Errorf("profile %q signing key: %w", p.ID, err)
 		}
 		key = expanded
 	}
@@ -164,7 +165,7 @@ func writeSSH(b *strings.Builder, p config.Profile, opts Options) error {
 	}
 	key, err := paths.Normalize(p.SSHKey, opts.Home)
 	if err != nil {
-		return fmt.Errorf("profile %q ssh_key: %w", p.ID, err)
+		return i18n.Errorf("profile %q ssh_key: %w", p.ID, err)
 	}
 	b.WriteString("[core]\n")
 	// ControlPath=none: a shared connection (ControlMaster in ~/.ssh/config)

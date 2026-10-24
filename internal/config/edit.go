@@ -1,12 +1,12 @@
 package config
 
 import (
-	"errors"
 	"fmt"
 	"regexp"
 	"strconv"
 	"strings"
 
+	"github.com/weikxs/gitpersona/internal/i18n"
 	"github.com/weikxs/gitpersona/internal/paths"
 )
 
@@ -49,7 +49,7 @@ func AddDir(text, profileID, dir string, _ EditOptions) (string, error) {
 	lines, nl := splitText(text)
 	b, ok := findProfile(lines, profileID)
 	if !ok {
-		return "", fmt.Errorf("profile %q does not exist", profileID)
+		return "", i18n.Errorf("profile %q does not exist", profileID)
 	}
 	value := tomlQuote(dir)
 	k := keyLine(lines, b, "dirs")
@@ -87,7 +87,7 @@ func RemoveDir(text, dir string, o EditOptions) (string, string, error) {
 			}
 		}
 	}
-	return "", "", fmt.Errorf("%s is not assigned to any profile", dir)
+	return "", "", i18n.Errorf("%s is not assigned to any profile", dir)
 }
 
 // AddPin pins repo to the profile, updating an existing pin for the same repository.
@@ -96,7 +96,7 @@ func AddPin(text, repo, profileID string, o EditOptions) (string, error) {
 	if b, ok := findPin(lines, repo, o); ok {
 		k := keyLine(lines, b, "profile")
 		if k < 0 {
-			return "", errors.New("existing pin has no profile key; edit it by hand")
+			return "", i18n.Errorf("existing pin has no profile key; edit it by hand")
 		}
 		lines[k] = replaceValue(lines[k], tomlQuote(profileID))
 		return joinText(lines, nl), nil
@@ -114,7 +114,7 @@ func RemovePin(text, repo string, o EditOptions) (string, error) {
 	lines, nl := splitText(text)
 	b, ok := findPin(lines, repo, o)
 	if !ok {
-		return "", fmt.Errorf("%s is not pinned", repo)
+		return "", i18n.Errorf("%s is not pinned", repo)
 	}
 	start := b.start
 	if start > 0 && strings.TrimSpace(lines[start-1]) == "" {
@@ -202,13 +202,13 @@ func replaceValue(line, quoted string) string {
 // value and the index just after it.
 func scanString(s string, i int) (string, int, error) {
 	if i >= len(s) {
-		return "", i, errors.New("missing string")
+		return "", i, i18n.Errorf("missing string")
 	}
 	switch s[i] {
 	case '\'':
 		j := strings.IndexByte(s[i+1:], '\'')
 		if j < 0 {
-			return "", i, errors.New("unterminated string")
+			return "", i, i18n.Errorf("unterminated string")
 		}
 		return s[i+1 : i+1+j], i + j + 2, nil
 	case '"':
@@ -221,9 +221,9 @@ func scanString(s string, i int) (string, int, error) {
 				return v, j + 1, err
 			}
 		}
-		return "", i, errors.New("unterminated string")
+		return "", i, i18n.Errorf("unterminated string")
 	default:
-		return "", i, errors.New("expected a string")
+		return "", i, i18n.Errorf("expected a string")
 	}
 }
 

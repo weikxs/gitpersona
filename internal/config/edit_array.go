@@ -1,8 +1,9 @@
 package config
 
 import (
-	"errors"
 	"strings"
+
+	"github.com/weikxs/gitpersona/internal/i18n"
 )
 
 // array is a TOML array of strings that may span several lines.
@@ -23,7 +24,7 @@ type element struct {
 func parseArray(lines []string, k int) (array, error) {
 	loc := keyPattern.FindStringIndex(lines[k])
 	if loc == nil || loc[1] >= len(lines[k]) || lines[k][loc[1]] != '[' {
-		return array{}, errors.New("dirs is not an array; edit it by hand")
+		return array{}, i18n.Errorf("dirs is not an array; edit it by hand")
 	}
 	arr := array{keyLine: k}
 	for ln, col := k, loc[1]+1; ln < len(lines); ln, col = ln+1, 0 {
@@ -47,7 +48,7 @@ func parseArray(lines []string, k int) (array, error) {
 			}
 		}
 	}
-	return array{}, errors.New("dirs array is not closed")
+	return array{}, i18n.Errorf("dirs array is not closed")
 }
 
 func (a array) singleLine() bool { return a.closeLine == a.keyLine }
