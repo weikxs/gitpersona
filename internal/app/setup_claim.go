@@ -3,7 +3,6 @@ package app
 import (
 	"cmp"
 	"context"
-	"fmt"
 	"maps"
 	"path"
 	"slices"
@@ -222,17 +221,17 @@ func (e Env) ownRules(ctx context.Context, left []LeftOut, kept []KeptRule, glob
 	for _, l := range left {
 		live := slices.DeleteFunc(slices.Clone(l.Dirs), func(d string) bool { return slices.Contains(l.Shadowed, d) })
 		if l.OverriddenBy == "" && len(live) > 0 { // otherwise it decides nothing to protect
-			out = append(out, author(l.Name, l.Email)+" for "+strings.Join(live, ", "))
+			out = append(out, e.tr("%s for %s", author(l.Name, l.Email), e.setupList(live)))
 		}
 	}
 	for _, k := range kept {
 		left := slices.ContainsFunc(left, func(l LeftOut) bool { return slices.Contains(l.Dirs, k.Dir) })
 		if k.OverriddenBy == "" && !left {
-			out = append(out, "your rule for "+k.Dir)
+			out = append(out, e.tr("your rule for %s", k.Dir))
 		}
 	}
 	for _, r := range e.otherIdentityRules(ctx) {
-		out = append(out, author(cmp.Or(r.Name, globalName), r.Email)+" for "+r.Condition)
+		out = append(out, e.tr("%s for %s", author(cmp.Or(r.Name, globalName), r.Email), r.Condition))
 	}
 	return out
 }
@@ -254,7 +253,7 @@ func (e Env) withoutKeptDirs(ctx context.Context, profiles []SetupProfile) ([]Se
 		}
 		for _, k := range keptRules {
 			if coversWith(e.comparisonKey, []string{d}, k) {
-				return "it contains your rule for " + k + " (" + why[e.comparisonKey(k)] + ")", true
+				return e.tr("it contains your rule for %s (%s)", k, why[e.comparisonKey(k)]), true
 			}
 		}
 		return "", false
@@ -322,7 +321,7 @@ func (e Env) shadowedRules(ctx context.Context, owners []ruleOwner) []string {
 			continue
 		}
 		if by, covered := e.overriddenBy(r.Dir, owners, ""); covered && by.sameIdentity(r.Email, r.Name) {
-			out = append(out, fmt.Sprintf("your rule for %s (%s) never applied, because %s; after setup %s uses %s",
+			out = append(out, e.tr("your rule for %s (%s) never applied, because %s; after setup %s uses %s",
 				r.Dir, author(r.Name, r.Email), why, r.Dir, author(r.Name, r.Email)))
 		}
 	}
@@ -352,15 +351,18 @@ func (e Env) refiningRulesInProfiles(ctx context.Context, owners []ruleOwner, gl
 		if known && len(affected) == 0 {
 			continue // no repository in the profiles' folders is affected
 		}
-		which := ""
-		if known {
-			which = fmt.Sprintf(": %d repositories there match it, such as %s", len(affected), affected[0])
-			if len(affected) == 1 {
-				which = ": 1 repository there matches it, " + affected[0]
-			}
+		where := e.setupList(dirs)
+		switch {
+		case known && len(affected) == 1:
+			out = append(out, e.tr("your rule %s (%s) no longer applies in your profiles' folders (%s), where the profile decides: 1 repository there matches it, %s",
+				r.Condition, ruleAuthor, where, affected[0]))
+		case known:
+			out = append(out, e.tr("your rule %s (%s) no longer applies in your profiles' folders (%s), where the profile decides: %d repositories there match it, such as %s",
+				r.Condition, ruleAuthor, where, len(affected), affected[0]))
+		default:
+			out = append(out, e.tr("your rule %s (%s) no longer applies in your profiles' folders (%s), where the profile decides",
+				r.Condition, ruleAuthor, where))
 		}
-		out = append(out, fmt.Sprintf("your rule %s (%s) no longer applies in your profiles' folders (%s), where the profile decides%s",
-			r.Condition, ruleAuthor, strings.Join(dirs, ", "), which))
 	}
 	return out
 }

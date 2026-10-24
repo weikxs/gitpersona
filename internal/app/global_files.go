@@ -194,10 +194,36 @@ func (e Env) identityRules(ctx context.Context) []discover.Rule {
 			if file != main {
 				r.File = e.display(file)
 			}
+			r.Keep = e.keepWhy(r.Keep)
 			rules = append(rules, r)
 		}
 	}
 	return rules
+}
+
+// keepWhy shows in e's language why a rule of the user's stays, which the
+// discovery of the existing setup words in English. Only text; a rule is
+// kept when the reason is not empty, in any language.
+func (e Env) keepWhy(keep string) string {
+	switch keep {
+	case "":
+		return ""
+	case "its includeIf section includes more than one file":
+		return e.tr("its includeIf section includes more than one file")
+	case "its core.sshCommand has other options":
+		return e.tr("its core.sshCommand has other options")
+	case "it sets a signing key without signing every commit":
+		return e.tr("it sets a signing key without signing every commit")
+	case "it names accounts for more than one host":
+		return e.tr("it names accounts for more than one host")
+	}
+	if key, ok := strings.CutPrefix(keep, "it also sets "); ok {
+		return e.tr("it also sets %s", key)
+	}
+	if format, ok := strings.CutPrefix(keep, "it signs with "); ok {
+		return e.tr("it signs with %s", format)
+	}
+	return keep
 }
 
 // otherIdentityRules returns the identity rules that are not directory rules
@@ -261,7 +287,7 @@ func (e Env) keyOnlyRules(ctx context.Context) []discover.Rule {
 			if len(set) == 0 {
 				continue
 			}
-			rule := discover.Rule{Condition: r.Condition, Dir: r.Dir, Keep: "it sets " + strings.Join(set, ", ") + " for its folder"}
+			rule := discover.Rule{Condition: r.Condition, Dir: r.Dir, Keep: e.tr("it sets %s for its folder", e.setupList(set))}
 			if file != main {
 				rule.File = e.display(file)
 			}
@@ -377,9 +403,9 @@ func (e Env) overriddenAt(order []orderEvent, i int) string {
 		same := later.rule != nil && strings.EqualFold(later.rule.Email, r.Email) && later.rule.Name == r.Name
 		switch {
 		case later.global:
-			reason = "the identity set for everything in " + later.file + " comes after it"
+			reason = e.tr("the identity set for everything in %s comes after it", later.file)
 		case covers && !same:
-			reason = "your later rule for " + later.rule.Dir + " (" + author(later.rule.Name, later.rule.Email) + ") overrides it"
+			reason = e.tr("your later rule for %s (%s) overrides it", later.rule.Dir, author(later.rule.Name, later.rule.Email))
 		case covers:
 			reason = "" // a later rule with the same identity puts it back
 		}

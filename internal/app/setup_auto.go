@@ -86,7 +86,7 @@ func (e Env) organize(ctx context.Context, p SetupProposal, existing, live []dis
 			reserved = append(reserved, h.Dirs...)
 		}
 	}
-	l := inferLayout(github, repos, aliases, e.comparisonKey, layoutHints{reserved: reserved, roots: roots.Shown})
+	l := inferLayout(github, repos, aliases, e.comparisonKey, layoutHints{reserved: reserved, roots: roots.Shown, lang: e.lang()})
 	given := map[string]bool{} // an account's found folders go to its first profile only
 	for i, prof := range profiles {
 		if !prof.onGitHub() {
@@ -190,11 +190,11 @@ func (e Env) existingKeys(id discover.Identity) (string, config.Signing, []strin
 	case id.SSHKey != "" && e.keyExists(id.SSHKey):
 		key = e.displayPath(id.SSHKey)
 	case id.SSHKey != "":
-		notes = append(notes, "the SSH key "+e.displayPath(id.SSHKey)+" of your includeIf setup does not exist, so it is left out")
+		notes = append(notes, e.tr("the SSH key %s of your includeIf setup does not exist, so it is left out", e.displayPath(id.SSHKey)))
 	}
 	signing := config.Signing{Method: id.Signing.Method, Key: id.Signing.Key}
 	if signing.Method == config.SigningSSH && !config.LiteralSSHKey(signing.Key) && !e.keyExists(signing.Key) {
-		notes = append(notes, "the signing key "+e.displayPath(signing.Key)+" of your includeIf setup does not exist, so signing is left out")
+		notes = append(notes, e.tr("the signing key %s of your includeIf setup does not exist, so signing is left out", e.displayPath(signing.Key)))
 		signing = config.Signing{}
 	}
 	signing.Key = e.displayPath(signing.Key)

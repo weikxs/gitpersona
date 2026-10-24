@@ -1,13 +1,13 @@
 package app
 
 import (
-	"fmt"
 	"maps"
 	"path/filepath"
 	"slices"
 	"strings"
 
 	"github.com/weikxs/gitpersona/internal/discover"
+	"github.com/weikxs/gitpersona/internal/i18n"
 )
 
 // layout is what the repositories on disk say about the user's directories.
@@ -52,6 +52,8 @@ type layoutHints struct {
 	// roots are the scanned folders: a rule for one of them covers much the
 	// scan did not see, so a single repository there is pinned instead.
 	roots []string
+	// lang is the language of the reasons the layout gives (English when empty).
+	lang i18n.Lang
 }
 
 // newInference prepares the comparison of profiles with the repositories on
@@ -150,16 +152,16 @@ func (in inference) suggest(out *layout, parent string, repos []attribution) {
 	}
 	if n*2 > total {
 		if !in.covers(profileOf(in.profiles, account).Dirs, parent) {
-			why := reason(repos, account, n, total)
+			why := in.reason(repos, account, n, total)
 			if slices.ContainsFunc(repos, func(a attribution) bool { return a.repo.Partial }) {
-				why += " (the scan stopped in this folder; it may hold more)"
+				why = in.tr("%s (the scan stopped in this folder; it may hold more)", why)
 			}
 			out.found[account] = append(out.found[account], DirSuggestion{Dir: parent, Why: why})
 		}
 		return
 	}
 	if owner, m := majority(owners); m*2 > total && !in.coveredByAny(parent) {
-		out.unassigned = append(out.unassigned, UnassignedDir{Dir: parent, Owner: owner, Why: countPhrase(m, total)})
+		out.unassigned = append(out.unassigned, UnassignedDir{Dir: parent, Owner: owner, Why: in.countPhrase(m, total)})
 	}
 }
 
@@ -180,7 +182,7 @@ func (in inference) pins(found map[string][]DirSuggestion, repos []attribution) 
 			continue
 		}
 		p := profileOf(in.profiles, a.account)
-		pins = append(pins, PinSuggestion{Repo: a.repo.Dir, Profile: p.ID, Why: "the repository " + evidence(a), Outside: ruleDir == ""})
+		pins = append(pins, PinSuggestion{Repo: a.repo.Dir, Profile: p.ID, Why: in.tr("the repository %s", in.evidence(a)), Outside: ruleDir == ""})
 	}
 	slices.SortFunc(pins, func(x, y PinSuggestion) int { return strings.Compare(x.Repo, y.Repo) })
 	return pins
@@ -337,77 +339,91 @@ func emailOf(email string, p SetupProfile) bool {
 		strings.HasSuffix(email, "+"+login+"@users.noreply.github.com")
 }
 
+// tr is a reason in the language the layout is asked for.
+func (in inference) tr(format string, args ...any) string { return i18n.T(in.lang, format, args...) }
+
 // countPhrase says how many of a folder's repositories something holds for.
-func countPhrase(n, total int) string {
+func (in inference) countPhrase(n, total int) string {
 	switch {
 	case total == 1:
-		return "its one repository"
+		return in.tr("its one repository")
 	case n == total:
-		return fmt.Sprintf("all %d repositories", n)
+		return in.tr("all %d repositories", n)
 	}
-	return fmt.Sprintf("%d of %d repositories", n, total)
+	return in.tr("%d of %d repositories", n, total)
 }
 
 // reason says why n of a folder's total repositories belong to account,
 // with what their own settings say, such as the SSH aliases they use.
-func reason(repos []attribution, account string, n, total int) string {
+func (in inference) reason(repos []attribution, account string, n, total int) string {
 	one := n == 1
-	text := countPhrase(n, total) + " " + verb(one, "belong", "belongs") + " to " + account
+	text := in.tr("%s belong to %s", in.countPhrase(n, total), account)
+	if one {
+		text = in.tr("%s belongs to %s", in.countPhrase(n, total), account)
+	}
 	type group struct {
 		example attribution
 		count   int
 	}
+	// Repositories are grouped by what their settings say, as the message
+	// reads in English: the same for every language, so the order is too.
 	groups := map[string]group{}
 	for _, a := range repos {
 		if a.account == account && a.how != byOwner {
-			k := evidenceOf(a, false)
+			k := evidenceOf(a, false).String()
 			groups[k] = group{example: a, count: groups[k].count + 1}
 		}
 	}
 	var notes []string
 	for _, k := range slices.Sorted(maps.Keys(groups)) {
 		g := groups[k]
+		many := evidenceOf(g.example, false).In(in.lang)
 		switch {
 		case one:
-			notes = append(notes, "it "+evidenceOf(g.example, true))
+			notes = append(notes, in.tr("it %s", evidenceOf(g.example, true).In(in.lang)))
 		case g.count == n:
-			notes = append(notes, "all "+k)
+			notes = append(notes, in.tr("all %s", many))
 		case g.count == 1:
-			notes = append(notes, "1 "+evidenceOf(g.example, true))
+			notes = append(notes, in.tr("1 %s", evidenceOf(g.example, true).In(in.lang)))
 		default:
-			notes = append(notes, fmt.Sprintf("%d %s", g.count, k))
+			notes = append(notes, in.tr("%d %s", g.count, many))
 		}
 	}
 	if len(notes) == 0 {
 		return text
 	}
-	return text + "; " + strings.Join(notes, ", ")
-}
-
-func verb(one bool, plural, singular string) string {
-	if one {
-		return singular
-	}
-	return plural
+	return in.tr("%s; %s", text, setupListIn(in.lang, notes))
 }
 
 // evidenceOf says what a repository's own settings say about its account,
 // for one repository ("sets ...") or several ("set ...").
-func evidenceOf(a attribution, one bool) string {
+func evidenceOf(a attribution, one bool) i18n.Message {
 	switch a.how {
 	case byEmail:
-		return verb(one, "set ", "sets ") + strings.ToLower(a.repo.Email)
+		if one {
+			return i18n.M("sets %s", strings.ToLower(a.repo.Email))
+		}
+		return i18n.M("set %s", strings.ToLower(a.repo.Email))
 	case byAlias:
 		// The alias, not the owner, decides: say whose alias it is.
-		return verb(one, "use", "uses") + " " + a.account + "'s SSH alias " + a.repo.Host
+		if one {
+			return i18n.M("uses %s's SSH alias %s", a.account, a.repo.Host)
+		}
+		return i18n.M("use %s's SSH alias %s", a.account, a.repo.Host)
 	case byUser:
-		return verb(one, "sign", "signs") + " in as " + a.repo.User
+		if one {
+			return i18n.M("signs in as %s", a.repo.User)
+		}
+		return i18n.M("sign in as %s", a.repo.User)
 	}
-	return verb(one, "belong", "belongs") + " to " + a.account
+	if one {
+		return i18n.M("belongs to %s", a.account)
+	}
+	return i18n.M("belong to %s", a.account)
 }
 
 // evidence says in words why a single repository belongs to its account.
-func evidence(a attribution) string { return evidenceOf(a, true) }
+func (in inference) evidence(a attribution) string { return evidenceOf(a, true).In(in.lang) }
 
 // majority returns the key with the highest count (the first by name on a tie).
 func majority(counts map[string]int) (string, int) {

@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"slices"
@@ -10,6 +9,7 @@ import (
 
 	"github.com/weikxs/gitpersona/internal/config"
 	"github.com/weikxs/gitpersona/internal/discover"
+	"github.com/weikxs/gitpersona/internal/i18n"
 	"github.com/weikxs/gitpersona/internal/provider"
 	"github.com/weikxs/gitpersona/internal/shell"
 )
@@ -174,12 +174,12 @@ func ProposeSetup(ctx context.Context, e Env) (SetupProposal, error) {
 		return SetupProposal{}, err
 	}
 	if ghErr != nil && len(proposal.Profiles) == 0 {
-		return SetupProposal{}, fmt.Errorf("%w\n(GitPersona also found %s in your Git settings, but none names one account "+
+		return SetupProposal{}, e.trErr("%w\n(GitPersona also found %s in your Git settings, but none names one account "+
 			"on one host other than GitHub; add credential.https://<host>.username to its includeIf file, or write the profile in "+
-			"config.toml yourself)", ghErr, identities(len(existing)))
+			"config.toml yourself)", ghErr, e.identities(len(existing)))
 	}
 	if ghErr != nil {
-		proposal.GitHubUnavailable = ghErr.Error()
+		proposal.GitHubUnavailable = i18n.Text(e.lang(), ghErr)
 	}
 	return proposal, nil
 }
@@ -197,12 +197,12 @@ func (e Env) globalIdentity(ctx context.Context) GlobalIdentity {
 func (e Env) signedInAccounts(ctx context.Context) (provider.GitHub, []provider.Account, error) {
 	gh, err := e.LookPath("gh")
 	if err != nil {
-		return provider.GitHub{}, nil, errors.New("setup needs the GitHub CLI: install it from https://cli.github.com and run `gh auth login` for each account")
+		return provider.GitHub{}, nil, e.trErr("setup needs the GitHub CLI: install it from https://cli.github.com and run `gh auth login` for each account")
 	}
 	source := provider.GitHub{GH: gh, Run: e.Run}
 	accounts, err := source.Accounts(ctx, config.DefaultGitHubHost)
 	if err != nil || len(accounts) == 0 {
-		return source, nil, errors.New("no GitHub account is signed in to gh; run `gh auth login` for each account, then try again")
+		return source, nil, e.trErr("no GitHub account is signed in to gh; run `gh auth login` for each account, then try again")
 	}
 	return source, accounts, nil
 }
@@ -281,22 +281,22 @@ func ApplySetup(ctx context.Context, e Env, plan SetupPlan) error {
 
 func (e Env) setupChanges(ctx context.Context, plan SetupPlan) ([]change, error) {
 	if _, err := os.Stat(e.configFile()); err == nil {
-		return nil, fmt.Errorf("%s already exists; change it on the Profiles page", e.display(e.configFile()))
+		return nil, e.trErr("%s already exists; change it on the Profiles page", e.display(e.configFile()))
 	}
 	if len(plan.Profiles) == 0 {
-		return nil, errors.New("choose at least one profile")
+		return nil, e.trErr("choose at least one profile")
 	}
 	text := renderPlan(plan)
 	cfg, err := config.Parse([]byte(text))
 	if err != nil {
-		return nil, fmt.Errorf("the profiles cannot be written as a configuration: %w", err)
+		return nil, e.trErr("the profiles cannot be written as a configuration: %w", err)
 	}
 	if err := cfg.Validate(e.Home, e.CaseInsensitive); err != nil {
 		return nil, err
 	}
 	for _, p := range cfg.Profiles {
 		if err := requireKeyFiles(p, e.Home); err != nil {
-			return nil, fmt.Errorf("profile %s: %w", p.ID, err)
+			return nil, e.trErr("profile %s: %w", p.ID, err)
 		}
 	}
 	generated, err := e.planWith(ctx, cfg, e.oldRulesEdit(ctx, plan))
@@ -400,9 +400,9 @@ func renderPlan(plan SetupPlan) string {
 }
 
 // identities says how many identities there are.
-func identities(n int) string {
+func (e Env) identities(n int) string {
 	if n == 1 {
-		return "1 identity"
+		return e.tr("1 identity")
 	}
-	return fmt.Sprintf("%d identities", n)
+	return e.tr("%d identities", n)
 }

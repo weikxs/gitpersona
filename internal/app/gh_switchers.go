@@ -1,7 +1,6 @@
 package app
 
 import (
-	"fmt"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -44,8 +43,8 @@ func (e Env) ghSwitchers() []string {
 }
 
 // ghSwitcherNote says that gh is already switched by the user's own setup.
-func ghSwitcherNote(files []string) string {
-	return fmt.Sprintf("you already switch gh accounts in %s, and GitPersona's integration switches gh by profile too. "+
+func (e Env) ghSwitcherNote(files []string) string {
+	return e.tr("you already switch gh accounts in %s, and GitPersona's integration switches gh by profile too. "+
 		"GitPersona leaves gh alone wherever GH_TOKEN is set, so where your setup sets it, yours decides; "+
-		"keeping one of the two avoids surprises", strings.Join(files, ", "))
+		"keeping one of the two avoids surprises", e.setupList(files))
 }

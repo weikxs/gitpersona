@@ -117,7 +117,7 @@ func (e Env) shellChanges(kinds []shell.Kind) ([]change, error) {
 	var changes []change
 	for _, k := range kinds {
 		if path, ok := e.integratedElsewhere(k); ok {
-			fmt.Fprintf(e.Stdout, "%s is already set up in %s; leaving it as it is.\n", k, e.display(path))
+			fmt.Fprintln(e.Stdout, e.tr("%s is already set up in %s; leaving it as it is.", k, e.display(path)))
 			continue
 		}
 		for _, path := range e.shellFiles(k) {
@@ -139,9 +139,9 @@ func InstallShell(ctx context.Context, e Env, kinds []shell.Kind, dryRun bool) e
 	if len(kinds) == 0 {
 		login := e.loginShell(ctx)
 		if login.Kind == shell.Unknown {
-			return fmt.Errorf("could not tell which shell you use (%q); choose with --shell fish, zsh or bash", login.Path)
+			return e.trErr("could not tell which shell you use (%q); choose with --shell fish, zsh or bash", login.Path)
 		}
-		fmt.Fprintf(e.Stdout, "Setting up %s (your login shell, from %s).\n", login.Kind, login.Source)
+		fmt.Fprintln(e.Stdout, e.tr("Setting up %s (your login shell, from %s).", login.Kind, login.Source))
 		kinds = []shell.Kind{login.Kind}
 		e.mentionOtherShells(login.Kind)
 	}
@@ -154,7 +154,7 @@ func InstallShell(ctx context.Context, e Env, kinds []shell.Kind, dryRun bool) e
 		return err
 	}
 	if len(changes) > 0 && !dryRun {
-		fmt.Fprintln(e.Stdout, "Open a new terminal (or source the file) to start using it.")
+		fmt.Fprintln(e.Stdout, e.tr("Open a new terminal (or source the file) to start using it."))
 	}
 	return nil
 }
@@ -220,13 +220,13 @@ func (e Env) checkShellIntegration(ctx context.Context, cfg config.Config) []che
 	login := e.loginShell(ctx)
 	if login.Kind != shell.Unknown {
 		if path, ok := e.integrated(login.Kind); ok {
-			checks = append(checks, check{ok: true, label: fmt.Sprintf("%s integration is installed (%s)", login.Kind, e.display(path))})
+			checks = append(checks, check{ok: true, label: e.tr("%s integration is installed (%s)", login.Kind, e.display(path))})
 		} else if cfg.ShellIntegrationOff() {
-			return append(checks, check{ok: true, label: "shell integration is turned off (shell_integration = false in " + e.display(e.configFile()) + ")"})
+			return append(checks, check{ok: true, label: e.tr("shell integration is turned off (shell_integration = false in %s)", e.display(e.configFile()))})
 		} else {
 			checks = append(checks, check{warn: true,
-				label:  fmt.Sprintf("%s integration is not installed (prompt display and gh/glab switching need it)", login.Kind),
-				advice: "run `gitpersona install-shell`",
+				label:  e.tr("%s integration is not installed (prompt display and gh/glab switching need it)", login.Kind),
+				advice: e.tr("run `gitpersona install-shell`"),
 				fix:    func(ctx context.Context, fixer Env) error { return InstallShell(ctx, fixer, nil, false) }, fixKey: "shell"})
 		}
 	}
@@ -236,15 +236,15 @@ func (e Env) checkShellIntegration(ctx context.Context, cfg config.Config) []che
 	})
 	hasGitHub := slices.ContainsFunc(cfg.Profiles, func(p config.Profile) bool { return p.Provider == config.ProviderGitHub })
 	if files := e.ghSwitchers(); len(files) > 0 && installed && hasGitHub {
-		checks = append(checks, check{warn: true, label: ghSwitcherNote(files),
-			advice: "remove your own gh function if GitPersona's profiles cover the same directories"})
+		checks = append(checks, check{warn: true, label: e.ghSwitcherNote(files),
+			advice: e.tr("remove your own gh function if GitPersona's profiles cover the same directories")})
 	}
 	current := e.currentShell(ctx)
 	if current.Kind != shell.Unknown && current.Kind != login.Kind {
 		if _, ok := e.integrated(current.Kind); !ok {
 			checks = append(checks, check{warn: true,
-				label:  fmt.Sprintf("you are using %s right now, but your default shell is %s; %s has no integration", current.Kind, login.Kind, current.Kind),
-				advice: fmt.Sprintf("run `gitpersona install-shell --shell %s` if you use it regularly", current.Kind)})
+				label:  e.tr("you are using %s right now, but your default shell is %s; %s has no integration", current.Kind, login.Kind, current.Kind),
+				advice: e.tr("run `gitpersona install-shell --shell %s` if you use it regularly", current.Kind)})
 		}
 	}
 	return checks
@@ -284,11 +284,11 @@ func (e Env) checkGHRouting(ctx context.Context) []check {
 	}
 	found, err := e.LookPath("gh")
 	if err == nil && paths.ResolveSymlinks(found) == paths.ResolveSymlinks(e.ghEntry()) {
-		return []check{{ok: true, label: "gh in the shell that started gitpersona goes through GitPersona"}}
+		return []check{{ok: true, label: e.tr("gh in the shell that started gitpersona goes through GitPersona")}}
 	}
 	return []check{{warn: true,
-		label:  fmt.Sprintf("gh in the shell that started gitpersona is not GitPersona's (%s), so gh does not follow your directories there", found),
-		advice: "open a new terminal; if it persists, something later in your startup files puts another directory before " + e.display(e.shimDir())}}
+		label:  e.tr("gh in the shell that started gitpersona is not GitPersona's (%s), so gh does not follow your directories there", found),
+		advice: e.tr("open a new terminal; if it persists, something later in your startup files puts another directory before %s", e.display(e.shimDir()))}}
 }
 
 func (e Env) currentShell(ctx context.Context) shell.Detected {
@@ -315,7 +315,7 @@ func (e Env) mentionOtherShells(def shell.Kind) {
 		}
 	}
 	if len(others) > 0 {
-		fmt.Fprintf(e.Stdout, "Also installed: %s. To set them up too: gitpersona install-shell --shell %s\n",
-			strings.Join(others, ", "), strings.Join(all, ","))
+		fmt.Fprintln(e.Stdout, e.tr("Also installed: %s. To set them up too: gitpersona install-shell --shell %s",
+			e.setupList(others), strings.Join(all, ",")))
 	}
 }

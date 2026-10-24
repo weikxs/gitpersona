@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"cmp"
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -15,6 +14,7 @@ import (
 
 	"github.com/weikxs/gitpersona/internal/config"
 	"github.com/weikxs/gitpersona/internal/discover"
+	"github.com/weikxs/gitpersona/internal/i18n"
 )
 
 const setupTimeout = 30 * time.Second
@@ -51,7 +51,7 @@ var invalidIDChars = regexp.MustCompile(`[^a-z0-9-]+`)
 // Git configuration and the shell integration in one backup.
 func Setup(ctx context.Context, e Env, opts SetupOptions) error {
 	if _, err := os.Stat(e.configFile()); err == nil && !opts.Print {
-		return fmt.Errorf("%s already exists; change it on the configuration page (`gitpersona ui`), with `gitpersona use` and `gitpersona pin`, "+
+		return e.trErr("%s already exists; change it on the configuration page (`gitpersona ui`), with `gitpersona use` and `gitpersona pin`, "+
 			"or by hand (after `gitpersona uninstall`, `gitpersona apply` sets GitPersona up again from it)", e.display(e.configFile()))
 	}
 	proposal, err := ProposeSetup(ctx, e)
@@ -66,12 +66,12 @@ func Setup(ctx context.Context, e Env, opts SetupOptions) error {
 	}
 	switch {
 	case opts.NoDefault && opts.Default != "":
-		return errors.New("choose either --default or --no-default")
+		return e.trErr("choose either --default or --no-default")
 	case opts.NoDefault:
 		proposal = e.withDefault(proposal, "")
 	case opts.Default != "":
 		if !slices.ContainsFunc(proposal.Profiles, func(p SetupProfile) bool { return p.ID == opts.Default }) {
-			return fmt.Errorf("--default %s: no such profile; setup proposes %s", opts.Default, proposedIDs(proposal.Profiles))
+			return e.trErr("--default %s: no such profile; setup proposes %s", opts.Default, proposedIDs(proposal.Profiles))
 		}
 		proposal = e.withDefault(proposal, opts.Default)
 	}
@@ -82,17 +82,17 @@ func Setup(ctx context.Context, e Env, opts SetupOptions) error {
 		return nil
 	}
 	e.printProposal(proposal)
-	if !opts.Yes && !e.agree("Apply this setup? Changed files are backed up first. [Y/n] ") {
-		fmt.Fprintln(e.Stdout, "Nothing was written. Run `gitpersona setup --yes` to apply without asking, "+
-			"or `gitpersona setup --web` to adjust it in your browser.")
+	if !opts.Yes && !e.agree(e.tr("Apply this setup? Changed files are backed up first. [Y/n] ")) {
+		fmt.Fprintln(e.Stdout, e.tr("Nothing was written. Run `gitpersona setup --yes` to apply without asking, "+
+			"or `gitpersona setup --web` to adjust it in your browser."))
 		return nil
 	}
 	if err := ApplySetup(ctx, e, plan); err != nil {
 		return err
 	}
-	fmt.Fprintln(e.Stdout, "\nGitPersona is set up. Check it with `gitpersona doctor`; change anything with `gitpersona ui`.")
+	fmt.Fprintln(e.Stdout, "\n"+e.tr("GitPersona is set up. Check it with `gitpersona doctor`; change anything with `gitpersona ui`."))
 	if len(plan.Shells) > 0 {
-		fmt.Fprintln(e.Stdout, "Open a new terminal so gh and the prompt follow your directories.")
+		fmt.Fprintln(e.Stdout, e.tr("Open a new terminal so gh and the prompt follow your directories."))
 	}
 	return nil
 }
@@ -110,6 +110,54 @@ func (e Env) agree(question string) bool {
 	return answer == "" || answer == "y" || answer == "yes"
 }
 
+// setupListIn joins items the way a list reads in l.
+func setupListIn(l i18n.Lang, items []string) string {
+	if l == i18n.ZH {
+		return strings.Join(items, "\u3001")
+	}
+	return strings.Join(items, ", ")
+}
+
+// setupSemiIn joins items with the semicolon of l.
+func setupSemiIn(l i18n.Lang, items []string) string {
+	if l == i18n.ZH {
+		return strings.Join(items, "\uff1b")
+	}
+	return strings.Join(items, "; ")
+}
+
+func (e Env) setupList(items []string) string { return setupListIn(e.lang(), items) }
+func (e Env) setupSemi(items []string) string { return setupSemiIn(e.lang(), items) }
+
+// foundHeading says how many accounts setup found and where it looked.
+func (e Env) foundHeading(github, other int, roots []string) string {
+	accounts := e.githubAccounts(github)
+	switch {
+	case other > 0 && len(roots) > 0:
+		return e.tr("GitPersona found %s, %s for other hosts in your Git settings and looked for repositories in %s:",
+			accounts, e.otherAccounts(other), e.setupList(roots))
+	case other > 0:
+		return e.tr("GitPersona found %s, %s for other hosts in your Git settings:", accounts, e.otherAccounts(other))
+	case len(roots) > 0:
+		return e.tr("GitPersona found %s and looked for repositories in %s:", accounts, e.setupList(roots))
+	}
+	return e.tr("GitPersona found %s:", accounts)
+}
+
+func (e Env) githubAccounts(n int) string {
+	if n == 1 {
+		return e.tr("1 GitHub account")
+	}
+	return e.tr("%d GitHub accounts", n)
+}
+
+func (e Env) otherAccounts(n int) string {
+	if n == 1 {
+		return e.tr("1 account")
+	}
+	return e.tr("%d accounts", n)
+}
+
 // printProposal shows what setup found and would configure.
 func (e Env) printProposal(p SetupProposal) {
 	w := e.Stdout
@@ -120,109 +168,115 @@ func (e Env) printProposal(p SetupProposal) {
 			accounts[strings.ToLower(prof.Account)] = true
 		}
 	}
-	fmt.Fprintf(w, "GitPersona found %s", plural(len(accounts), "GitHub account"))
-	if other := len(p.Profiles) - github; other > 0 {
-		fmt.Fprintf(w, ", %s for other hosts in your Git settings", plural(other, "account"))
-	}
+	var roots []string
 	if len(p.Roots) > 0 {
-		fmt.Fprintf(w, " and looked for repositories in %s", strings.Join(outermost(p.Roots, e.comparisonKey), ", "))
+		roots = outermost(p.Roots, e.comparisonKey)
 	}
-	fmt.Fprintln(w, ":")
+	fmt.Fprintln(w, e.foundHeading(len(accounts), len(p.Profiles)-github, roots))
 	if p.GitHubUnavailable != "" {
-		fmt.Fprintf(w, "\n  GitHub accounts were not looked up: %s.\n", strings.TrimSuffix(p.GitHubUnavailable, "."))
+		fmt.Fprintf(w, "\n  %s\n", e.tr("GitHub accounts were not looked up: %s.", strings.TrimRight(p.GitHubUnavailable, ".\u3002")))
 	}
 	if p.ScanIncomplete {
-		fmt.Fprintf(w, "\n  ! Looking for repositories stopped after %s, before it finished %s; repositories it did not reach "+
-			"are not included. Add their folders with `gitpersona use`.\n",
-			discover.DefaultScanLimits.Timeout, strings.Join(p.ScanUnfinished, ", "))
+		fmt.Fprintf(w, "\n  ! %s\n", e.tr("Looking for repositories stopped after %s, before it finished %s; repositories it did not reach "+
+			"are not included. Add their folders with `gitpersona use`.",
+			discover.DefaultScanLimits.Timeout, e.setupList(p.ScanUnfinished)))
 	}
 	if p.ScanTooDeep {
-		fmt.Fprintf(w, "\n  Repositories nested more than %d folders deep were not looked at; add their folders with `gitpersona use`.\n",
-			discover.DefaultScanLimits.MaxDepth)
+		fmt.Fprintf(w, "\n  %s\n", e.tr("Repositories nested more than %d folders deep were not looked at; add their folders with `gitpersona use`.",
+			discover.DefaultScanLimits.MaxDepth))
 	}
 	for _, prof := range p.Profiles {
-		printProposedProfile(w, prof, prof.ID == p.Default)
+		e.printProposedProfile(prof, prof.ID == p.Default)
 	}
 	for _, pin := range p.Pins {
 		if pin.needed(p.Default) {
-			fmt.Fprintf(w, "\n  Pin %s to %s: %s\n", pin.Repo, pin.Profile, pin.Why)
+			fmt.Fprintf(w, "\n  %s\n", e.tr("Pin %s to %s: %s", pin.Repo, pin.Profile, pin.Why))
 		}
 	}
 	if p.Default == "" && len(p.OwnRules) > 0 {
-		fmt.Fprintf(w, "\n  No default profile: one would override your own includeIf rules everywhere (%s). Outside these "+
-			"directories Git keeps your own settings; `gitpersona setup --default %s` sets one anyway.\n",
-			strings.Join(p.OwnRules, "; "), cmp.Or(p.SuggestedDefault, "<profile>"))
+		fmt.Fprintf(w, "\n  %s\n", e.tr("No default profile: one would override your own includeIf rules everywhere (%s). Outside these "+
+			"directories Git keeps your own settings; `gitpersona setup --default %s` sets one anyway.",
+			e.setupSemi(p.OwnRules), cmp.Or(p.SuggestedDefault, "<profile>")))
 	}
 	if p.Default != "" && len(p.OwnRules) > 0 {
-		fmt.Fprintf(w, "\n  ! The default profile %s overrides your own includeIf rules everywhere: %s.\n", p.Default, strings.Join(p.OwnRules, "; "))
+		fmt.Fprintf(w, "\n  ! %s\n", e.tr("The default profile %s overrides your own includeIf rules everywhere: %s.", p.Default, e.setupSemi(p.OwnRules)))
 	}
 	if k := slices.IndexFunc(p.Profiles, func(x SetupProfile) bool { return x.ID == p.Default }); k >= 0 {
-		def := p.Profiles[k]
-		fmt.Fprintf(w, "\n  Outside these directories, commits will use %s (%s <%s>)", def.ID, def.Name, def.Email)
-		if p.Global.Email != "" {
-			fmt.Fprintf(w, " instead of %s <%s>", p.Global.Name, p.Global.Email)
-		}
-		fmt.Fprintln(w, " (--no-default to keep your global Git identity).")
-		if def.Signing.Method == config.SigningSSH || def.Signing.Method == config.SigningGPG {
-			fmt.Fprintf(w, "  There, commits will also be signed (%s), as %s signs every commit.\n", def.Signing.Method, def.ID)
-		}
-		if def.SSHKey != "" {
-			fmt.Fprintf(w, "  There, Git also connects with %s's SSH key %s (instead of your own SSH settings).\n", def.ID, def.SSHKey)
-		}
+		e.printDefaultEffect(p, p.Profiles[k])
 	}
 	if len(p.OldRules) > 0 {
-		fmt.Fprintf(w, "\n  The profiles take over your includeIf rules for %s; they are removed from your Git configuration (--keep-old-rules to keep them).\n",
-			strings.Join(p.OldRules, ", "))
+		fmt.Fprintf(w, "\n  %s\n", e.tr("The profiles take over your includeIf rules for %s; they are removed from your Git configuration (--keep-old-rules to keep them).",
+			e.setupList(p.OldRules)))
 	}
 	for _, k := range p.KeptRules {
 		if k.OverriddenBy != "" {
-			fmt.Fprintf(w, "\n  ! Your includeIf rule for %s does more than a profile can (%s), but profile %s applies there, "+
-				"so that is lost; take %s out of the profile to keep it.\n", k.Dir, k.Why, k.OverriddenBy, k.Dir)
+			fmt.Fprintf(w, "\n  ! %s\n", e.tr("Your includeIf rule for %s does more than a profile can (%s), but profile %s applies there, "+
+				"so that is lost; take %s out of the profile to keep it.", k.Dir, k.Why, k.OverriddenBy, k.Dir))
 			continue
 		}
-		fmt.Fprintf(w, "\n  Kept your includeIf rule for %s, which stays in charge there: %s.\n", k.Dir, k.Why)
+		fmt.Fprintf(w, "\n  %s\n", e.tr("Kept your includeIf rule for %s, which stays in charge there: %s.", k.Dir, k.Why))
 		if len(k.ReplacedIn) > 0 {
-			fmt.Fprintf(w, "    Except in %s, which go to profiles (what the rule does more is lost there).\n", strings.Join(k.ReplacedIn, ", "))
+			fmt.Fprintf(w, "    %s\n", e.tr("Except in %s, which go to profiles (what the rule does more is lost there).", e.setupList(k.ReplacedIn)))
 		}
 	}
 	for _, s := range p.Shadowed {
-		fmt.Fprintf(w, "\n  ! Changed: %s.\n", s)
+		fmt.Fprintf(w, "\n  ! %s\n", e.tr("Changed: %s.", s))
 	}
 	if len(p.Shells) > 0 {
-		fmt.Fprintf(w, "\n  Shell integration for %s, so gh and your prompt follow the directory (--no-shell to skip).\n",
-			strings.Join(p.Shells, ", "))
+		fmt.Fprintf(w, "\n  %s\n", e.tr("Shell integration for %s, so gh and your prompt follow the directory (--no-shell to skip).",
+			e.setupList(p.Shells)))
 	}
 	if len(p.GhSwitchers) > 0 && len(p.Shells) > 0 && slices.ContainsFunc(p.Profiles, SetupProfile.onGitHub) {
-		fmt.Fprintf(w, "\n  Note: %s.\n", ghSwitcherNote(p.GhSwitchers))
+		fmt.Fprintf(w, "\n  %s\n", e.tr("Note: %s.", e.ghSwitcherNote(p.GhSwitchers)))
 	}
-	printUnassigned(w, p)
+	e.printUnassigned(p)
 	for _, u := range p.Unmatched {
-		printLeftOut(w, p, u, e.comparisonKey)
+		e.printLeftOut(p, u)
+	}
+}
+
+// printDefaultEffect says what the default profile changes outside the
+// directories of the profiles.
+func (e Env) printDefaultEffect(p SetupProposal, def SetupProfile) {
+	w := e.Stdout
+	if p.Global.Email != "" {
+		fmt.Fprintf(w, "\n  %s\n", e.tr("Outside these directories, commits will use %s (%s <%s>) instead of %s <%s> (--no-default to keep your global Git identity).",
+			def.ID, def.Name, def.Email, p.Global.Name, p.Global.Email))
+	} else {
+		fmt.Fprintf(w, "\n  %s\n", e.tr("Outside these directories, commits will use %s (%s <%s>) (--no-default to keep your global Git identity).",
+			def.ID, def.Name, def.Email))
+	}
+	if def.Signing.Method == config.SigningSSH || def.Signing.Method == config.SigningGPG {
+		fmt.Fprintf(w, "  %s\n", e.tr("There, commits will also be signed (%s), as %s signs every commit.", def.Signing.Method, def.ID))
+	}
+	if def.SSHKey != "" {
+		fmt.Fprintf(w, "  %s\n", e.tr("There, Git also connects with %s's SSH key %s (instead of your own SSH settings).", def.ID, def.SSHKey))
 	}
 }
 
 // printLeftOut says what happens in the folder of an identity setup does not
 // take over: its rule keeps applying, or a profile replaces it.
-func printLeftOut(w io.Writer, p SetupProposal, u LeftOut, key func(string) string) {
-	where := strings.Join(u.Dirs, ", ")
+func (e Env) printLeftOut(p SetupProposal, u LeftOut) {
+	w := e.Stdout
+	where := e.setupList(u.Dirs)
 	if u.NeverApplied != "" {
-		fmt.Fprintf(w, "\n  Not taken over: %s for %s (from %s). It never applies today, because %s; setup leaves it as it is.\n",
-			author(u.Name, u.Email), where, u.Source, u.NeverApplied)
+		fmt.Fprintf(w, "\n  %s\n", e.tr("Not taken over: %s for %s (from %s). It never applies today, because %s; setup leaves it as it is.",
+			author(u.Name, u.Email), where, u.Source, u.NeverApplied))
 		return
 	}
 	if k := slices.IndexFunc(p.Profiles, func(x SetupProfile) bool { return x.ID == u.OverriddenBy }); k >= 0 {
-		fmt.Fprintf(w, "\n  ! Replaced: %s for %s (from %s). Profile %s (%s) applies there instead, because GitPersona's rules "+
-			"come after yours. To keep it, choose its account with `gitpersona setup --web`.\n",
-			author(u.Name, u.Email), where, u.Source, u.OverriddenBy, author(p.Profiles[k].Name, p.Profiles[k].Email))
+		fmt.Fprintf(w, "\n  ! %s\n", e.tr("Replaced: %s for %s (from %s). Profile %s (%s) applies there instead, because GitPersona's rules "+
+			"come after yours. To keep it, choose its account with `gitpersona setup --web`.",
+			author(u.Name, u.Email), where, u.Source, u.OverriddenBy, author(p.Profiles[k].Name, p.Profiles[k].Email)))
 		return
 	}
-	if allKept(p, u, key) {
+	if allKept(p, u, e.comparisonKey) {
 		return // listed with the kept rules, and why
 	}
-	fmt.Fprintf(w, "\n  Not taken over: %s for %s (from %s); GitPersona could not tie it to one account, so your rule keeps "+
-		"applying there. To make it a profile, choose its account with `gitpersona setup --web`.\n", author(u.Name, u.Email), where, u.Source)
+	fmt.Fprintf(w, "\n  %s\n", e.tr("Not taken over: %s for %s (from %s); GitPersona could not tie it to one account, so your rule keeps "+
+		"applying there. To make it a profile, choose its account with `gitpersona setup --web`.", author(u.Name, u.Email), where, u.Source))
 	if len(u.ReplacedIn) > 0 {
-		fmt.Fprintf(w, "    Except in %s, which go to profiles.\n", strings.Join(u.ReplacedIn, ", "))
+		fmt.Fprintf(w, "    %s\n", e.tr("Except in %s, which go to profiles.", e.setupList(u.ReplacedIn)))
 	}
 }
 
@@ -251,17 +305,18 @@ func allKept(p SetupProposal, u LeftOut, key func(string) string) bool {
 
 // printUnassigned lists, together, the folders whose repositories belong to
 // someone else, such as an organization.
-func printUnassigned(w io.Writer, p SetupProposal) {
+func (e Env) printUnassigned(p SetupProposal) {
 	if len(p.Unassigned) == 0 {
 		return
 	}
-	applies := "your own Git settings apply"
+	w := e.Stdout
 	if p.Default != "" {
-		applies = "the default profile " + p.Default + " applies"
+		fmt.Fprintf(w, "\n  %s\n", e.tr("Owned by someone else, so the default profile %s applies there unless you choose (run `gitpersona use <profile>` in the folder):", p.Default))
+	} else {
+		fmt.Fprintf(w, "\n  %s\n", e.tr("Owned by someone else, so your own Git settings apply there unless you choose (run `gitpersona use <profile>` in the folder):"))
 	}
-	fmt.Fprintf(w, "\n  Owned by someone else, so %s there unless you choose (run `gitpersona use <profile>` in the folder):\n", applies)
 	for _, u := range p.Unassigned {
-		fmt.Fprintf(w, "    %s  (%s, owned by %s)\n", u.Dir, u.Why, u.Owner)
+		fmt.Fprintf(w, "    %s\n", e.tr("%s  (%s, owned by %s)", u.Dir, u.Why, u.Owner))
 	}
 }
 
@@ -278,35 +333,36 @@ func printLeftOutComments(w io.Writer, p SetupProposal, key func(string) string)
 	}
 }
 
-func printProposedProfile(w io.Writer, p SetupProfile, isDefault bool) {
+func (e Env) printProposedProfile(p SetupProfile, isDefault bool) {
+	w := e.Stdout
 	label := p.ID
 	if isDefault {
-		label += " (default)"
+		label = e.tr("%s (default)", p.ID)
 	}
 	fmt.Fprintf(w, "\n  %s: %s <%s>\n", label, p.Name, p.Email)
 	if !p.onGitHub() {
-		fmt.Fprintf(w, "    account %s on %s (%s)\n", p.Account, p.Host, p.Provider)
+		fmt.Fprintf(w, "    %s\n", e.tr("account %s on %s (%s)", p.Account, p.Host, p.Provider))
 	}
 	switch p.NameSource {
 	case "login":
-		fmt.Fprintln(w, "    (the account shows no public name, so the name is its login)")
+		fmt.Fprintf(w, "    %s\n", e.tr("(the account shows no public name, so the name is its login)"))
 	case "global":
-		fmt.Fprintln(w, "    (your includeIf setup sets no name, so the name is your global Git name)")
+		fmt.Fprintf(w, "    %s\n", e.tr("(your includeIf setup sets no name, so the name is your global Git name)"))
 	}
 	if p.SSHKey != "" {
-		fmt.Fprintf(w, "    SSH key %s\n", p.SSHKey)
+		fmt.Fprintf(w, "    %s\n", e.tr("SSH key %s", p.SSHKey))
 	}
 	if p.Signing.Method != "" {
-		fmt.Fprintf(w, "    signs commits (%s)\n", p.Signing.Method)
+		fmt.Fprintf(w, "    %s\n", e.tr("signs commits (%s)", p.Signing.Method))
 	}
 	for _, d := range p.Dirs {
-		fmt.Fprintf(w, "    %s  (your existing setup)\n", d)
+		fmt.Fprintf(w, "    %s\n", e.tr("%s  (your existing setup)", d))
 	}
 	for _, f := range p.Found {
-		fmt.Fprintf(w, "    %s  (%s)\n", f.Dir, f.Why)
+		fmt.Fprintf(w, "    %s\n", e.tr("%s  (%s)", f.Dir, f.Why))
 	}
 	if len(p.Dirs)+len(p.Found) == 0 {
-		fmt.Fprintln(w, "    no directories yet")
+		fmt.Fprintf(w, "    %s\n", e.tr("no directories yet"))
 	}
 	for _, n := range p.Notes {
 		fmt.Fprintf(w, "    ! %s\n", n)

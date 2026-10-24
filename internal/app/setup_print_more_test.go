@@ -172,8 +172,8 @@ func TestRenderPlanWritesSigningNoneAndCountsIdentities(t *testing.T) {
 	if !strings.Contains(text, `signing = { method = "none" }`) {
 		t.Errorf("rendered plan lacks the signing opt-out:\n%s", text)
 	}
-	if identities(1) != "1 identity" || identities(2) != "2 identities" {
-		t.Errorf("identities(1) = %q, identities(2) = %q", identities(1), identities(2))
+	if (Env{}).identities(1) != "1 identity" || (Env{}).identities(2) != "2 identities" {
+		t.Errorf("identities(1) = %q, identities(2) = %q", (Env{}).identities(1), (Env{}).identities(2))
 	}
 }
 

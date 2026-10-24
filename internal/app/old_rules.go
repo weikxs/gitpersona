@@ -30,10 +30,10 @@ func RemoveOldRules(ctx context.Context, e Env) error {
 	}
 	_, removed, kept := e.withoutOldRules(ctx, current, ownersOf(cfg), nil)
 	for _, k := range kept {
-		fmt.Fprintf(e.Stdout, "Kept the includeIf rule for %s: %s.\n", k.Dir, k.Why)
+		fmt.Fprintln(e.Stdout, e.tr("Kept the includeIf rule for %s: %s.", k.Dir, k.Why))
 	}
 	if len(removed) == 0 {
-		fmt.Fprintln(e.Stdout, "No old includeIf identity rules that a profile takes over; nothing to change.")
+		fmt.Fprintln(e.Stdout, e.tr("No old includeIf identity rules that a profile takes over; nothing to change."))
 		return nil
 	}
 	// The profiles' files depend on which rules of the user's remain (see
@@ -49,7 +49,7 @@ func RemoveOldRules(ctx context.Context, e Env) error {
 		return err
 	}
 	for _, dir := range removed {
-		fmt.Fprintf(e.Stdout, "Removed the old includeIf rule for %s.\n", dir)
+		fmt.Fprintln(e.Stdout, e.tr("Removed the old includeIf rule for %s.", dir))
 	}
 	return nil
 }

@@ -192,13 +192,6 @@ func (e Env) differ(n int) string {
 	return e.tr("%d files differ", n)
 }
 
-func plural(n int, noun string) string {
-	if n == 1 {
-		return "1 " + noun
-	}
-	return fmt.Sprintf("%d %ss", n, noun)
-}
-
 func (e Env) checkGenerated(ctx context.Context) check {
 	changes, err := planApply(ctx, e)
 	switch {

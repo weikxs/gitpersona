@@ -44,7 +44,7 @@ func (e Env) glabEntryChange(cfg config.Config) (change, bool) {
 func GlabShim(ctx context.Context, e Env, args []string) int {
 	realGlab, err := e.realTool(glabCommand)
 	if err != nil {
-		fmt.Fprintf(e.Stderr, "gitpersona: %v; install it from https://gitlab.com/gitlab-org/cli\n", err)
+		fmt.Fprintln(e.Stderr, e.tr("gitpersona: %v; install it from https://gitlab.com/gitlab-org/cli", err))
 		return exitCodeFailure
 	}
 	environ := os.Environ()
@@ -54,15 +54,15 @@ func GlabShim(ctx context.Context, e Env, args []string) int {
 		if err != nil {
 			// Never fall back to glab's own account: acting as another account
 			// is exactly what GitPersona exists to prevent.
-			fmt.Fprintf(e.Stderr, "gitpersona: there is no token for %s on %s, and this directory uses it.\n"+
-				"Save one with `gitpersona auth login --profile %s`, or set GITLAB_TOKEN to choose an account yourself.\n",
-				p.Account, p.Host, p.ID)
+			fmt.Fprintln(e.Stderr, e.tr("gitpersona: there is no token for %s on %s, and this directory uses it.\n"+
+				"Save one with `gitpersona auth login --profile %s`, or set GITLAB_TOKEN to choose an account yourself.",
+				p.Account, p.Host, p.ID))
 			return exitCodeFailure
 		}
 		environ = append(environ, "GITLAB_TOKEN="+strings.TrimSpace(token), "GITLAB_HOST="+p.Host)
 	}
 	if err := e.Exec(realGlab, append([]string{glabCommand}, args...), environ); err != nil {
-		fmt.Fprintf(e.Stderr, "gitpersona: run %s: %v\n", realGlab, err)
+		fmt.Fprintln(e.Stderr, e.tr("gitpersona: run %s: %v", realGlab, err))
 		return exitCodeFailure
 	}
 	return 0

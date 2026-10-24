@@ -39,13 +39,13 @@ func Shells(ctx context.Context, e Env, asJSON bool) error {
 		return enc.Encode(report)
 	}
 
-	fmt.Fprintf(e.Stdout, "default  %s\n", describe(report.Default, "your login shell"))
-	fmt.Fprintf(e.Stdout, "current  %s\n", describe(report.Current, "the shell running this command"))
-	fmt.Fprintln(e.Stdout, "\ninstalled shells:")
+	fmt.Fprintln(e.Stdout, e.tr("default  %s", e.describe(report.Default, e.tr("your login shell"))))
+	fmt.Fprintln(e.Stdout, e.tr("current  %s", e.describe(report.Current, e.tr("the shell running this command"))))
+	fmt.Fprintln(e.Stdout, "\n"+e.tr("installed shells:"))
 	for _, in := range report.Installed {
-		status := "integration not installed"
+		status := e.tr("integration not installed")
 		if in.Integrated {
-			status = "integration installed"
+			status = e.tr("integration installed")
 		}
 		fmt.Fprintf(e.Stdout, "  %-4s  %s  %s\n", in.Kind, in.Path, status)
 	}
@@ -69,9 +69,9 @@ func detectedShell(d shell.Detected) DetectedShell {
 	return DetectedShell{Kind: string(d.Kind), Path: d.Path, Source: d.Source}
 }
 
-func describe(d DetectedShell, role string) string {
+func (e Env) describe(d DetectedShell, role string) string {
 	if d.Kind == "" {
-		return "unknown"
+		return e.tr("unknown")
 	}
-	return fmt.Sprintf("%s  %s (%s, from %s)", d.Kind, d.Path, role, d.Source)
+	return e.tr("%s  %s (%s, from %s)", d.Kind, d.Path, role, d.Source)
 }
