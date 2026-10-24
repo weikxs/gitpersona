@@ -152,3 +152,28 @@ func TestResolveSymlinksWithoutLinksReturnsSamePath(t *testing.T) {
 		t.Fatalf("ResolveSymlinks(%s) = %s, want it unchanged", dir, got)
 	}
 }
+
+func TestCaseInsensitiveAtAsksTheFileSystem(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "CaseProbe")
+	if err := os.Mkdir(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	_, err := os.Stat(filepath.Join(filepath.Dir(dir), "cASEpROBE"))
+	want := err == nil // the temporary folder's file system decides
+
+	if got := CaseInsensitiveAt(dir); got != want {
+		t.Fatalf("CaseInsensitiveAt(%s) = %v, but looking it up with other case found it: %v", dir, got, want)
+	}
+}
+
+func TestCaseInsensitiveAtFallsBackWithoutLetters(t *testing.T) {
+	if got := CaseInsensitiveAt("/"); got != CaseInsensitiveFS() {
+		t.Fatalf("CaseInsensitiveAt(/) = %v, want the platform default %v", got, CaseInsensitiveFS())
+	}
+	if got := CaseInsensitiveAt(filepath.Join(t.TempDir(), "missing")); got != CaseInsensitiveFS() {
+		t.Fatalf("a folder that does not exist gives %v, want the platform default", got)
+	}
+	if swapCase("~/Work-2/é") != "~/wORK-2/É" {
+		t.Errorf("swapCase = %q", swapCase("~/Work-2/é"))
+	}
+}

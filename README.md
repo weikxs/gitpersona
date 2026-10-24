@@ -120,8 +120,13 @@ With the shell integration, `gh` and `glab` follow the same rules.
 
 ## Requirements
 
-- macOS or Linux (Windows is not supported yet)
+- **macOS 12 Monterey or newer**, on Apple silicon (M1 and later) and on Intel Macs
+- **Linux** on x86_64 and arm64, any distribution (glibc or musl, such as Debian, Ubuntu, Fedora, Arch, Alpine)
+- Windows is planned, not supported yet
 - Git 2.31 or newer
+
+Every change is tested on Apple silicon and Intel Macs, on Linux x86_64 and arm64, and on Debian, Alpine, Fedora and
+Ubuntu 22.04 (the oldest supported Git).
 - For GitHub profiles: the [GitHub CLI](https://cli.github.com) 2.40 or newer, signed in to each account
 - For GitLab, Bitbucket and other hosts: a credential helper that keeps tokens per account, such as the system
   keychain (`osxkeychain` on macOS, `libsecret` on Linux) or [Git Credential Manager](https://github.com/git-ecosystem/git-credential-manager)
@@ -151,8 +156,19 @@ brew install weikxs/tap/gitpersona
 ```
 
 The binary is not signed by Apple yet, so on macOS the cask removes the quarantine flag from it after installing;
-see [SECURITY.md](SECURITY.md). Archives for every platform are also on the
-[releases page](https://github.com/weikxs/gitpersona/releases).
+see [SECURITY.md](SECURITY.md). Homebrew picks the build for your Mac (Apple silicon or Intel) by itself.
+
+**Linux packages** (with the first release) from the [releases page](https://github.com/weikxs/gitpersona/releases),
+for x86_64 (`amd64`) and arm64:
+
+```sh
+sudo apt install ./gitpersona_<version>_linux_amd64.deb        # Debian, Ubuntu
+sudo dnf install ./gitpersona_<version>_linux_amd64.rpm        # Fedora, RHEL
+sudo apk add --allow-untrusted ./gitpersona_<version>_linux_amd64.apk   # Alpine
+sudo pacman -U ./gitpersona_<version>_linux_amd64.pkg.tar.zst  # Arch
+```
+
+Archives (`.tar.gz`) for every system are there too, with `checksums.txt` to check them.
 
 ## Quick start
 

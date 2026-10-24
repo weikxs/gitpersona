@@ -11,14 +11,45 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"unicode"
 )
 
 const separator = "/"
 
-// CaseInsensitiveFS reports whether paths on this platform should be compared
-// without regard to case. macOS uses a case-insensitive file system by default.
+// CaseInsensitiveFS reports whether paths on this platform are usually
+// compared without regard to case: macOS's default file system ignores case.
+// CaseInsensitiveAt asks the file system itself.
 func CaseInsensitiveFS() bool {
 	return runtime.GOOS == "darwin"
+}
+
+// CaseInsensitiveAt reports whether the file system holding dir ignores
+// case, by looking up dir with the case of its letters swapped. It only
+// reads: no file is created. When dir has no letters, or cannot be looked
+// up, the platform's usual answer is returned. A Mac formatted with
+// case-sensitive APFS then compares paths exactly, so ~/Work and ~/work stay
+// two folders.
+func CaseInsensitiveAt(dir string) bool {
+	swapped := swapCase(dir)
+	info, err := os.Stat(dir)
+	if swapped == dir || err != nil {
+		return CaseInsensitiveFS()
+	}
+	other, err := os.Stat(swapped)
+	return err == nil && os.SameFile(info, other)
+}
+
+// swapCase turns lowercase letters into uppercase and the other way round.
+func swapCase(s string) string {
+	return strings.Map(func(r rune) rune {
+		switch {
+		case unicode.IsLower(r):
+			return unicode.ToUpper(r)
+		case unicode.IsUpper(r):
+			return unicode.ToLower(r)
+		}
+		return r
+	}, s)
 }
 
 // Normalize expands a leading "~" to home and returns a clean absolute path

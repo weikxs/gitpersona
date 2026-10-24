@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"os"
 	"path/filepath"
 	"runtime"
 	"slices"
@@ -167,20 +168,43 @@ func helperProblem(host string, helpers []string) string {
 	return ""
 }
 
-// helperAdvice is how to set up a helper that keeps tokens safely.
-func helperAdvice() string {
-	return "use the system keychain, for example `git config --global credential.helper " + suggestedHelper() + "`"
+// helperAdvice is how to set up a helper that keeps tokens safely, naming
+// one that is installed here.
+func (e Env) helperAdvice(ctx context.Context) string {
+	execPath, _ := e.git(ctx, e.Home, "--exec-path")
+	if h := installedHelper(runtime.GOOS, execPath, e.LookPath); h != "" {
+		return "use the system keychain, for example `git config --global credential.helper " + h + "`"
+	}
+	return "install a helper that keeps tokens in the system keychain, such as Git Credential Manager " +
+		"(https://github.com/git-ecosystem/git-credential-manager) or your distribution's git-credential-libsecret, " +
+		"then set it with `git config --global credential.helper <name>`"
 }
 
-// suggestedHelper is the usual secure helper of this system.
-func suggestedHelper() string {
-	switch runtime.GOOS {
-	case "darwin":
-		return "osxkeychain"
-	case "windows":
-		return "manager"
+// installedHelper returns the first secure helper of this system that is
+// installed (on PATH or in Git's exec path), or "". Many Linux systems ship
+// Git without libsecret's helper, so it is never suggested blindly; macOS's
+// Git always has osxkeychain.
+func installedHelper(goos, execPath string, lookPath func(string) (string, error)) string {
+	candidates := []string{"manager", "libsecret"}
+	if goos == "darwin" {
+		candidates = []string{"osxkeychain", "manager"}
 	}
-	return "libsecret"
+	for _, name := range candidates {
+		program := "git-credential-" + name
+		if _, err := lookPath(program); err == nil {
+			return name
+		}
+		if execPath == "" {
+			continue
+		}
+		if info, err := os.Stat(filepath.Join(execPath, program)); err == nil && !info.IsDir() {
+			return name
+		}
+	}
+	if goos == "darwin" {
+		return "osxkeychain"
+	}
+	return ""
 }
 
 // shellFields splits a command line on blanks (helpers rarely quote).
@@ -306,7 +330,7 @@ func (e Env) helpersProblem(ctx context.Context, p config.Profile) ([]string, he
 		return nil, helperIssue{}, err
 	}
 	if problem := helperProblem(p.Host, push); problem != "" {
-		return push, helperIssue{problem, helperAdvice()}, nil
+		return push, helperIssue{problem, e.helperAdvice(ctx)}, nil
 	}
 	if where, err := e.perRepositoryTokens(ctx, p.Host); err != nil || where != "" {
 		return push, helperIssue{
@@ -320,7 +344,7 @@ func (e Env) helpersProblem(ctx context.Context, p config.Profile) ([]string, he
 	accountSettings := fmt.Sprintf("remove the credential helper settings for https://%s@%s (or %s@%s)", p.Account, p.Host, p.Account, p.Host)
 	if slices.ContainsFunc(save, func(h string) bool { return helperKind(h) == "plain" }) {
 		return push, helperIssue{fmt.Sprintf("a credential helper for %s on %s (store) would keep the token in a file in clear text", p.Account, p.Host),
-			helperAdvice() + ", and " + accountSettings}, nil
+			e.helperAdvice(ctx) + ", and " + accountSettings}, nil
 	}
 	if !slices.ContainsFunc(save, func(h string) bool { return helperKind(h) != "memory" && slices.Contains(push, h) }) {
 		return push, helperIssue{fmt.Sprintf("your settings for %s on %s save the token with %s, which a push to %s does not ask",

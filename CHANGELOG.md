@@ -14,6 +14,9 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ### Added
 
+- Linux packages for x86_64 and arm64: `.deb`, `.rpm`, `.apk` and Arch (`.pkg.tar.zst`), installing
+  `/usr/bin/gitpersona`. CI now runs on Apple silicon and Intel Macs, Linux x86_64 and arm64, and in Debian, Alpine,
+  Fedora and Ubuntu 22.04 containers.
 - `gitpersona verify` and the page's **Repositories** section check every repository in the profiles' folders and
   pins (and folders you name): the author its commits use and the account each remote pushes as (HTTPS: the account
   the credential helper answers for; SSH: the profile that owns the key ssh offers first), next to the profile that
@@ -98,6 +101,10 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ### Fixed
 
+- Whether paths ignore case is asked of the file system holding your home folder (read only), not assumed from the
+  system: on a Mac formatted with case-sensitive APFS, `~/Work` and `~/work` are no longer one folder.
+- On Linux, doctor suggests a credential helper that is installed (Git Credential Manager or libsecret's), and
+  otherwise says which to install, instead of always `libsecret`.
 - A profile's SSH command turns off connection sharing (`-o ControlPath=none`): with `ControlMaster` in
   `~/.ssh/config`, a push could reuse a connection another key had opened and push as that key's account.
 - `check-ssh` recognizes GitHub accounts with an underscore (enterprise managed users, `name_short`).

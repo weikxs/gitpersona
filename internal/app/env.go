@@ -72,7 +72,7 @@ func FromOS(stdin io.Reader, stdout, stderr io.Writer) (Env, error) {
 		ConfigDir:       configDir(home),
 		WorkDir:         wd,
 		Executable:      exe,
-		CaseInsensitive: paths.CaseInsensitiveFS(),
+		CaseInsensitive: paths.CaseInsensitiveAt(home),
 		GlobalGitConfig: os.Getenv("GIT_CONFIG_GLOBAL"),
 		Stdin:           stdin,
 		Stdout:          stdout,

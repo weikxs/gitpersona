@@ -114,8 +114,13 @@ Git、`gh`、`glab` 都假定只有一个全局的"当前账户"，于是很容�
 
 ## 系统要求
 
-- macOS 或 Linux（暂不支持 Windows）
+- **macOS 12 Monterey 或更新版本**，Apple 芯片（M1 及以后）和 Intel 芯片的 Mac 都支持
+- **Linux**：x86_64 和 arm64，任意发行版（glibc 或 musl，例如 Debian、Ubuntu、Fedora、Arch、Alpine）
+- Windows 已在计划中，暂不支持
 - Git 2.31 或更新版本
+
+每次改动都会在 Apple 芯片和 Intel 芯片的 Mac、Linux x86_64 和 arm64，以及 Debian、Alpine、Fedora、
+Ubuntu 22.04（支持的最旧 Git）上测试。
 - GitHub 配置文件需要 [GitHub CLI](https://cli.github.com) 2.40 或更新版本，并登录每个账户
 - GitLab、Bitbucket 及其他主机需要一个按账户保存令牌的凭据助手，例如系统钥匙串（macOS 上的 `osxkeychain`、
   Linux 上的 `libsecret`）或 [Git Credential Manager](https://github.com/git-ecosystem/git-credential-manager)
@@ -145,7 +150,19 @@ brew install weikxs/tap/gitpersona
 ```
 
 程序暂未经过 Apple 签名，所以在 macOS 上 Cask 安装后会去掉系统给它加的隔离标记，详见 [SECURITY.md](SECURITY.md)。
-各平台的压缩包也可以从 [Release 页面](https://github.com/weikxs/gitpersona/releases)下载。
+Homebrew 会自动选择适合你的 Mac 的版本（Apple 芯片或 Intel）。
+
+**Linux 安装包**（第一个正式版本发布后）可以从 [Release 页面](https://github.com/weikxs/gitpersona/releases)下载，
+提供 x86_64（`amd64`）和 arm64 两种：
+
+```sh
+sudo apt install ./gitpersona_<版本>_linux_amd64.deb        # Debian、Ubuntu
+sudo dnf install ./gitpersona_<版本>_linux_amd64.rpm        # Fedora、RHEL
+sudo apk add --allow-untrusted ./gitpersona_<版本>_linux_amd64.apk   # Alpine
+sudo pacman -U ./gitpersona_<版本>_linux_amd64.pkg.tar.zst  # Arch
+```
+
+各平台的压缩包（`.tar.gz`）也在那里，并附有用于校验的 `checksums.txt`。
 
 ## 快速上手
 

@@ -30,6 +30,25 @@ archives:
       - README.md
       - README.zh-CN.md
 
+# Linux packages: the system's package manager installs /usr/bin/gitpersona,
+# a path that stays the same across upgrades (the Git configuration calls it).
+nfpms:
+  - id: linux-packages
+    package_name: gitpersona
+    file_name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    homepage: https://github.com/weikxs/gitpersona
+    maintainer: Weikxs <weikxs.dev@gmail.com>
+    description: Git profiles that follow your directories
+    license: MIT
+    formats: [deb, rpm, apk, archlinux]
+    bindir: /usr/bin
+    dependencies: [git]
+    contents:
+      - src: LICENSE
+        dst: /usr/share/licenses/gitpersona/LICENSE
+      - src: README.md
+        dst: /usr/share/doc/gitpersona/README.md
+
 checksum:
   name_template: checksums.txt
 
