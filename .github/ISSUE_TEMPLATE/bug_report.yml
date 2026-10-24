@@ -28,6 +28,7 @@ body:
     id: doctor
     attributes:
       label: Output of `gitpersona doctor`
+      description: With account names, emails and paths replaced by placeholders.
       render: text
   - type: input
     id: version
@@ -44,3 +45,17 @@ body:
     id: os
     attributes:
       label: Operating system and version
+      placeholder: macOS 15 on Apple silicon / Ubuntu 24.04 on x86_64
+    validations:
+      required: true
+  - type: input
+    id: git
+    attributes:
+      label: Output of `git version`
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: How you installed GitPersona
+      options: [install script, Homebrew, Linux package (deb/rpm/apk/Arch), go install, built from source]
