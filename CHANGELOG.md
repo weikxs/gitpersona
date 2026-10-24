@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ## [Unreleased]
 
+### Security
+
+- Built with Go 1.26.10, which fixes 46 vulnerabilities in the Go standard library that v0.1.0 (built with Go 1.26.0)
+  contained in code GitPersona can reach, mostly in `net/http`, `crypto/tls`, `crypto/x509` and `html/template`
+  (GO-2026-4599 to GO-2026-6809; `govulncheck` lists them). GitPersona's own code and its dependencies had none.
+  The web console only listens on 127.0.0.1, which limits the exposure, but every user should upgrade.
+
 ### Added
 
 - `install.sh`: one command installs GitPersona on macOS and Linux

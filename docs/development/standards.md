@@ -38,6 +38,10 @@ curl), structured bug reports (Go), and the [OpenSSF Scorecard](https://scorecar
 - **Review:** every change reaches `main` through a pull request with green CI, maintainers' changes included
   (the repository ruleset allows nothing else). Pull requests from contributors also need a code owner's approval
   (`.github/CODEOWNERS`).
+- **Changes that cannot affect the program** — only documentation, release notes or `CHANGELOG.md`, no Go, script,
+  workflow, web or build file — may be merged by a repository admin without CI (`gh pr merge --squash --admin`, with
+  `[skip ci]` in the merge commit). The admin bypass works only for merging pull requests; direct pushes,
+  force-pushes and deleting `main` stay blocked for everyone. Anything else waits for green CI.
 - **Response times** are best effort; security reports follow [SECURITY.md](../../SECURITY.md).
 
 ## 3. AI-assisted contributions (MUST)
@@ -127,7 +131,7 @@ CI) and review.
 | CI and releases build with the newest Go patch release (`1.26.x`, `check-latest`), so Go's security fixes ship; `go.mod` keeps the oldest Go that builds GitPersona | MUST | workflows |
 | Known vulnerabilities reachable from the code, in Go or in a dependency, fail CI (`govulncheck`) | MUST | CI `govulncheck` |
 | Every release file carries signed build provenance; check one with `gh attestation verify <file> --repo weikxs/gitpersona` | MUST | release workflow |
-| `main` is protected: no force-push or deletion, changes only through pull requests with CI green | MUST | repository ruleset |
+| `main` is protected: no force-push or deletion, changes only through pull requests with CI green (admins may merge documentation-only pull requests without CI, §2) | MUST | repository ruleset |
 
 ## 7. Code
 
