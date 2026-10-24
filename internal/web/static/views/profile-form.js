@@ -1,12 +1,13 @@
 // Forms for adding a profile and changing one.
 
+import { t } from "../i18n.js";
 import { h, field, busy } from "../dom.js";
 
 const SIGNING_METHODS = [
-  ["", "Not set (Git's own setting)"],
-  ["ssh", "SSH key"],
-  ["gpg", "GPG key"],
-  ["none", "Off, even if enabled globally"],
+  ["", "form.signingUnset"],
+  ["ssh", "form.signingSSH"],
+  ["gpg", "form.signingGPG"],
+  ["none", "form.signingOff"],
 ];
 
 function textInput(name, value = "", extra = {}) {
@@ -25,30 +26,30 @@ export function profileForm({ profile, accounts, onSubmit, onCancel }) {
   const p = profile ?? { id: "", account: "", name: "", email: "", ssh_key: "", signing: { method: "", key: "" } };
   const listId = `accounts-${p.id || "new"}`;
   const inputs = {
-    id: textInput("id", p.id, { required: true, pattern: "[a-z0-9][a-z0-9\\-]{0,31}", maxlength: 32, title: "Lowercase letters, digits and -, starting with a letter or digit" }),
-    account: textInput("account", p.account, { required: true, list: listId, pattern: "[A-Za-z0-9][A-Za-z0-9._\\-]*", title: "The account name: letters, digits, . _ and -" }),
+    id: textInput("id", p.id, { required: true, pattern: "[a-z0-9][a-z0-9\\-]{0,31}", maxlength: 32, title: t("form.idTitle") }),
+    account: textInput("account", p.account, { required: true, list: listId, pattern: "[A-Za-z0-9][A-Za-z0-9._\\-]*", title: t("form.accountTitle") }),
     name: textInput("name", p.name, { required: true, autocomplete: "name" }),
     email: h("input", { type: "email", name: "email", value: p.email, required: true, autocomplete: "email" }),
     ssh_key: textInput("ssh_key", p.ssh_key),
     method: h("select", { name: "method" }, SIGNING_METHODS.map(([value, label]) =>
-      h("option", { value, selected: (p.signing?.method ?? "") === value }, label))),
+      h("option", { value, selected: (p.signing?.method ?? "") === value }, t(label)))),
     key: textInput("key", p.signing?.key ?? ""),
   };
-  const submit = h("button", { type: "submit", class: "primary" }, isNew ? "Add profile" : "Save changes");
+  const submit = h("button", { type: "submit", class: "primary" }, isNew ? t("form.add") : t("form.save"));
   const form = h("form", { class: "stack" },
-    isNew ? field("Profile name", inputs.id, "A short name such as work or personal: lowercase letters, digits and -") : null,
-    field("GitHub account", inputs.account, "The login used for pushes and gh in this profile's directories"),
+    isNew ? field(t("form.id"), inputs.id, t("form.idHint")) : null,
+    field(t("form.account"), inputs.account, t("form.accountHint")),
     accountList(listId, accounts),
-    field("Author name", inputs.name),
-    field("Author email", inputs.email, "The email recorded in your commits, usually the one on the account's GitHub profile"),
+    field(t("form.name"), inputs.name),
+    field(t("form.email"), inputs.email, t("form.emailHint")),
     isNew ? null : h("fieldset", {},
-      h("legend", {}, "Optional"),
+      h("legend", {}, t("form.optional")),
       h("div", { class: "stack" },
-        field("SSH key", inputs.ssh_key, "Path to the private key file, for example ~/.ssh/id_work; GitPersona never reads it"),
-        field("Commit signing", inputs.method),
-        field("Signing key", inputs.key, "For SSH: a .pub file; for GPG: the key ID"))),
+        field(t("form.sshKey"), inputs.ssh_key, t("form.sshKeyHint")),
+        field(t("form.signing"), inputs.method),
+        field(t("form.signingKey"), inputs.key, t("form.signingKeyHint")))),
     h("div", { class: "actions" }, submit,
-      onCancel ? h("button", { type: "button", onclick: onCancel }, "Cancel") : null));
+      onCancel ? h("button", { type: "button", onclick: onCancel }, t("dialog.cancel")) : null));
 
   form.addEventListener("submit", (event) => {
     event.preventDefault();

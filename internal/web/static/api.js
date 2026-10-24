@@ -1,10 +1,11 @@
+import { lang, t } from "./i18n.js";
+
 // Calls the local GitPersona API. Every change carries the page's CSRF token;
 // the browser adds the Origin header, which the server also checks.
 
 const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content ?? "";
 
-const STOPPED = "GitPersona is no longer running (the page was closed or idle for 15 minutes). " +
-  "Run `gitpersona ui` again to continue.";
+
 
 export class ApiError extends Error {
   constructor(message, log = "") {
@@ -16,7 +17,8 @@ export class ApiError extends Error {
 
 // request returns {data, log} or throws ApiError with the server's message.
 export async function request(method, path, body) {
-  const init = { method, headers: {}, credentials: "same-origin" };
+  // GitPersona answers in the page's language (health checks, findings, errors).
+  const init = { method, headers: { "X-GitPersona-Lang": lang() }, credentials: "same-origin" };
   if (method !== "GET") {
     init.headers["X-GitPersona-CSRF"] = csrfToken;
   }
@@ -28,19 +30,19 @@ export async function request(method, path, body) {
   try {
     response = await fetch(path, init);
   } catch {
-    throw new ApiError(STOPPED);
+    throw new ApiError(t("api.stopped"));
   }
   let envelope;
   try {
     envelope = await response.json();
   } catch {
     if (response.status === 401 || response.status === 403) {
-      throw new ApiError("This page's session is not valid any more. Run `gitpersona ui` again to open a new one.");
+      throw new ApiError(t("api.session"));
     }
-    throw new ApiError(`Unexpected response (${response.status}).`);
+    throw new ApiError(t("api.unexpected", { status: response.status }));
   }
   if (!envelope.ok) {
-    throw new ApiError(envelope.error || "The request failed.", envelope.log || "");
+    throw new ApiError(envelope.error || t("api.failed"), envelope.log || "");
   }
   return { data: envelope.data, log: envelope.log || "" };
 }

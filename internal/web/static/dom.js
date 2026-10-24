@@ -1,3 +1,5 @@
+import { t } from "./i18n.js";
+
 // Small DOM helpers. Text is always set with textContent, never parsed as
 // HTML, so values from the configuration cannot inject markup.
 
@@ -33,11 +35,11 @@ export function replace(el, ...children) {
 }
 
 // badge shows a status as an icon character and a word, not color alone.
-const BADGES = { ok: ["✓", "OK"], warn: ["!", "Warning"], fail: ["✕", "Problem"], info: ["•", ""] };
+const BADGES = { ok: ["✓", "badge.ok"], warn: ["!", "badge.warn"], fail: ["✕", "badge.fail"], info: ["•", ""] };
 
 export function badge(status, text) {
   const [icon, word] = BADGES[status] ?? BADGES.info;
-  return h("span", { class: `badge ${status}` }, h("span", { "aria-hidden": "true" }, icon), text ?? word);
+  return h("span", { class: `badge ${status}` }, h("span", { "aria-hidden": "true" }, icon), text ?? (word ? t(word) : ""));
 }
 
 // field builds a labelled input with optional hint text.
@@ -66,11 +68,12 @@ export function clearStatus() {
 }
 
 // confirm asks before a destructive action; resolves true when confirmed.
-export function confirm(title, text, action = "Confirm") {
+export function confirm(title, text, action = t("dialog.confirm")) {
   const dialog = document.getElementById("confirm");
   document.getElementById("confirm-title").textContent = title;
   document.getElementById("confirm-text").textContent = text;
   document.getElementById("confirm-ok").textContent = action;
+  document.getElementById("confirm-cancel").textContent = t("dialog.cancel");
   return new Promise((resolve) => {
     dialog.addEventListener("close", () => resolve(dialog.returnValue === "ok"), { once: true });
     dialog.returnValue = "";

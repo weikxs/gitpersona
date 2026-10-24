@@ -2,6 +2,7 @@
 // configuration that is applied with one click. The three steps of setup.js
 // remain for adjusting it.
 
+import { t } from "../i18n.js";
 import { api } from "../api.js";
 import { h, replace, badge, busy } from "../dom.js";
 import { diffBlock } from "./apply.js";
@@ -9,12 +10,9 @@ import { diffBlock } from "./apply.js";
 // QUICK is the wizard step of this page; the detailed steps are 0, 1 and 2.
 export const QUICK = -1;
 
-const NAME_NOTES = {
-  login: "The account shows no public name, so the name is its login.",
-  global: "Your includeIf setup sets no name, so the name is your global Git name.",
-};
+const NAME_NOTES = { login: "quick.nameLogin", global: "quick.nameGlobal" };
 
-const SIGNING = { ssh: "signs commits with SSH", gpg: "signs commits with GPG", none: "never signs" };
+const SIGNING = { ssh: "quick.signsSSH", gpg: "quick.signsGPG", none: "quick.neverSigns" };
 
 // quickView shows the proposal. ctx gives the wizard state and its actions:
 // get() returns the current state (handlers must read it when they run, not
@@ -23,8 +21,8 @@ const SIGNING = { ssh: "signs commits with SSH", gpg: "signs commits with GPG", 
 export function quickView(ctx) {
   const wizard = ctx.get();
   const included = wizard.profiles.filter((p) => p.include);
-  const apply = h("button", { type: "submit", class: "primary", disabled: included.length === 0 }, "Apply");
-  const adjust = h("button", { type: "button", onclick: () => ctx.update({ step: 0 }) }, "Adjust step by step");
+  const apply = h("button", { type: "submit", class: "primary", disabled: included.length === 0 }, t("apply.apply"));
+  const adjust = h("button", { type: "button", onclick: () => ctx.update({ step: 0 }) }, t("quick.adjust"));
   const preview = filesPreview(ctx);
   // Every choice changes the files, so an open preview follows it.
   const set = (next) => {
@@ -32,18 +30,17 @@ export function quickView(ctx) {
     preview.refresh();
   };
   const form = h("form", { class: "stack" },
-    h("h3", { tabindex: "-1" }, "Your setup is ready"),
+    h("h3", { tabindex: "-1" }, t("quick.ready")),
     h("p", { class: "muted" }, foundText(wizard)),
     scanLimitNotice(wizard),
     githubNotice(wizard),
-    wizard.scanTooDeep ? h("p", { class: "muted" }, "Repositories nested more than five folders deep were not looked at; " +
-      "add their directories under Adjust step by step.") : null,
+    wizard.scanTooDeep ? h("p", { class: "muted" }, t("quick.tooDeep")) : null,
     included.length === 0
-      ? h("div", { class: "notice warn" }, "No profile is chosen. Use Adjust step by step to choose at least one.")
+      ? h("div", { class: "notice warn" }, t("quick.noneChosen"))
       : h("div", { class: "grid" }, included.map((p) => profileSummary(p, p.key === wizard.defaultKey))),
     outsideText(wizard),
     leftOutChoices(ctx.get, ctx.set, () => ctx.update({})),
-    wizard.shadowed?.length ? h("div", { class: "notice warn" }, badge("warn"), " These folders change:",
+    wizard.shadowed?.length ? h("div", { class: "notice warn" }, badge("warn"), " ", t("quick.foldersChange"),
       h("ul", {}, wizard.shadowed.map((text) => h("li", {}, text)))) : null,
     wizard.unassigned.length > 0 ? ctx.unassigned() : null,
     pinChoices(ctx.get, set),
@@ -59,28 +56,26 @@ export function quickView(ctx) {
 }
 
 function foundText(wizard) {
-  const where = wizard.roots ? `, and the repositories in ${wizard.roots}` : "";
-  return `GitPersona looked at the accounts signed in to gh, your Git settings, ~/.ssh/config${where}, ` +
-    "and put them together below. Nothing is written until you apply; your files are backed up first.";
+  return wizard.roots ? t("quick.foundWithRoots", { roots: wizard.roots }) : t("quick.found");
 }
 
 function profileSummary(p, isDefault) {
   const dirs = p.dirs.filter((d) => d.on);
-  return h("article", { class: "card", "aria-label": `Profile ${p.id}` },
-    h("div", { class: "card-head" }, h("h4", {}, p.id), isDefault ? badge("info", "Default") : null),
+  return h("article", { class: "card", "aria-label": t("quick.profileLabel", { id: p.id }) },
+    h("div", { class: "card-head" }, h("h4", {}, p.id), isDefault ? badge("info", t("account.default")) : null),
     h("p", {}, `${p.name} <${p.email}>`),
-    onGitHub(p) ? null : h("p", { class: "muted" }, `Account ${accountLabel(p)}`),
-    NAME_NOTES[p.name_source] ? h("p", { class: "muted" }, NAME_NOTES[p.name_source]) : null,
-    p.ssh_key ? h("p", { class: "muted" }, "SSH key ", h("span", { class: "mono" }, p.ssh_key)) : null,
-    p.signing?.method ? h("p", { class: "muted" }, SIGNING[p.signing.method] ?? p.signing.method) : null,
-    dirs.length === 0 ? h("p", { class: "empty" }, "No directories yet; add them under Adjust or later with gitpersona use.")
+    onGitHub(p) ? null : h("p", { class: "muted" }, t("quick.account", { account: accountLabel(p) })),
+    NAME_NOTES[p.name_source] ? h("p", { class: "muted" }, t(NAME_NOTES[p.name_source])) : null,
+    p.ssh_key ? h("p", { class: "muted" }, t("fact.sshKey"), " ", h("span", { class: "mono" }, p.ssh_key)) : null,
+    p.signing?.method ? h("p", { class: "muted" }, SIGNING[p.signing.method] ? t(SIGNING[p.signing.method]) : p.signing.method) : null,
+    dirs.length === 0 ? h("p", { class: "empty" }, t("quick.noDirs"))
       : h("ul", { class: "dirs" }, dirs.map((d) => h("li", {}, h("span", { class: "mono" }, d.dir), h("span", { class: "muted" }, ` · ${d.why}`)))),
     profileNotes(p));
 }
 
 // profileNotes says what of the existing setup was left out of a profile.
 export function profileNotes(p) {
-  return (p.notes ?? []).map((note) => h("p", { class: "muted" }, badge("warn"), ` ${note}.`));
+  return (p.notes ?? []).map((note) => h("p", { class: "muted" }, badge("warn"), ` ${note}`));
 }
 
 // leftOutChoices lists the identities of the existing setup that no account
@@ -92,16 +87,14 @@ export function leftOutChoices(get, set, redraw) {
   // A profile that already has an identity of the setup keeps it.
   const chosen = wizard.profiles.map((p, i) => [p, i]).filter(([p]) => p.include && p.source !== "existing");
   return h("div", { class: "notice warn" },
-    h("p", {}, badge("warn"), " GitPersona could not tie these identities of your Git configuration to an account signed in to gh. " +
-      "Choose an account to make one a profile:"),
+    h("p", {}, badge("warn"), " ", t("quick.unmatched")),
     h("ul", {}, wizard.unmatched.map((u, k) => h("li", {},
-      `${u.name || "(no name)"} <${u.email}> · ${u.dirs.join(", ")} (${u.source})`,
+      `${u.name || t("quick.noName")} <${u.email}> · ${u.dirs.join(", ")} (${u.source})`,
       u.overridden_by || wizard.defaultKey
-        ? h("p", {}, `${u.overridden_by ? `Profile ${u.overridden_by}` : "The default profile"} applies there instead, ` +
-          "because GitPersona's rules come after yours.")
-        : h("p", {}, "Your rule keeps applying there.",
-          u.replaced_in?.length ? ` Except in ${u.replaced_in.join(", ")}, which go to profiles.` : ""),
-      chosen.length === 0 ? h("p", {}, "Every chosen profile already uses an identity of your setup.")
+        ? h("p", {}, u.overridden_by ? t("quick.overriddenBy", { id: u.overridden_by }) : t("quick.overriddenByDefault"))
+        : h("p", {}, t("quick.ruleKeeps"),
+          u.replaced_in?.length ? t("quick.exceptIn", { dirs: u.replaced_in.join(", ") }) : ""),
+      chosen.length === 0 ? h("p", {}, t("quick.allUsed"))
         : accountSelect(u, chosen, (i) => {
           set(adoptIdentity(get(), k, i));
           redraw();
@@ -110,9 +103,9 @@ export function leftOutChoices(get, set, redraw) {
 
 // accountSelect chooses the profile for a left-out identity.
 function accountSelect(u, chosen, onChoose) {
-  const select = h("select", { "aria-label": `Account for ${u.email}` },
-    h("option", { value: "" }, "Leave it out"),
-    chosen.map(([p, i]) => h("option", { value: String(i) }, `Use it for ${accountLabel(p)}`)));
+  const select = h("select", { "aria-label": t("quick.accountFor", { email: u.email }) },
+    h("option", { value: "" }, t("quick.leaveOut")),
+    chosen.map(([p, i]) => h("option", { value: String(i) }, t("quick.useFor", { account: accountLabel(p) }))));
   select.addEventListener("change", () => {
     if (select.value !== "") onChoose(Number(select.value));
   });
@@ -134,7 +127,7 @@ function adoptIdentity(w, k, i) {
     ssh_key: u.ssh_key || p.ssh_key,
     signing: u.signing?.method ? u.signing : p.signing,
     dirs: [...p.dirs, ...u.dirs.filter((d) => !p.dirs.some((x) => x.dir === d))
-      .map((d) => ({ dir: d, on: true, why: "your existing setup" }))],
+      .map((d) => ({ dir: d, on: true, why: t("why.existing") }))],
   }));
   const dirs = [...w.oldRules.dirs, ...u.replaceable.filter((d) => !w.oldRules.dirs.includes(d))];
   return { ...w, profiles, unmatched: w.unmatched.filter((_, j) => j !== k), oldRules: { ...w.oldRules, dirs } };
@@ -144,29 +137,27 @@ function adoptIdentity(w, k, i) {
 function outsideText(wizard) {
   const chosen = wizard.profiles.find((p) => p.include && p.key === wizard.defaultKey);
   const g = wizard.global ?? {};
-  const today = g.email ? `${g.name || "(no name)"} <${g.email}>` : "";
+  const today = g.email ? `${g.name || t("quick.noName")} <${g.email}>` : "";
   if (!chosen) {
-    return h("p", { class: "muted" }, today ? `Outside these directories, commits keep using ${today}` : "Outside these directories, Git's own settings apply",
-      wizard.ownRules?.length ? ", and your own includeIf rules keep applying. A default profile would override them everywhere." : ".");
+    return h("p", { class: "muted" }, today ? t("quick.outsideKeep", { who: today }) : t("quick.outsideGit"),
+      wizard.ownRules?.length ? t("quick.outsideOwnRules") : t("quick.period"));
   }
-  return h("p", { class: "muted" }, `Outside these directories, commits use ${chosen.id} (${chosen.name} <${chosen.email}>)`,
-    today ? ` instead of ${today} (choose "No default" under Adjust to keep it).` : ".");
+  return h("p", { class: "muted" }, t("quick.outsideUse", { id: chosen.id, who: `${chosen.name} <${chosen.email}>` }),
+    today ? t("quick.insteadOf", { who: today }) : t("quick.period"));
 }
 
 // githubNotice says why no GitHub profile is proposed, when gh could not
 // be asked but other hosts' profiles are.
 function githubNotice(wizard) {
   if (!wizard.githubUnavailable) return null;
-  return h("div", { class: "notice warn" }, badge("warn"), ` GitHub accounts were not looked up: ${wizard.githubUnavailable}`);
+  return h("div", { class: "notice warn" }, badge("warn"), " ", t("quick.githubUnavailable", { why: wizard.githubUnavailable }));
 }
 
 // scanLimitNotice says which folders the scan did not finish, if any.
 export function scanLimitNotice(wizard) {
   if (!wizard.scanIncomplete) return null;
-  const where = wizard.scanUnfinished?.length ? ` before it finished ${wizard.scanUnfinished.join(", ")}` : "";
-  return h("div", { class: "notice warn" }, badge("warn"),
-    ` Looking for repositories stopped at its time limit${where}, so repositories it did not reach are not included. ` +
-    "Add their folders to a profile.");
+  return h("div", { class: "notice warn" }, badge("warn"), " ",
+    wizard.scanUnfinished?.length ? t("quick.scanStoppedIn", { dirs: wizard.scanUnfinished.join(", ") }) : t("quick.scanStopped"));
 }
 
 // pinNeeded reports whether a pin changes anything: one for a repository
@@ -184,7 +175,7 @@ export function onGitHub(p) {
 // accountLabel names a profile's account, with its host when that is not
 // GitHub.
 export function accountLabel(p) {
-  return onGitHub(p) ? p.account : `${p.account} on ${p.host}`;
+  return onGitHub(p) ? p.account : t("account.onHost", { account: p.account, host: p.host });
 }
 
 // pinChoices lists repositories whose own settings name another profile
@@ -193,13 +184,13 @@ export function pinChoices(get, set) {
   const wizard = get();
   if (!wizard.pins.some((pin) => pinNeeded(wizard, pin))) return null;
   return h("fieldset", {},
-    h("legend", {}, "Repositories that differ from their folder"),
+    h("legend", {}, t("quick.pinsLegend")),
     wizard.pins.map((pin, k) => {
       if (!pinNeeded(wizard, pin)) return null; // the default already gives it this profile
       const box = h("input", { type: "checkbox", checked: pin.on });
       box.addEventListener("change", () => toggle(get, set, "pins", k, box.checked));
-      const id = wizard.profiles.find((p) => p.key === pin.key)?.id ?? "a profile you left out";
-      return h("label", { class: "check" }, box, h("span", {}, "Pin ", h("span", { class: "mono" }, pin.repo), ` to ${id}`),
+      const id = wizard.profiles.find((p) => p.key === pin.key)?.id ?? t("quick.leftOutProfile");
+      return h("label", { class: "check" }, box, h("span", {}, t("quick.pinBefore"), h("span", { class: "mono" }, pin.repo), t("quick.pinTo", { id })),
         h("span", { class: "muted" }, ` · ${pin.why}`));
     }));
 }
@@ -215,14 +206,12 @@ export function oldRulesChoice(get, set) {
     set({ ...w, oldRules: { ...w.oldRules, on: box.checked } });
   });
   return h("fieldset", {},
-    h("legend", {}, "Your old setup"),
-    oldRules.dirs.length > 0 ? h("label", { class: "check" }, box,
-      `Remove the includeIf rules for ${oldRules.dirs.join(", ")} from your Git configuration; the profiles take them over`) : null,
+    h("legend", {}, t("quick.oldSetup")),
+    oldRules.dirs.length > 0 ? h("label", { class: "check" }, box, t("quick.removeOldRules", { dirs: oldRules.dirs.join(", ") })) : null,
     oldRules.kept.map((k) => k.overridden_by
-      ? h("p", {}, badge("warn"), ` Your includeIf rule for ${k.dir} does more than a profile can (${k.why}), ` +
-        `but profile ${k.overridden_by} applies there, so that is lost.`)
-      : h("p", { class: "muted" }, `Your includeIf rule for ${k.dir} stays in charge there: ${k.why}.`,
-        k.replaced_in?.length ? ` Except in ${k.replaced_in.join(", ")}, which go to profiles.` : "")));
+      ? h("p", {}, badge("warn"), " ", t("quick.keptLost", { dir: k.dir, why: k.why, id: k.overridden_by }))
+      : h("p", { class: "muted" }, t("quick.keptStays", { dir: k.dir, why: k.why }),
+        k.replaced_in?.length ? t("quick.exceptIn", { dirs: k.replaced_in.join(", ") }) : "")));
 }
 
 // shellChoices offers the shell integration, chosen by default.
@@ -230,11 +219,11 @@ export function shellChoices(get, set) {
   const wizard = get();
   if (wizard.shells.length === 0) return null;
   return h("fieldset", {},
-    h("legend", {}, "Shell"),
+    h("legend", {}, t("quick.shell")),
     wizard.shells.map((sh, k) => {
       const box = h("input", { type: "checkbox", checked: sh.on });
       box.addEventListener("change", () => toggle(get, set, "shells", k, box.checked));
-      return h("label", { class: "check" }, box, `Load GitPersona in ${sh.kind}, so gh and your prompt follow the directory`);
+      return h("label", { class: "check" }, box, t("quick.loadShell", { shell: sh.kind }));
     }));
 }
 
@@ -247,8 +236,8 @@ function toggle(get, set, list, k, on) {
 // filesPreview loads the diffs only when asked, so the page opens at once;
 // refresh loads them again while they are shown.
 function filesPreview(ctx) {
-  const body = h("div", {}, h("p", { class: "muted" }, "Loading…"));
-  const element = h("details", { class: "change" }, h("summary", {}, "Show the files that change"), body);
+  const body = h("div", {}, h("p", { class: "muted" }, t("quick.loading")));
+  const element = h("details", { class: "change" }, h("summary", {}, t("quick.showFiles")), body);
   let latest = 0; // only the newest answer is shown
   const load = () => {
     const asked = ++latest;
@@ -256,7 +245,7 @@ function filesPreview(ctx) {
     api.setupPreview(ctx.planOf(ctx.get())).then(({ data }) => {
       if (asked !== latest) return;
       replace(body, data.map((c) => h("details", { class: "change" },
-        h("summary", {}, badge(c.action === "create" ? "info" : "warn", c.action === "create" ? "New file" : "Changed"),
+        h("summary", {}, badge(c.action === "create" ? "info" : "warn", c.action === "create" ? t("file.new") : t("file.changed")),
           h("span", { class: "mono" }, c.path)),
         diffBlock(c.diff))));
     }).catch((err) => {

@@ -25,8 +25,8 @@ func TestRepositoriesPageShowsWhoCommitsAndPushesWhere(t *testing.T) {
 	var page string
 	b.eval(`return document.querySelector("#view").textContent`, &page)
 	for _, want := range []string{
-		"1 with problems", "1 with notes", "2 unconfirmed",
-		"work · demo-work · Demo Worker <worker@demo.example>",
+		"1 problem", "1 note", "2 unconfirmed",
+		"demo-work · ",
 		"~/code/work/web", "someone@else.example",
 		"pushes as demo-work",
 		"chosen by credential.username in the repository",

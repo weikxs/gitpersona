@@ -89,8 +89,8 @@ func TestEverydayEditsConfirmMovesAndRefuseMissingKeys(t *testing.T) {
 
 	// R4-06: a restore is reported as a restore.
 	click(b, "article.card form.stack button[type=button]") // Cancel
-	setValue(b, "#view form.row select", "work")
-	b.eval(`document.querySelector("#view form.row").requestSubmit()`, nil)
+	setValue(b, "#view form.default-form select", "work")
+	b.eval(`document.querySelector("#view form.default-form").requestSubmit()`, nil)
 	waitStatus(b, "Default profile is now work")
 	goTo(b, "backups")
 	b.waitFor("the backups", `document.querySelector("#view ul.rows li button")`)

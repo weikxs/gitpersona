@@ -1,16 +1,16 @@
 // Review & apply: shows every file apply would change, as a diff, before
 // anything is written. Removing files needs an extra confirmation.
 
+import { t, tn } from "../i18n.js";
 import { api } from "../api.js";
 import { h, replace, badge, busy, confirm } from "../dom.js";
 
-const ACTION_BADGES = { create: ["info", "New file"], update: ["warn", "Changed"], remove: ["fail", "Removed"] };
+const ACTION_BADGES = { create: ["info", "file.new"], update: ["warn", "file.changed"], remove: ["fail", "file.removed"] };
 
 export function renderApply(section, { run }) {
-  const body = h("div", { "aria-busy": "true" }, h("p", {}, "Comparing with the files on disk…"));
+  const body = h("div", { "aria-busy": "true" }, h("p", {}, t("apply.comparing")));
   section.append(
-    h("p", { class: "muted" }, "GitPersona writes Git's configuration from your profiles. " +
-      "Review the changes below; your files are backed up before anything is written."),
+    h("p", { class: "lead" }, t("apply.lead")),
     body);
   load(body, run);
 }
@@ -27,16 +27,16 @@ async function load(body, run) {
 
 function preview(changes, run) {
   if (changes.length === 0) {
-    return h("div", { class: "notice ok" }, badge("ok", "Up to date"), " Git's configuration already matches your profiles.");
+    return h("div", { class: "notice ok" }, badge("ok", t("apply.upToDate")), " ", t("apply.matches"));
   }
   const removals = changes.filter((c) => c.action === "remove");
-  const button = h("button", { type: "button", class: "primary" }, `Apply ${changes.length} change${changes.length === 1 ? "" : "s"}`);
+  const button = h("button", { type: "button", class: "primary" }, tn(changes.length, "apply.buttonOne", "apply.buttonMany"));
   button.addEventListener("click", () => busy(button, async () => {
-    if (removals.length > 0 && !(await confirm("Remove files?",
-      `Applying removes ${removals.map((c) => c.path).join(", ")}. They are backed up first.`, "Apply"))) {
+    if (removals.length > 0 && !(await confirm(t("apply.removeAsk"),
+      t("apply.removeText", { files: removals.map((c) => c.path).join(", ") }), t("apply.apply")))) {
       return;
     }
-    await run(() => api.apply(true), "Applied. Git now uses your profiles.");
+    await run(() => api.apply(true), t("apply.done"));
   }));
   return h("div", {},
     changes.map((c, i) => change(c, i === 0)),
@@ -46,7 +46,7 @@ function preview(changes, run) {
 function change(c, open) {
   const [kind, label] = ACTION_BADGES[c.action] ?? ["info", c.action];
   return h("details", { class: "change", open },
-    h("summary", {}, badge(kind, label), h("span", { class: "mono" }, c.path)),
+    h("summary", {}, badge(kind, t(label)), h("span", { class: "mono" }, c.path)),
     diffBlock(c.diff));
 }
 
@@ -54,7 +54,7 @@ function change(c, open) {
 // so additions and removals are clear without color.
 export function diffBlock(diff) {
   const lines = diff.replace(/\n$/, "").split("\n");
-  return h("pre", { class: "diff", tabindex: "0", "aria-label": "Changes" },
+  return h("pre", { class: "diff", tabindex: "0", "aria-label": t("file.changes") },
     lines.map((line) => h("span", { class: lineClass(line) }, line || " ")));
 }
 

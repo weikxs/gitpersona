@@ -56,6 +56,8 @@ func TestPageMarkupWorksUnderTheStrictCSP(t *testing.T) {
 func TestPageLoadsNothingFromOutside(t *testing.T) {
 	external := regexp.MustCompile(`(?i)(https?:)?//[a-z0-9.-]+\.[a-z]{2,}|@import|url\(\s*['"]?(https?:|//)`)
 	for name, content := range staticFiles(t) {
+		// The SVG namespace names a vocabulary; nothing is loaded from it.
+		content = strings.ReplaceAll(content, `"http://www.w3.org/2000/svg"`, "")
 		if m := external.FindString(content); m != "" {
 			t.Errorf("%s refers to an outside resource: %q", name, m)
 		}

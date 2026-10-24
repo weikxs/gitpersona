@@ -96,3 +96,67 @@ func showTerminal(b *browser, text string, dark bool) {
 	b.call("Page.navigate", map[string]any{"url": "data:text/html;charset=utf-8," + url.PathEscape(page)})
 	b.waitFor("the terminal", `document.querySelector("pre")`)
 }
+
+// dashboardConfig has an account with two identities (two author names),
+// as when folders commit under different names.
+const dashboardConfig = `version = 1
+
+[[profile]]
+id      = "work"
+account = "demo-work"
+name    = "Demo Worker"
+email   = "worker@demo.example"
+dirs    = ["~/code/work"]
+
+[[profile]]
+id      = "work-infra"
+account = "demo-work"
+name    = "demo_worker"
+email   = "worker@demo.example"
+dirs    = ["~/code/infra"]
+
+[[profile]]
+id      = "personal"
+account = "demo-personal"
+name    = "Demo Person"
+email   = "102+demo-personal@users.noreply.github.com"
+dirs    = ["~/code/fun"]
+`
+
+// TestDashboardScreenshots draws the overview and the accounts page in both
+// languages and both themes (GITPERSONA_SHOTS).
+func TestDashboardScreenshots(t *testing.T) {
+	if os.Getenv("GITPERSONA_SHOTS") == "" {
+		t.Skip("set GITPERSONA_SHOTS to a folder to draw the pictures")
+	}
+	s := newSandbox(t, false)
+	s.write(".config/gitpersona/config.toml", dashboardConfig, 0o600)
+	s.repo("code/infra/terraform", "https://github.com/demo-work/terraform.git")
+	s.run("apply")
+	link, _ := s.start("ui")
+	b := startBrowser(t)
+	b.viewport(1280, 900, false)
+	b.open(link)
+	base, _, _ := strings.Cut(link, "?")
+	for _, lang := range []string{"zh", "en"} {
+		// The language is read when the page loads.
+		b.eval(fmt.Sprintf(`localStorage.setItem("gitpersona-lang", %q)`, lang), nil)
+		b.call("Page.reload", map[string]any{})
+		b.waitFor("the page", `document.querySelector("#view section h2")`)
+		for _, dark := range []bool{false, true} {
+			b.viewport(1280, 1000, dark)
+			b.call("Page.navigate", map[string]any{"url": base + "#overview"})
+			b.waitFor("the numbers", `document.querySelectorAll(".stat.pending").length === 0 && document.querySelector(".stat")`)
+			b.screenshot("overview-" + lang + suffix(dark))
+			goTo(b, "profiles")
+			b.waitFor("the accounts", `document.querySelector(".persona")`)
+			b.screenshot("accounts-" + lang + suffix(dark))
+		}
+	}
+	b.viewport(390, 844, false)
+	goTo(b, "overview")
+	b.waitFor("the numbers", `document.querySelectorAll(".stat.pending").length === 0 && document.querySelector(".stat")`)
+	checkFits(b, "the overview on a phone")
+	b.screenshot("overview-phone")
+	b.checkClean()
+}
