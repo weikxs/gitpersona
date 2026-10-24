@@ -88,7 +88,7 @@ With the shell integration, `gh` and `glab` follow the same rules.
 
 ## Install
 
-**With Go** (1.25 or newer):
+**With Go** (1.26 or newer):
 
 ```sh
 go install github.com/weikxs/gitpersona/cmd/gitpersona@latest
@@ -103,11 +103,15 @@ make build
 ./bin/gitpersona version   # then put bin/gitpersona on your PATH
 ```
 
-**Homebrew** (with the first release):
+**Homebrew** (macOS, with the first release):
 
 ```sh
 brew install weikxs/tap/gitpersona
 ```
+
+The binary is not signed by Apple yet, so the cask removes macOS's quarantine flag from it after installing; see
+[SECURITY.md](SECURITY.md). On Linux, use `go install` above or the archives on the
+[releases page](https://github.com/weikxs/gitpersona/releases).
 
 ## Quick start
 

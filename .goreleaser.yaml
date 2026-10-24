@@ -60,3 +60,12 @@ homebrew_casks:
     homepage: https://github.com/weikxs/gitpersona
     description: Git profiles that follow your directories
     license: MIT
+    # The binary is not signed or notarized, so Gatekeeper would refuse it
+    # ("is damaged and cannot be opened"); remove the quarantine bit that
+    # Homebrew sets on download. See SECURITY.md.
+    hooks:
+      post:
+        install_steps: |
+          on_macos do
+            run "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "{{ .StagedPath }}/gitpersona"]
+          end

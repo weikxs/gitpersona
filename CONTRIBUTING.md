@@ -5,7 +5,7 @@ Thanks for helping! This page is the short version; the full rules are in
 
 ## Set up
 
-Requirements: Go 1.25+, Git, Make. Optional: `golangci-lint` and `goreleaser` (`brew install golangci-lint goreleaser`).
+Requirements: Go 1.26+, Git, Make. Optional: `golangci-lint` and `goreleaser` (`brew install golangci-lint goreleaser`).
 
 ```sh
 git clone https://github.com/weikxs/gitpersona.git
