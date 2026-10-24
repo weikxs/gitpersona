@@ -3,7 +3,7 @@ package i18n
 // Messages of internal/app/doctor_files.go, check_ssh.go, gitversion.go,
 // helpers.go and auth.go.
 func init() {
-	register(ZH, map[string]string{ //nolint:gosec // translated messages mention tokens, not credentials
+	register(map[string]string{ //nolint:gosec // translated messages mention tokens, not credentials
 		// doctor_files.go
 		"SSH key %s":     "SSH 密钥 %s",
 		"signing key %s": "签名密钥 %s",

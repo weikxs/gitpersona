@@ -2,7 +2,7 @@ package i18n
 
 // Messages of internal/app/doctor.go.
 func init() {
-	register(ZH, map[string]string{
+	register(map[string]string{
 		"%v":                        "%v",
 		"Fixing: %s":                "正在修复：%s",
 		"could not fix it: %v":      "无法修复：%v",

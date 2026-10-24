@@ -2,7 +2,7 @@ package i18n
 
 // Messages of internal/backup.
 func init() {
-	register(ZH, map[string]string{
+	register(map[string]string{
 		"create backup directory: %w":                     "创建备份目录失败：%w",
 		"encode backup manifest: %w":                      "编码备份清单失败：%w",
 		"create snapshot %s: %w":                          "创建快照 %s 失败：%w",

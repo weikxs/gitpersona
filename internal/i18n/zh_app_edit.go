@@ -3,7 +3,7 @@ package i18n
 // Messages of internal/app/apply.go, edit.go, maintenance.go,
 // profile_cmd.go, shim.go and env.go.
 func init() {
-	register(ZH, map[string]string{ //nolint:gosec // translated messages mention tokens, not credentials
+	register(map[string]string{ //nolint:gosec // translated messages mention tokens, not credentials
 		// apply.go
 		"Everything is already up to date.": "一切都已是最新。",
 		"Nothing was written (dry run).":    "没有写入任何内容（试运行）。",
@@ -23,8 +23,7 @@ func init() {
 		"%s: %w. Open the file and keep exactly one pair of the lines %q and %q (or delete both), then run `gitpersona apply` again":                         "%s：%w。请打开该文件，只保留一对 %q 和 %q 行（或把两行都删掉），然后重新运行 `gitpersona apply`",
 		"%s is read-only, so the old includeIf rules cannot be removed; make it writable (chmod u+w) or keep them (setup --keep-old-rules)":                  "%s 是只读的，所以无法删除旧的 includeIf 规则；请让它可写（chmod u+w），或保留它们（setup --keep-old-rules）",
 		"%s is read-only; make it writable (chmod u+w), or add these lines at its end yourself (keep the marker lines so GitPersona recognizes them):\n\n%s": "%s 是只读的；请让它可写（chmod u+w），或自行把下面几行加到文件末尾（保留标记行，GitPersona 才能认出它们）：\n\n%s",
-		"remove %s: %w": "删除 %s 失败：%w",
-		"link %s: %w":   "链接 %s 失败：%w",
+		"link %s: %w": "链接 %s 失败：%w",
 
 		// edit.go
 		"%s already uses profile %s through %s; nothing to change.": "%s 已在使用配置文件 %s（通过 %s），无需更改。",
@@ -66,6 +65,5 @@ func init() {
 		"find gitpersona executable: %w":         "无法找到 gitpersona 可执行文件：%w",
 		"read global Git setting %s from %s: %w": "读取全局 Git 设置 %s（来自 %s）失败：%w",
 		"read Git settings %s (%s): %w":          "读取 Git 设置 %s（%s）失败：%w",
-		"read %s: %w":                            "读取 %s 失败：%w",
 	})
 }

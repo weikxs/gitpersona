@@ -2,7 +2,7 @@ package i18n
 
 // Messages of internal/app/shells.go, shell_cmd.go and glab.go.
 func init() {
-	register(ZH, map[string]string{
+	register(map[string]string{
 		// shells.go: `gitpersona shells`
 		"default  %s":                    "默认  %s",
 		"your login shell":               "你的登录 shell",

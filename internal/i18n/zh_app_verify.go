@@ -2,7 +2,7 @@ package i18n
 
 // Messages of internal/app/verify*.go, whoami.go, state.go and list.go.
 func init() {
-	register(ZH, map[string]string{ //nolint:gosec // translated messages mention tokens, not credentials
+	register(map[string]string{ //nolint:gosec // translated messages mention tokens, not credentials
 		// verify.go
 		"commits use %s, not the profile's %s: %s": "提交使用的是 %s，而不是配置文件的 %s：%s",
 		"no author": "没有作者",
@@ -76,7 +76,6 @@ func init() {
 		"the GitHub CLI (gh) is not installed": "未安装 GitHub CLI（gh）",
 
 		// list.go
-		"%s (default)":      "%s（默认）",
 		"%s  %s on %s <%s>": "%s  %s，位于 %s <%s>",
 		"  dir %s":          "  目录 %s",
 		"  pin %s":          "  钉住 %s",

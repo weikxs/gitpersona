@@ -4,7 +4,7 @@ package i18n
 // setup_claim.go, setup_auto.go, old_rules.go, global_files.go and
 // gh_switchers.go.
 func init() {
-	register(ZH, map[string]string{
+	register(map[string]string{
 		// setup.go: what `gitpersona setup` and the setup page say.
 		"%s already exists; change it on the configuration page (`gitpersona ui`), with `gitpersona use` and `gitpersona pin`, " +
 			"or by hand (after `gitpersona uninstall`, `gitpersona apply` sets GitPersona up again from it)": "%s 已存在；请在配置页（`gitpersona ui`）中修改，或使用 `gitpersona use` 和 `gitpersona pin`，" +
@@ -63,7 +63,6 @@ func init() {
 		"account %s on %s (%s)": "账户 %s，位于 %s（%s）",
 		"(the account shows no public name, so the name is its login)":             "（该账户没有公开姓名，所以姓名使用它的登录名）",
 		"(your includeIf setup sets no name, so the name is your global Git name)": "（你的 includeIf 设置没有指定姓名，所以姓名使用你的全局 Git 姓名）",
-		"SSH key %s":                "SSH 密钥 %s",
 		"signs commits (%s)":        "提交会签名（%s）",
 		"%s  (your existing setup)": "%s（你现有的设置）",
 		"%s  (%s)":                  "%s（%s）",

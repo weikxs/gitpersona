@@ -2,7 +2,7 @@ package i18n
 
 // Messages of internal/config.
 func init() {
-	register(ZH, map[string]string{
+	register(map[string]string{
 		"configuration file not found":                     "找不到配置文件",
 		"%w: %s":                                           "%w：%s",
 		"read %s: %w":                                      "读取 %s 失败：%w",

@@ -78,14 +78,14 @@ func TestRegisteringATranslationTwiceIsAMistake(t *testing.T) {
 			t.Error("registering the same message twice should panic")
 		}
 	}()
-	register(ZH, map[string]string{"once": "又一次"})
+	register(map[string]string{"once": "又一次"})
 }
 
 func withCatalog(t *testing.T, entries map[string]string) func() {
 	t.Helper()
 	saved := catalogs[ZH]
 	catalogs[ZH] = map[string]string{}
-	register(ZH, entries)
+	register(entries)
 	return func() { catalogs[ZH] = saved }
 }
 

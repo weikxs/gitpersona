@@ -43,13 +43,14 @@ func Parse(tag string) Lang {
 // the English format string.
 var catalogs = map[Lang]map[string]string{ZH: {}}
 
-// register adds translations; a format registered twice is a mistake.
-func register(l Lang, entries map[string]string) {
+// register adds Chinese translations (the only language besides English);
+// a format registered twice is a mistake.
+func register(entries map[string]string) {
 	for format, translated := range entries {
-		if _, dup := catalogs[l][format]; dup {
-			panic("i18n: " + string(l) + " translation registered twice: " + format)
+		if _, dup := catalogs[ZH][format]; dup {
+			panic("i18n: translation registered twice: " + format)
 		}
-		catalogs[l][format] = translated
+		catalogs[ZH][format] = translated
 	}
 }
 
