@@ -9,10 +9,12 @@ import { renderApply } from "./views/apply.js";
 import { renderShells } from "./views/shells.js";
 import { renderBackups } from "./views/backups.js";
 import { renderSetup } from "./views/setup.js";
+import { renderRepositories } from "./views/repositories.js";
 
 const VIEWS = {
   overview: { title: "Overview", render: renderOverview },
   profiles: { title: "Profiles", render: renderProfiles, needsConfig: true },
+  repositories: { title: "Repositories", render: renderRepositories, needsConfig: true },
   apply: { title: "Review & apply", render: renderApply, needsConfig: true },
   shells: { title: "Shells", render: renderShells },
   backups: { title: "Backups", render: renderBackups },

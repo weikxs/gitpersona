@@ -122,6 +122,12 @@ func RemoteHostOwner(url string) (host, owner string) {
 	return host, owner
 }
 
+// RemoteParts returns the host (possibly an SSH alias), the owner and the
+// user name an http(s) remote URL names. A password is never returned.
+func RemoteParts(url string) (host, owner, user string) {
+	return parseRemote(url)
+}
+
 // hostPort returns the port of host:port, or "".
 func hostPort(h string) string {
 	_, port, _ := strings.Cut(h, ":")

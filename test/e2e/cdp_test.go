@@ -329,6 +329,26 @@ func (b *browser) viewport(width, height int, dark bool) {
 	})
 }
 
+// screenshot saves the page as name.png in $GITPERSONA_SHOTS, when set; the
+// README's pictures come from these demo pages.
+func (b *browser) screenshot(name string) {
+	b.t.Helper()
+	dir := os.Getenv("GITPERSONA_SHOTS")
+	if dir == "" {
+		return
+	}
+	raw := b.call("Page.captureScreenshot", map[string]any{"format": "png", "captureBeyondViewport": true})
+	var shot struct {
+		Data []byte `json:"data"`
+	}
+	if err := json.Unmarshal(raw, &shot); err != nil {
+		b.t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, name+".png"), shot.Data, 0o600); err != nil {
+		b.t.Fatal(err)
+	}
+}
+
 // checkClean fails the test for script errors, console errors or CSP
 // violations seen so far.
 func (b *browser) checkClean() {

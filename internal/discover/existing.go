@@ -402,7 +402,7 @@ func GitTrue(v string) bool {
 // plainSSHCommand reports whether an ssh command does no more than a
 // profile's ssh_key: ssh with -i <key> and IdentitiesOnly.
 func plainSSHCommand(command string) bool {
-	args := shellWords(command)
+	args := ShellWords(command)
 	if len(args) == 0 || args[0] != "ssh" {
 		return false
 	}
@@ -423,13 +423,14 @@ func plainSSHCommand(command string) bool {
 }
 
 func identityOption(o string) bool {
-	return strings.HasPrefix(o, "IdentitiesOnly=") || strings.HasPrefix(o, "IdentityFile=")
+	return strings.HasPrefix(o, "IdentitiesOnly=") || strings.HasPrefix(o, "IdentityFile=") ||
+		o == "ControlPath=none" || o == "ControlMaster=no"
 }
 
 // sshCommandKey returns the key file an ssh command line passes with -i (or
 // -o IdentityFile=), or "".
 func sshCommandKey(command string) string {
-	args := shellWords(command)
+	args := ShellWords(command)
 	for i, a := range args {
 		switch {
 		case a == "-i" && i+1 < len(args):
@@ -447,23 +448,32 @@ func sshCommandKey(command string) string {
 	return ""
 }
 
-// shellWords splits a command line on spaces outside single or double quotes.
-func shellWords(s string) []string {
+// ShellWords splits a command line the way a POSIX shell splits plain
+// words: single and double quotes and backslashes; enough for the commands
+// Git keeps in its configuration.
+func ShellWords(line string) []string {
 	var words []string
 	var word strings.Builder
-	quote, inWord := rune(0), false
-	for _, r := range s {
+	inWord, escaped := false, false
+	var quote rune
+	for _, r := range line {
 		switch {
+		case escaped:
+			word.WriteRune(r)
+			escaped = false
 		case quote != 0 && r == quote:
 			quote = 0
-		case quote != 0:
+		case quote == '\'':
 			word.WriteRune(r)
-		case r == '\'' || r == '"':
+		case r == '\\':
+			escaped, inWord = true, true
+		case quote == 0 && (r == '\'' || r == '"'):
 			quote, inWord = r, true
-		case r == ' ' || r == '\t':
+		case quote == 0 && (r == ' ' || r == '\t' || r == '\n'):
 			if inWord {
-				words, inWord = append(words, word.String()), false
+				words = append(words, word.String())
 				word.Reset()
+				inWord = false
 			}
 		default:
 			word.WriteRune(r)

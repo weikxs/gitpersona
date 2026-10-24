@@ -14,6 +14,12 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ### Added
 
+- `gitpersona verify` and the page's **Repositories** section check every repository in the profiles' folders and
+  pins (and folders you name): the author its commits use and the account each remote pushes as (HTTPS: the account
+  the credential helper answers for; SSH: the profile that owns the key ssh offers first), next to the profile that
+  should decide. It flags commits or pushes as another identity, tokens written in remote URLs, and SSH connections
+  shared between keys; it reads only Git and SSH settings. `--ssh` (a checkbox on the page) signs in to each SSH host
+  once, as a push would, so the host names the account; ssh uses the key, GitPersona never reads it.
 - GitLab, Bitbucket and other hosts with several accounts each, like `gh` on GitHub: a profile names its account for
   its host and your own credential helper (system keychain, Git Credential Manager) answers with that account's
   token. `gitpersona auth login|logout|status` saves, removes or checks a profile's token there (hidden input, never
@@ -92,6 +98,9 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ### Fixed
 
+- A profile's SSH command turns off connection sharing (`-o ControlPath=none`): with `ControlMaster` in
+  `~/.ssh/config`, a push could reuse a connection another key had opened and push as that key's account.
+- `check-ssh` recognizes GitHub accounts with an underscore (enterprise managed users, `name_short`).
 - A repository in a profile's folder that names another signed-in account for pushes (`credential.<url>.username`,
   or `user@` in the remote URL) pushes as that account with its own `gh` token, instead of getting no token at all;
   when `gh` has no token for it, the helper stays silent as before.

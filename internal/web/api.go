@@ -62,6 +62,7 @@ func API(env app.Env, stop func()) map[string]http.HandlerFunc {
 		"POST /api/setup":           a.handle(a.setup),
 		"GET /api/discover":         a.handle(a.discover),
 		"GET /api/resolve":          a.handle(a.resolve),
+		"POST /api/verify":          a.handle(a.verify),
 		"POST /api/paths":           a.handle(a.normalizePaths),
 		"POST /api/profiles":        a.handle(a.addProfile),
 		"PATCH /api/profiles/{id}":  a.handle(a.updateProfile),
@@ -408,4 +409,31 @@ func (a api) close(_ call) (any, error) {
 		go a.stop()
 	}
 	return nil, nil
+}
+
+// maxVerifyFolders bounds the extra folders one check may scan.
+const maxVerifyFolders = 32
+
+// verifyRequest asks to check the repositories; SSH connects to each SSH
+// host as a push would, so it is a POST the page sends only when asked.
+type verifyRequest struct {
+	Dirs []string `json:"dirs"`
+	SSH  bool     `json:"ssh"`
+}
+
+func (a api) verify(c call) (any, error) {
+	var req verifyRequest
+	if err := c.decode(&req); err != nil {
+		return nil, err
+	}
+	if len(req.Dirs) > maxVerifyFolders {
+		return nil, fmt.Errorf("at most %d folders at once", maxVerifyFolders)
+	}
+	var dirs []string
+	for _, d := range req.Dirs {
+		if d = strings.TrimSpace(d); d != "" {
+			dirs = append(dirs, d)
+		}
+	}
+	return c.env.VerifyRepos(c.ctx, dirs, req.SSH)
 }

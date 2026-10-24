@@ -167,7 +167,9 @@ func writeSSH(b *strings.Builder, p config.Profile, opts Options) error {
 		return fmt.Errorf("profile %q ssh_key: %w", p.ID, err)
 	}
 	b.WriteString("[core]\n")
-	writeKV(b, "sshCommand", "ssh -i "+shellQuote(key)+" -o IdentitiesOnly=yes")
+	// ControlPath=none: a shared connection (ControlMaster in ~/.ssh/config)
+	// signed in with another key would ignore -i and push as its account.
+	writeKV(b, "sshCommand", "ssh -i "+shellQuote(key)+" -o IdentitiesOnly=yes -o ControlPath=none")
 	return nil
 }
 

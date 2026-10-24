@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -468,5 +469,33 @@ func TestSetupWithoutProfilesIsRefused(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(w.home, ".config", "gitpersona", "config.toml")); !os.IsNotExist(err) {
 		t.Error("an empty plan wrote a configuration")
+	}
+}
+
+func TestVerifyChecksTheRepositoriesAndBoundsTheFolders(t *testing.T) {
+	w := newAPIWorld(t)
+	w.call(t, "POST", "/api/apply", map[string]bool{})
+
+	var report app.VerifyReport
+	decode(t, w.call(t, "POST", "/api/verify", map[string]any{"dirs": []string{" ", "~/Desktop"}, "ssh": false}), &report)
+
+	if len(report.Repositories) == 0 || report.Counts.Problems != 0 || !slices.Contains(report.Scanned, "~/Desktop") {
+		t.Fatalf("verify = %+v", report)
+	}
+	for _, r := range report.Repositories {
+		if strings.Contains(r.Path, w.home) {
+			t.Errorf("the page shows the home path: %s", r.Path)
+		}
+	}
+
+	many := make([]string, maxVerifyFolders+1)
+	for i := range many {
+		many[i] = "~/x"
+	}
+	if resp := w.call(t, "POST", "/api/verify", map[string]any{"dirs": many}); resp.OK {
+		t.Error("too many folders should be refused")
+	}
+	if resp := w.call(t, "POST", "/api/verify", map[string]any{"dirs": []string{"relative/path"}}); resp.OK {
+		t.Error("a relative folder should be refused")
 	}
 }

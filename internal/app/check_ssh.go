@@ -25,14 +25,14 @@ const (
 
 // welcomes find the account in a host's SSH welcome message.
 var welcomes = []*regexp.Regexp{
-	regexp.MustCompile(`Hi ([A-Za-z0-9-]+)! You've successfully authenticated`), // GitHub
-	regexp.MustCompile(`Welcome to GitLab, @([A-Za-z0-9_.-]+)!`),                // GitLab
-	regexp.MustCompile(`logged in as ([A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)*)`),    // Bitbucket ("as demo.")
+	regexp.MustCompile(`Hi ([A-Za-z0-9_-]+)! You've successfully authenticated`), // GitHub (EMU logins have _)
+	regexp.MustCompile(`Welcome to GitLab, @([A-Za-z0-9_.-]+)!`),                 // GitLab
+	regexp.MustCompile(`logged in as ([A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)*)`),     // Bitbucket ("as demo.")
 }
 
 // deployKey finds GitHub's welcome for a deploy key, which names a
 // repository instead of an account.
-var deployKey = regexp.MustCompile(`Hi ([A-Za-z0-9-]+/[A-Za-z0-9._-]+)! You've successfully authenticated`)
+var deployKey = regexp.MustCompile(`Hi ([A-Za-z0-9_-]+/[A-Za-z0-9._-]+)! You've successfully authenticated`)
 
 // signedIn finds a greeting that says the key signed in, without naming
 // the account.
@@ -131,17 +131,64 @@ func (e Env) checkProfileSSH(ctx context.Context, p config.Profile) sshResult {
 	// user's SSH settings.
 	host, _ := splitHostPort(p.Host)
 	fmt.Fprintf(e.Stdout, "Connecting to %s with %s for profile %s…\n", host, e.display(key), p.ID)
+	g := e.sshGreet(ctx, []string{"-o", "IdentitiesOnly=yes", "-i", key}, host)
+	switch {
+	case g.missing:
+		fmt.Fprintln(e.Stdout, "✗ ssh not found")
+		return sshFailed
+	case g.denied != "":
+		fmt.Fprintf(e.Stdout, "✗ %s: the key did not sign in to %s: %s\n", p.ID, host, g.denied)
+		return sshFailed
+	}
+	if g.accepted != "" && !sameFile(g.accepted, key) {
+		fmt.Fprintf(e.Stdout, "✗ %s: %s did not accept %s; ssh signed in with %s from your SSH settings instead\n",
+			p.ID, host, e.display(key), e.display(g.accepted))
+		return sshWrongAccount
+	}
+	if g.deployKey != "" {
+		fmt.Fprintf(e.Stdout, "✗ %s: the key is a deploy key for %s, not the key of account %s\n", p.ID, g.deployKey, p.Account)
+		return sshWrongAccount
+	}
+	switch {
+	case g.account == "" && g.authenticated:
+		fmt.Fprintf(e.Stdout, "? %s: the key signs in to %s, but the host does not say as which account\n", p.ID, host)
+		return sshOK
+	case g.account == "":
+		fmt.Fprintf(e.Stdout, "✗ %s: the key did not sign in to %s: %s\n", p.ID, host, g.first)
+		return sshFailed
+	case !strings.EqualFold(g.account, p.Account):
+		fmt.Fprintf(e.Stdout, "✗ %s: the key signs in to %s as %s, not %s; Git pushes as %s with it\n", p.ID, host, g.account, p.Account, g.account)
+		return sshWrongAccount
+	}
+	fmt.Fprintf(e.Stdout, "✓ %s: the key signs in to %s as %s\n", p.ID, host, g.account)
+	return sshOK
+}
+
+// sshGreeting is what a host said when ssh signed in, as for a push.
+type sshGreeting struct {
+	account       string // the account the host greets
+	deployKey     string // the repository a deploy key is for
+	accepted      string // the key file the host accepted, from ssh -v
+	authenticated bool   // the key signed in
+	denied        string // why it did not sign in, or ""
+	first         string // the first line ssh printed
+	missing       bool   // ssh is not installed
+}
+
+// sshGreet connects to git@target with the extra ssh arguments and reads the
+// host's greeting. BatchMode: never ask for a passphrase or to trust a new
+// host here. -v tells which key the host accepted: ssh also offers the keys
+// ~/.ssh/config names for the host, and -i does not replace them. ssh uses
+// the key, as for a push; GitPersona never reads it.
+func (e Env) sshGreet(ctx context.Context, args []string, target string) sshGreeting {
 	ctx, cancel := context.WithTimeout(ctx, sshCheckTimeout)
 	defer cancel()
 	ssh, err := e.LookPath("ssh")
 	if err != nil {
-		fmt.Fprintln(e.Stdout, "✗ ssh not found")
-		return sshFailed
+		return sshGreeting{missing: true}
 	}
-	// BatchMode: never ask for a passphrase or to trust a new host here.
-	// -v tells which key the host accepted: ssh also offers the keys
-	// ~/.ssh/config names for the host, and -i does not replace them.
-	cmd := exec.CommandContext(ctx, ssh, "-T", "-v", "-o", "BatchMode=yes", "-o", "IdentitiesOnly=yes", "-i", key, "git@"+host)
+	argv := append([]string{"-T", "-v", "-o", "BatchMode=yes"}, args...)
+	cmd := exec.CommandContext(ctx, ssh, append(argv, "git@"+target)...)
 	cmd.WaitDelay = sshWaitDelay
 	var out bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &out
@@ -151,48 +198,34 @@ func (e Env) checkProfileSSH(ctx context.Context, p config.Profile) sshResult {
 	var exit *exec.ExitError
 	sshError := errors.As(runErr, &exit) && exit.ExitCode() == sshErrorStatus
 	text := withoutDebug(out.String())
+	g := sshGreeting{first: firstLine(text)}
 	// A refusal decides; then signing in (a greeting, or ssh saying so)
 	// does, even when the host closes without an exit status (255); only
 	// then is 255 a failure, whose reason ssh prints last.
-	authenticated := authenticatedTo.MatchString(text) || signedIn.MatchString(text) ||
+	g.authenticated = authenticatedTo.MatchString(text) || signedIn.MatchString(text) ||
 		slices.ContainsFunc(welcomes, func(w *regexp.Regexp) bool { return w.MatchString(text) })
 	switch {
 	case permissionDenied.MatchString(text):
-		fmt.Fprintf(e.Stdout, "✗ %s: the key did not sign in to %s: %s\n", p.ID, host, deniedLine(text))
-		return sshFailed
-	case sshError && !authenticated:
-		fmt.Fprintf(e.Stdout, "✗ %s: the key did not sign in to %s: %s\n", p.ID, host, lastLine(text))
-		return sshFailed
+		g.denied = deniedLine(text)
+		return g
+	case sshError && !g.authenticated:
+		g.denied = lastLine(text)
+		return g
 	}
-	if m := acceptedKey.FindStringSubmatch(out.String()); m != nil && !sameFile(m[1], key) {
-		fmt.Fprintf(e.Stdout, "✗ %s: %s did not accept %s; ssh signed in with %s from your SSH settings instead\n",
-			p.ID, host, e.display(key), e.display(m[1]))
-		return sshWrongAccount
+	if m := acceptedKey.FindStringSubmatch(out.String()); m != nil {
+		g.accepted = m[1]
 	}
 	if m := deployKey.FindStringSubmatch(text); m != nil {
-		fmt.Fprintf(e.Stdout, "✗ %s: the key is a deploy key for %s, not the key of account %s\n", p.ID, m[1], p.Account)
-		return sshWrongAccount
+		g.deployKey = m[1]
+		return g
 	}
-	account := ""
 	for _, w := range welcomes {
 		if m := w.FindStringSubmatch(text); m != nil {
-			account = m[1]
+			g.account = m[1]
 			break
 		}
 	}
-	switch {
-	case account == "" && authenticated:
-		fmt.Fprintf(e.Stdout, "? %s: the key signs in to %s, but the host does not say as which account\n", p.ID, host)
-		return sshOK
-	case account == "":
-		fmt.Fprintf(e.Stdout, "✗ %s: the key did not sign in to %s: %s\n", p.ID, host, firstLine(text))
-		return sshFailed
-	case !strings.EqualFold(account, p.Account):
-		fmt.Fprintf(e.Stdout, "✗ %s: the key signs in to %s as %s, not %s; Git pushes as %s with it\n", p.ID, host, account, p.Account, account)
-		return sshWrongAccount
-	}
-	fmt.Fprintf(e.Stdout, "✓ %s: the key signs in to %s as %s\n", p.ID, host, account)
-	return sshOK
+	return g
 }
 
 // withoutDebug drops the debug lines of ssh -v, and its notice about a

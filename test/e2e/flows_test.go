@@ -365,7 +365,7 @@ func TestEveryViewFitsPhoneAndDesktop(t *testing.T) {
 		dark          bool
 	}{{375, 812, false}, {375, 812, true}, {1280, 900, false}} {
 		b.viewport(screen.width, screen.height, screen.dark)
-		for _, section := range []string{"overview", "profiles", "apply", "shells", "backups", "setup"} {
+		for _, section := range []string{"overview", "profiles", "repositories", "apply", "shells", "backups", "setup"} {
 			goTo(b, section)
 			time.Sleep(300 * time.Millisecond) // sections that load more data
 			checkFits(b, fmt.Sprintf("%s at %dpx (dark %v)", section, screen.width, screen.dark))

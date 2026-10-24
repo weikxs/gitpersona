@@ -14,6 +14,9 @@ import (
 	"github.com/weikxs/gitpersona/internal/shell"
 )
 
+// maxVerifyFolders bounds the folders `verify` takes on its command line.
+const maxVerifyFolders = 64
+
 // runFunc runs a command after its flags are parsed; args are the remaining
 // positional arguments.
 type runFunc func(ctx context.Context, env app.Env, args []string) int
@@ -131,6 +134,25 @@ var commands = map[string]command{
 				return fail(env.Stderr, fmt.Errorf("%w: auth takes login, logout or status", errUsage))
 			}
 		},
+	},
+	"verify": {
+		synopsis: "verify [--all] [--ssh] [--json] [<folder>...]",
+		description: "Check every repository in your profiles' folders and pins (and the folders you name): the\n" +
+			"author its commits use and the account each remote pushes as, compared with its profile. It only\n" +
+			"reads Git and SSH settings; it fetches no token, opens no key and, without --ssh, connects nowhere.\n" +
+			"With --ssh, ssh signs in to each host once, as a push would, so the host names the account. Exits with\n" +
+			"status 1 when a repository would commit or push as another identity.",
+		bind: func(fs *flag.FlagSet) runFunc {
+			var opts app.VerifyOptions
+			fs.BoolVar(&opts.All, "all", false, "also list the repositories that are as expected")
+			fs.BoolVar(&opts.JSON, "json", false, "print machine-readable JSON")
+			fs.BoolVar(&opts.SSH, "ssh", false, "connect to each SSH host as a push would and read which account it greets")
+			return func(ctx context.Context, env app.Env, args []string) int {
+				opts.Dirs = args
+				return fail(env.Stderr, app.Verify(ctx, env, opts))
+			}
+		},
+		maxArgs: maxVerifyFolders,
 	},
 	"check-ssh": {
 		synopsis: "check-ssh [--profile <profile>]",

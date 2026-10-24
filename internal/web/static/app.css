@@ -396,3 +396,23 @@ fieldset.plain { border: 0; padding: 0; margin: 0; min-width: 0; }
 /* Directories on the setup summary. */
 ul.dirs { margin: 0.5rem 0 0; padding-left: 1.1rem; }
 ul.dirs li { overflow-wrap: anywhere; }
+
+/* Repositories: filters, groups by profile and each repository's remotes. */
+.filters { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.filters button { min-height: 36px; border-radius: 999px; }
+.filters button[aria-pressed="true"] { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+.summary-badges { align-items: center; }
+.repo-group h3 { margin: var(--space-4) 0 var(--space-2); font-size: var(--text-md); overflow-wrap: anywhere; }
+details.repo { border-top: 1px solid var(--border); padding-top: var(--space-1); }
+details.repo summary .mono { overflow-wrap: anywhere; }
+details.repo > :not(summary) { margin-left: var(--space-5); }
+.table-wrap { max-width: 100%; overflow-x: auto; }
+table.remotes { width: 100%; border-collapse: collapse; font-size: var(--text-sm); }
+table.remotes th, table.remotes td { text-align: left; vertical-align: top; padding: var(--space-1) var(--space-2); border-bottom: 1px solid var(--border); overflow-wrap: anywhere; }
+table.remotes th { color: var(--muted); font-weight: 600; }
+@media (max-width: 600px) {
+  details.repo > :not(summary) { margin-left: 0; }
+  table.remotes thead { display: none; }
+  table.remotes tr { display: grid; padding: var(--space-2) 0; border-bottom: 1px solid var(--border); }
+  table.remotes td { border: 0; padding: 0; }
+}
