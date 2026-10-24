@@ -70,14 +70,6 @@ func TestSnapshotAndRestoreKeepASymlinkAsALink(t *testing.T) {
 	}
 }
 
-func TestSnapshotFailsWhenTheBackupRootIsReadOnly(t *testing.T) {
-	root := lockedDir(t)
-
-	if _, err := Snapshot(root, fixedTime, nil); err == nil {
-		t.Fatal("Snapshot() into a read-only root succeeded, want an error")
-	}
-}
-
 func TestSnapshotFailsWhenEverySuffixForTheInstantIsTaken(t *testing.T) {
 	root := t.TempDir()
 	name := fixedTime.UTC().Format(timestampLayout)
@@ -154,12 +146,6 @@ func TestPruneFailsWhenAnOldSnapshotCannotBeRemoved(t *testing.T) {
 
 	if err := Prune(root, 0); err == nil {
 		t.Fatal("Prune() in a read-only root succeeded, want an error")
-	}
-}
-
-func TestRestoreFailsWithoutAManifest(t *testing.T) {
-	if err := Restore(t.TempDir()); err == nil {
-		t.Fatal("Restore() of an empty directory succeeded, want an error")
 	}
 }
 

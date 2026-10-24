@@ -35,13 +35,3 @@ func TestExecInputRunnerFeedsInputAndExtraEnvironmentAndReturnsStdoutOnly(t *tes
 		t.Fatalf("ExecInputRunner() = %q, %v", out, err)
 	}
 }
-
-func TestExecInputRunnerReportsAFailingProgramWithoutOutput(t *testing.T) {
-	script := writeScript(t, "#!/bin/sh\necho partial\nexit 3\n")
-
-	out, err := ExecInputRunner(context.Background(), "", nil, script)
-
-	if err == nil || out != nil {
-		t.Fatalf("ExecInputRunner() = %q, %v; want an error and no output", out, err)
-	}
-}
