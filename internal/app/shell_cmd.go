@@ -287,7 +287,7 @@ func (e Env) checkGHRouting(ctx context.Context) []check {
 		return []check{{ok: true, label: e.tr("gh in the shell that started gitpersona goes through GitPersona")}}
 	}
 	return []check{{warn: true,
-		label:  e.tr("gh in the shell that started gitpersona is not GitPersona's (%s), so gh does not follow your directories there", found),
+		label:  e.tr("gh in the shell that started gitpersona is not GitPersona's (%s), so gh does not follow your directories there", e.display(found)),
 		advice: e.tr("open a new terminal; if it persists, something later in your startup files puts another directory before %s", e.display(e.shimDir()))}}
 }
 

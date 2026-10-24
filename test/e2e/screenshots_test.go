@@ -2,8 +2,6 @@ package e2e
 
 import (
 	"fmt"
-	"html"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,9 +10,9 @@ import (
 )
 
 // The README's pictures are drawn from demo homes, never from the machine
-// that makes them: the setup page, the overview, the accounts and the
-// repository check in English and Chinese, light and dark, and the
-// terminal. They run only with GITPERSONA_SHOTS set (make screenshots).
+// that makes them: every section of the console in English and Chinese,
+// light and dark, and the terminal. They run only with GITPERSONA_SHOTS set
+// (make screenshots). No picture may show a local path.
 
 var languages = []string{"en", "zh"}
 
@@ -38,34 +36,47 @@ func useLanguage(b *browser, lang string) {
 	b.eval(fmt.Sprintf(`sessionStorage.setItem("gitpersona-lang", %q)`, lang), nil)
 }
 
+// pageShot checks that the page shows no local path and saves it as name.
+func pageShot(b *browser, s *sandbox, name string) {
+	b.t.Helper()
+	var text string
+	b.eval(`return document.body.innerText`, &text)
+	checkNoLocalPaths(b.t, s, name, text)
+	b.screenshot(name)
+}
+
 func TestREADMEScreenshotsOfSetup(t *testing.T) {
 	shotsWanted(t)
 	s := newSandbox(t, false)
+	s.useDemoTools()
 	s.repo("code/work/tools", "git@github-work:demo-work/tools.git")
 	s.repo("code/client/portal", "git@github-work:demo-org/portal.git")
 	s.write(".ssh/config", "Host github-work\n  HostName github.com\n  IdentityFile ~/.ssh/id_work\n", 0o600)
 	s.write(".ssh/id_work", "KEY PLACEHOLDER (never read)\n", 0o600)
 
+	// What setup proposes in the terminal, before anything is written.
+	term := startBrowser(t)
+	shootTerminal(term, s, "terminal-setup", "$ gitpersona setup\n"+strings.TrimSpace(s.run("setup")))
 	link, _ := s.start("setup", "--web")
-	b := startBrowser(t)
-	b.viewport(1280, 860, false)
-	b.open(link)
+	br := startBrowser(t)
+	br.viewport(1280, 860, false)
+	br.open(link)
 	base, _, _ := strings.Cut(link, "?")
 	for _, lang := range languages {
-		useLanguage(b, lang)
+		useLanguage(br, lang)
 		for _, dark := range []bool{false, true} {
-			b.viewport(1280, 860, dark)
+			br.viewport(1280, 860, dark)
 			// A new address each time, so the page loads again in the language.
-			b.call("Page.navigate", map[string]any{"url": base + "?shot=setup-" + lang + suffix(dark) + "#setup"})
-			b.waitFor("the ready page", `document.querySelector("#view form h3")`)
-			b.screenshot("setup-" + lang + suffix(dark))
+			br.call("Page.navigate", map[string]any{"url": base + "?shot=setup-" + lang + suffix(dark) + "#setup"})
+			br.waitFor("the ready page", `document.querySelector("#view form h3")`)
+			pageShot(br, s, "setup-"+lang+suffix(dark))
 		}
 	}
 
 	// The terminal: every line is real output from the demo home.
-	click(b, "#view button.primary")
-	b.waitFor("setup to finish", `document.getElementById("status").innerText.trim() !== ""`)
-	terminal := strings.Join([]string{
+	click(br, "#view button.primary")
+	br.waitFor("setup to finish", `document.getElementById("status").innerText.trim() !== ""`)
+	shootTerminal(term, s, "terminal", strings.Join([]string{
 		"$ cd ~/code/work/api && gitpersona whoami",
 		strings.TrimSpace(s.runIn(filepath.Join(s.home, "code/work/api"), "whoami")),
 		"",
@@ -74,12 +85,7 @@ func TestREADMEScreenshotsOfSetup(t *testing.T) {
 		"",
 		"$ gitpersona verify",
 		strings.TrimSpace(s.run("verify")),
-	}, "\n")
-	for _, dark := range []bool{false, true} {
-		b.viewport(1100, 470, dark)
-		showTerminal(b, terminal, dark)
-		b.screenshot("terminal" + suffix(dark))
-	}
+	}, "\n"))
 }
 
 // dashboardConfig has an account with two identities (two author names),
@@ -108,62 +114,95 @@ email   = "102+demo-personal@users.noreply.github.com"
 dirs    = ["~/code/fun"]
 `
 
+// consoleSections are the console's sections with what each waits for
+// before its picture is taken.
+var consoleSections = []struct{ hash, name, ready string }{
+	{"overview", "overview", `document.querySelectorAll(".stat.pending").length === 0 && document.querySelector(".stat")`},
+	{"profiles", "accounts", `document.querySelector(".persona")`},
+	{"repositories", "repositories", `document.querySelector(".summary-badges")`},
+	{"overview-health", "health", `document.querySelector("#overview-health li")`},
+	{"shells", "shells", `document.querySelector("#view .card dl, #view .card ul")`},
+	{"backups", "backups", `document.querySelector("#view ul.rows li")`},
+}
+
 func TestREADMEScreenshotsOfTheConsole(t *testing.T) {
 	shotsWanted(t)
 	s := newSandbox(t, false)
+	s.useDemoTools()
 	s.write(".config/gitpersona/config.toml", dashboardConfig, 0o600)
 	s.repo("code/infra/terraform", "https://github.com/demo-work/terraform.git")
 	s.repo("code/infra/dns", "https://github.com/demo-work/dns.git")
 	s.run("apply")
-	// One repository chooses its own push account, for the check to show.
+	s.run("install-shell", "--shell", "zsh")
+	// One repository chooses its own push account, another its own author,
+	// for the check to show.
 	s.git(filepath.Join(s.home, "code/fun/game"), "config", "credential.https://github.com.username", "demo-work")
+	s.git(filepath.Join(s.home, "code/infra/dns"), "config", "user.email", "someone@else.example")
+
+	term := startBrowser(t)
+	shootTerminal(term, s, "terminal-doctor", "$ gitpersona doctor\n"+strings.TrimSpace(s.run("doctor")))
+	shootTerminal(term, s, "terminal-verify", "$ gitpersona verify\n"+strings.TrimSpace(s.run("verify")))
 
 	link, _ := s.start("ui")
-	b := startBrowser(t)
-	b.viewport(1280, 900, false)
-	b.open(link)
+	br := startBrowser(t)
+	br.viewport(1280, 900, false)
+	br.open(link)
 	base, _, _ := strings.Cut(link, "?")
-	for _, lang := range languages {
-		useLanguage(b, lang)
-		for _, dark := range []bool{false, true} {
-			b.viewport(1280, 900, dark)
-			b.call("Page.navigate", map[string]any{"url": base + "?shot=" + lang + suffix(dark) + "#overview"})
-			b.waitFor("the numbers", `document.querySelectorAll(".stat.pending").length === 0 && document.querySelector(".stat")`)
-			b.screenshot("overview-" + lang + suffix(dark))
-
-			goTo(b, "profiles")
-			b.waitFor("the accounts", `document.querySelector(".persona")`)
-			b.screenshot("accounts-" + lang + suffix(dark))
-
-			goTo(b, "repositories")
-			b.waitFor("the report", `document.querySelector(".summary-badges")`)
-			b.eval(`document.querySelectorAll("details.repo").forEach((d, i) => d.open = i < 2)`, nil)
-			time.Sleep(150 * time.Millisecond)
-			b.screenshot("repositories-" + lang + suffix(dark))
+	shootSections := func(prefix string, sections ...string) {
+		for _, lang := range languages {
+			useLanguage(br, lang)
+			for _, dark := range []bool{false, true} {
+				br.viewport(1280, 900, dark)
+				br.call("Page.navigate", map[string]any{"url": base + "?shot=" + prefix + lang + suffix(dark) + "#overview"})
+				br.waitFor("the overview", consoleSections[0].ready)
+				for _, name := range sections {
+					shootSection(br, s, name, lang, dark)
+				}
+			}
 		}
 	}
-	b.viewport(390, 844, false)
-	goTo(b, "overview")
-	b.waitFor("the numbers", `document.querySelectorAll(".stat.pending").length === 0 && document.querySelector(".stat")`)
-	checkFits(b, "the overview on a phone")
-	b.checkClean()
+	shootSections("", "overview", "accounts", "repositories", "health", "shells", "backups")
+
+	// A change waiting to be applied, for Review & apply.
+	s.write(".config/gitpersona/config.toml", strings.Replace(dashboardConfig,
+		`dirs    = ["~/code/fun"]`, `dirs    = ["~/code/fun", "~/code/side"]`, 1), 0o600)
+	shootSections("apply-", "apply")
+
+	br.viewport(390, 844, false)
+	goTo(br, "overview")
+	br.waitFor("the numbers", consoleSections[0].ready)
+	checkFits(br, "the overview on a phone")
+	br.checkClean()
 }
 
-// showTerminal opens a page that draws text as a terminal window.
-func showTerminal(b *browser, text string, dark bool) {
-	b.t.Helper()
-	bg, fg, bar := "#ffffff", "#1f2328", "#eaeef2"
-	if dark {
-		bg, fg, bar = "#0d1117", "#e6edf3", "#161b22"
+// shootSection opens one section of the console and saves its picture.
+func shootSection(br *browser, s *sandbox, name, lang string, dark bool) {
+	br.t.Helper()
+	if name == "apply" {
+		goTo(br, "apply")
+		br.waitFor("the changes", `document.querySelector("#view details.change")`)
+		pageShot(br, s, "apply-"+lang+suffix(dark))
+		return
 	}
-	page := fmt.Sprintf(`<!doctype html><meta charset="utf-8"><body style="margin:0;background:transparent">
-<div style="margin:24px;border-radius:10px;overflow:hidden;box-shadow:0 8px 28px rgb(0 0 0/25%%);background:%s">
-<div style="height:30px;background:%s;display:flex;gap:8px;align-items:center;padding-left:14px">
-<span style="width:12px;height:12px;border-radius:50%%;background:#ff5f57"></span>
-<span style="width:12px;height:12px;border-radius:50%%;background:#febc2e"></span>
-<span style="width:12px;height:12px;border-radius:50%%;background:#28c840"></span></div>
-<pre style="margin:0;padding:18px 22px;color:%s;font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre-wrap">%s</pre>
-</div>`, bg, bar, fg, html.EscapeString(strings.TrimRight(text, "\n")))
-	b.call("Page.navigate", map[string]any{"url": "data:text/html;charset=utf-8," + url.PathEscape(page)})
-	b.waitFor("the terminal", `document.querySelector("pre")`)
+	for _, section := range consoleSections {
+		if section.name != name {
+			continue
+		}
+		if section.hash == "overview-health" {
+			goTo(br, "overview")
+			br.eval(`location.hash = "overview-health"`, nil)
+			br.waitFor("the health checks", section.ready)
+			br.eval(`document.getElementById("overview-health").scrollIntoView()`, nil)
+		} else {
+			goTo(br, section.hash)
+			br.waitFor(section.name, section.ready)
+		}
+		if name == "repositories" {
+			br.eval(`document.querySelectorAll("details.repo").forEach((d, i) => d.open = i < 2)`, nil)
+		}
+		time.Sleep(150 * time.Millisecond)
+		pageShot(br, s, name+"-"+lang+suffix(dark))
+		return
+	}
+	br.t.Fatalf("no section %q", name)
 }

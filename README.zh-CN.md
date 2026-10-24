@@ -5,6 +5,8 @@
 [![CI](https://github.com/weikxs/gitpersona/actions/workflows/ci.yml/badge.svg)](https://github.com/weikxs/gitpersona/actions/workflows/ci.yml)
 [![Go](https://img.shields.io/github/go-mod/go-version/weikxs/gitpersona)](go.mod)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Platforms](https://img.shields.io/badge/platforms-macOS%20%7C%20Linux-lightgrey)](#支持的系统)
+[![Console: EN | 中文](https://img.shields.io/badge/console-EN%20%7C%20%E4%B8%AD%E6%96%87-blueviolet)](#网页控制台)
 
 **跟着目录自动切换的 Git 身份。**
 
@@ -24,6 +26,7 @@
 
 - [三步上手](#三步上手)
 - [网页控制台](#网页控制台)
+- [命令行](#命令行)
 - [为什么需要](#为什么需要)
 - [功能](#功能)
 - [工作原理](#工作原理)
@@ -34,6 +37,7 @@
 - [命令](#命令)
 - [行为说明](#行为说明)
 - [撤销与卸载](#撤销与卸载)
+- [故障排查](#故障排查)
 - [常见问题](#常见问题)
 - [参与贡献](#参与贡献) · [安全](#安全) · [许可证](#许可证)
 
@@ -53,7 +57,7 @@ gitpersona setup --web
 ```
 
 GitPersona 会找出你的账户、已有的 `includeIf` 身份、SSH 别名和仓库，给出一份完整的方案。
-点"应用"之前不会写入任何文件，写入前所有文件都会先备份。
+点"应用"之前不会写入任何文件，写入前所有文件都会先备份。习惯用终端？`gitpersona setup` 会在终端里给出同样的方案，只问一次。
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/setup-zh-dark.png">
@@ -78,7 +82,7 @@ GitPersona 会找出你的账户、已有的 `includeIf` 身份、SSH 别名和�
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/overview-zh-dark.png">
-  <img alt="总览：数字卡片、没有串号的绿色提示，以及按账户列出身份、目录和仓库核对结果的表格" src="docs/images/overview-zh-light.png" width="880">
+  <img alt="总览：数字卡片、一个串号仓库的红色提醒，以及按账户列出身份、目录和仓库核对结果的表格" src="docs/images/overview-zh-light.png" width="880">
 </picture>
 
 **账户：** 每个账户一张卡片。用不同作者名提交的账户，下面会有多个身份，各自列出目录和钉住的仓库；
@@ -96,8 +100,66 @@ GitPersona 会找出你的账户、已有的 `includeIf` 身份、SSH 别名和�
   <img alt="仓库页：按结论统计、筛选，以及每个仓库的作者、远程和推送账户" src="docs/images/repositories-zh-light.png" width="880">
 </picture>
 
-**检查并应用** 先以差异形式列出每个要写入的文件；**Shell** 页面设置 shell 集成；**备份** 可以恢复到任意之前的状态。
-手机屏幕和系统深色模式都能正常显示。
+**检查并应用：** 写入任何文件之前，先以差异（diff）形式列出每个要改动的文件。
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/apply-zh-dark.png">
+  <img alt="检查并应用：生成的规则文件新增一条目录规则的差异，以及应用按钮" src="docs/images/apply-zh-light.png" width="880">
+</picture>
+
+<details>
+<summary><b>更多页面：</b>体检、Shell、备份</summary>
+
+**体检**（在总览页底部）：与 `gitpersona doctor` 相同的检查，每一项都写明该怎么处理。
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/health-zh-dark.png">
+  <img alt="体检：Git 版本、配置、生成的文件、shell 集成、每个配置文件的 gh 登录状态" src="docs/images/health-zh-light.png" width="880">
+</picture>
+
+**Shell：** 你的登录 shell、当前运行的 shell，以及哪些已安装的 shell 加载了 GitPersona。
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/shells-zh-dark.png">
+  <img alt="Shell 页：zsh 是登录 shell 并已加载 GitPersona；fish 和 bash 可以一键加入" src="docs/images/shells-zh-light.png" width="880">
+</picture>
+
+**备份：** 每次改动前都会先备份，可以恢复任意一份（恢复前也会备份当前状态）。
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/backups-zh-dark.png">
+  <img alt="备份页：两份备份、各自包含的文件以及恢复按钮" src="docs/images/backups-zh-light.png" width="880">
+</picture>
+
+</details>
+
+手机屏幕和系统深色模式都能正常显示。本文中的图片由 `make screenshots` 在一个演示用的主目录里生成，账户均为虚构。
+
+## 命令行
+
+控制台里能看到的内容，命令行里都有，方便写脚本，也适合习惯终端的人。命令行输出为英文。
+
+**`gitpersona setup`** 查看你已有的设置，提出一份完整方案；在你确认之前不会写入任何内容。
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/terminal-setup-dark.png">
+  <img alt="gitpersona setup 列出两个账户及其目录和 SSH 密钥、默认账户、要接管的 includeIf 规则和 shell，然后询问是否应用" src="docs/images/terminal-setup-light.png" width="880">
+</picture>
+
+**`gitpersona verify`** 逐个仓库列出作者和推送账户，说明哪里不对、怎么修。只要有仓库会用错身份提交或推送，
+它就以错误状态退出，可以直接放进脚本和 CI。
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/terminal-verify-dark.png">
+  <img alt="gitpersona verify：一个仓库有问题（本地设置了 user.email），一个有说明（仓库自己指定了推送账户），三个 SSH 推送待确认" src="docs/images/terminal-verify-light.png" width="880">
+</picture>
+
+**`gitpersona doctor`** 检查整个配置，从 Git 版本到每个账户的 `gh` 登录状态。
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/terminal-doctor-dark.png">
+  <img alt="gitpersona doctor：所有检查都通过" src="docs/images/terminal-doctor-light.png" width="880">
+</picture>
 
 ## 为什么需要
 
@@ -129,6 +191,18 @@ Git、`gh`、`glab` 都假定只有一个全局的"当前账户"，于是很容�
 ```
 
 ## 工作原理
+
+```mermaid
+flowchart LR
+  cfg["config.toml<br/>配置文件 · 目录 · 钉住"] -- "gitpersona apply" --> rules["Git 配置<br/>每个目录一条 includeIf"]
+  rules --> git["git commit / push<br/>任何工具中"]
+  git -- "GitHub 的 HTTPS 令牌" --> helper["gitpersona credential"]
+  helper -- "借用" --> gh["gh（保管令牌）"]
+  git -- "SSH" --> key["配置文件的 ssh_key"]
+  shell["shell 集成"] --> ghcli["gh / glab<br/>使用目录对应的账户"]
+```
+
+涉及的文件：
 
 ```text
 ~/.config/gitpersona/config.toml        你的配置文件、目录和钉住（手动编辑，或由 setup / ui 生成）
@@ -339,14 +413,17 @@ profile = "globex"
   令牌放进那一次 `gh` 进程的环境变量里，不会打印也不会保存。如果你设置了 `GH_TOKEN`/`GITHUB_TOKEN`、用 `GH_HOST` 指向其他主机，
   或者没有 GitHub 配置文件生效，它就不干预 `gh`。`glab` 也一样：在 GitLab 配置文件的目录里，它用你凭据存储里该账户的令牌
   （`GITLAB_TOKEN`，只放进那一次进程），除非你自己设置了令牌或其他主机。
-- **SSH：** 设置了 `ssh_key` 的配置文件，会让 Git 在它的仓库里用这把密钥连接（`IdentitiesOnly=yes`）；你的 `~/.ssh/config`
-  为该主机指定的密钥仍可能被尝试。`gitpersona check-ssh` 只在你运行时用每把密钥连接一次，报告主机欢迎语里的账户；
-  除此之外不会有任何操作启动 ssh。
+- **SSH：** 设置了 `ssh_key` 的配置文件，会让 Git 在它的仓库里只用这把密钥连接
+  （`ssh -i <密钥> -o IdentitiesOnly=yes -o ControlPath=none`）：只提供这一把密钥，也绝不复用用别的密钥建立的共享连接
+  （`~/.ssh/config` 中的 `ControlMaster`），否则会以那把密钥的账户推送。对没有配置密钥的仓库，如果共享连接仍可能混用账户，
+  `gitpersona verify` 会给出警告。`gitpersona check-ssh` 和 `gitpersona verify --ssh` 只在你运行时用每把密钥连接一次，
+  报告主机欢迎语里的账户；除此之外不会有任何操作启动 ssh。
 - **Shell：** 默认 shell 从系统用户记录中读取（而不是 `$SHELL`，终端、IDE 和各种工具经常会改它），当前正在用的 shell
   从进程树中判断，已安装的 shell 从 `/etc/shells` 读取。fish 使用 `conf.d` 中单独的文件；zsh 使用 `~/.zshenv`；bash 使用 `~/.bashrc`。
   tide 中添加 `gitpersona` 项；Powerlevel10k 中添加 `gitpersona` 段；其他情况调用 `gitpersona_prompt`。
 - **隐私：** GitPersona 从不打开、读取、列出或使用你的私钥，也从不打印或保存令牌。它唯一的联网行为是 setup 时向 `gh`
-  查询账户公开的名字和邮箱，以及你运行 `check-ssh` 时发起的 ssh 连接。
+  查询账户公开的名字和邮箱，以及你运行 `check-ssh`、`verify --ssh` 时发起的 ssh 连接。不加 `--ssh` 的 `verify`
+  只读取 Git 和 SSH 设置。路径都以 `~` 显示；网页控制台只监听 127.0.0.1，并通过一次性链接访问。
 - **你的文件：** 它只在全局 Git 配置中添加一个带标记的区块（会跟随符号链接的 `~/.gitconfig` 和 `GIT_CONFIG_GLOBAL`），
   改动前备份所有被修改的文件，并在 `~/.config/gitpersona/backups/` 中保留最新的 20 份备份。
 
@@ -358,6 +435,23 @@ profile = "globex"
   `config.toml` 会保留，运行 `gitpersona apply` 即可恢复一切。
 - 要彻底删除：运行 `gitpersona uninstall`，从 shell 启动文件（`~/.zshenv`、`~/.bashrc` 或
   `~/.config/fish/conf.d/gitpersona.fish`）中删除 GitPersona 的那几行，然后删除 `~/.config/gitpersona` 和程序本身。
+
+## 故障排查
+
+| 现象 | 原因与处理 |
+|---|---|
+| `doctor`：某个账户没有登录 `gh` | 为该账户运行一次 `gh auth login`；GitPersona 借用 `gh` 保管的令牌 |
+| `verify`：提交用了别的作者 | 仓库自己设置了 `user.name` / `user.email`；用 `git config --local --unset user.email` 删除（verify 会打印准确的命令） |
+| `verify`：远程以别的账户推送 | 仓库自己设置了 `credential.username`，或远程地址里写了用户名；删除该设置，或用 `gitpersona pin` 把仓库钉到它所属的配置文件 |
+| `verify`：远程地址里写着令牌 | 能读到 `.git/config` 的人都能用它。改成不含令牌的地址：`git remote set-url origin https://github.com/<owner>/<repo>.git`，然后吊销该令牌 |
+| `verify`：SSH 推送"待确认" | ssh 提供的密钥没有写在你的设置里（ssh-agent 或默认密钥）。给配置文件设置 `ssh_key`，或运行 `gitpersona verify --ssh` 让主机报出账户 |
+| `verify`：不同密钥共用了 SSH 连接 | `~/.ssh/config` 中的 `ControlMaster` 会复用别的密钥建立的连接。设置了 `ssh_key` 的配置文件已自动跳过；其他情况请为该主机设置 `ControlPath none` |
+| `doctor`：`includeIf "hasconfig:…"` 规则从不生效 | 你的 Git 低于 2.36，会忽略这类规则；请升级 Git |
+| 终端里的 `gh` 用错了账户 | 没有安装 shell 集成，或 `PATH` 中有别的目录排在它前面：运行 `gitpersona install-shell`，然后打开新终端 |
+| 在 GitLab 等主机上 Git 要求输入密码 | 该账户还没有令牌：`gitpersona auth login --profile <id>` |
+| macOS 提示无法验证该程序 | 程序暂未经过 Apple 签名；Homebrew 安装时会移除隔离标记。手动下载的压缩包可运行：`xattr -d com.apple.quarantine gitpersona` |
+
+`gitpersona doctor --json` 和 `gitpersona verify --json` 以 JSON 输出同样的结果，便于脚本处理。
 
 ## 常见问题
 
@@ -372,12 +466,24 @@ profile = "globex"
 **为什么 `doctor` 对我的凭据助手发出警告？** 对 GitLab、Bitbucket 等主机，凭据助手必须按账户保存令牌：`store` 会把令牌
 明文写进文件，`cache` 会过一段时间忘掉，`credential.useHttpPath` 会按仓库保存。`doctor` 会告诉你该改什么。
 
+**支持哪些语言？** 网页控制台支持英文和简体中文：默认跟随系统语言，其次是浏览器语言，都不是时显示英文。命令行为英文。
+
+**支持 Windows 吗？** 暂不支持；macOS（Apple 芯片和 Intel）和 Linux 已支持，并且每次改动都会测试。Windows 在计划中。
+
 **worktree 和子模块呢？** worktree 跟随它的主仓库，子模块跟随它所属的仓库，因为 Git 按 `.git` 目录所在的位置匹配规则。
 
 ## 参与贡献
 
 欢迎贡献。请先阅读 [CONTRIBUTING.md](CONTRIBUTING.md) 和[开发规范](docs/development/standards.md)。
-`make check` 会运行格式检查、vet、隐私检查以及全部测试和覆盖率统计。
+
+```sh
+make check         # 格式检查、vet、隐私检查和全部测试（覆盖率不低于 95%）
+make lint          # golangci-lint
+make e2e           # 在无头 Chrome 中测试网页控制台
+make screenshots   # 在演示主目录中重新生成 docs/images 里的图片
+```
+
+每个版本的改动见 [CHANGELOG.md](CHANGELOG.md)；设计文档见 [docs/prd](docs/prd/README.md)。
 
 ## 安全
 

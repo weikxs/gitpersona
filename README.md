@@ -5,6 +5,8 @@
 [![CI](https://github.com/weikxs/gitpersona/actions/workflows/ci.yml/badge.svg)](https://github.com/weikxs/gitpersona/actions/workflows/ci.yml)
 [![Go](https://img.shields.io/github/go-mod/go-version/weikxs/gitpersona)](go.mod)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Platforms](https://img.shields.io/badge/platforms-macOS%20%7C%20Linux-lightgrey)](#supported-systems)
+[![Console: EN | 中文](https://img.shields.io/badge/console-EN%20%7C%20%E4%B8%AD%E6%96%87-blueviolet)](#the-web-console)
 
 **Git profiles that follow your directories.**
 
@@ -25,6 +27,7 @@ and a check that proves no repository commits or pushes as the wrong account.
 
 - [Get started in 3 steps](#get-started-in-3-steps)
 - [The web console](#the-web-console)
+- [The command line](#the-command-line)
 - [Why](#why)
 - [Features](#features)
 - [How it works](#how-it-works)
@@ -35,6 +38,7 @@ and a check that proves no repository commits or pushes as the wrong account.
 - [Commands](#commands)
 - [How it behaves](#how-it-behaves)
 - [Undo and uninstall](#undo-and-uninstall)
+- [Troubleshooting](#troubleshooting)
 - [FAQ](#faq)
 - [Contributing](#contributing) · [Security](#security) · [License](#license)
 
@@ -54,7 +58,8 @@ gitpersona setup --web
 ```
 
 GitPersona finds your accounts, your existing `includeIf` identities, SSH aliases and repositories, and shows one
-complete proposal. Nothing is written until you click **Apply**, and every file is backed up first.
+complete proposal. Nothing is written until you click **Apply**, and every file is backed up first. Prefer the
+terminal? `gitpersona setup` shows the same proposal there and asks once.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/setup-en-dark.png">
@@ -80,7 +85,7 @@ first, and every account with the folders each of its identities covers.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/overview-en-dark.png">
-  <img alt="The overview: numbers, a green all-clear, and a table of accounts with their identities, folders and repository checks" src="docs/images/overview-en-light.png" width="880">
+  <img alt="The overview: numbers, a red alert for one repository that would use another identity, and a table of accounts with their identities, folders and repository checks" src="docs/images/overview-en-light.png" width="880">
 </picture>
 
 **Accounts:** one card per account. An account that commits under two author names has two identities under it,
@@ -99,8 +104,69 @@ every note or problem.
   <img alt="The repositories page: counts per verdict, filters, and each repository's author, remotes and push account" src="docs/images/repositories-en-light.png" width="880">
 </picture>
 
-**Review & apply** shows every file a change writes as a diff first; **Shells** sets up the shell integration;
-**Backups** restores any earlier state. A phone-sized screen and a dark system theme work too.
+**Review & apply:** every file a change would write, as a diff, before anything is written.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/apply-en-dark.png">
+  <img alt="Review and apply: a diff of the generated rules file with one new directory rule, and an apply button" src="docs/images/apply-en-light.png" width="880">
+</picture>
+
+<details>
+<summary><b>More pages:</b> health checks, shells, backups</summary>
+
+**Health checks** (at the end of the overview): the same checks as `gitpersona doctor`, each with what to do.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/health-en-dark.png">
+  <img alt="Health checks: Git version, configuration, generated files, shell integration, gh sign-in per profile" src="docs/images/health-en-light.png" width="880">
+</picture>
+
+**Shells:** your login shell, the shell running now, and which installed shells load GitPersona.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/shells-en-dark.png">
+  <img alt="Shells: zsh is the login shell and loads GitPersona; fish and bash can be added with one button" src="docs/images/shells-en-light.png" width="880">
+</picture>
+
+**Backups:** every change is backed up first; restore any of them (the current state is backed up too).
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/backups-en-dark.png">
+  <img alt="Backups: two backups with the files each holds and a restore button" src="docs/images/backups-en-light.png" width="880">
+</picture>
+
+</details>
+
+The console works on a phone-sized screen and follows the system's dark theme. The pictures in this README are
+drawn by `make screenshots` from a demo home with made-up accounts.
+
+## The command line
+
+Everything the console shows is also on the command line, for scripts and for people who live in the terminal.
+
+**`gitpersona setup`** looks at what you already have and proposes a complete setup; nothing is written until you
+say yes.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/terminal-setup-dark.png">
+  <img alt="gitpersona setup lists two accounts with their folders and SSH key, the default, the includeIf rules it takes over and the shell, then asks" src="docs/images/terminal-setup-light.png" width="880">
+</picture>
+
+**`gitpersona verify`** names, for every repository, the author and the push account, and says why anything is off
+and how to fix it. It exits with an error when a repository would commit or push as another identity, so it fits in
+scripts and CI.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/terminal-verify-dark.png">
+  <img alt="gitpersona verify: one repository with a problem (a local user.email), one with a note (a push account set in the repository), three unconfirmed SSH pushes" src="docs/images/terminal-verify-light.png" width="880">
+</picture>
+
+**`gitpersona doctor`** checks the whole setup, from the Git version to each account's `gh` sign-in.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/terminal-doctor-dark.png">
+  <img alt="gitpersona doctor: every check passes" src="docs/images/terminal-doctor-light.png" width="880">
+</picture>
 
 ## Why
 
@@ -136,6 +202,18 @@ everything else              → acme-alex    (default)
 ```
 
 ## How it works
+
+```mermaid
+flowchart LR
+  cfg["config.toml<br/>profiles · folders · pins"] -- "gitpersona apply" --> rules["Git configuration<br/>includeIf per folder"]
+  rules --> git["git commit / push<br/>in any tool"]
+  git -- "HTTPS token for GitHub" --> helper["gitpersona credential"]
+  helper -- "borrows" --> gh["gh (keeps the tokens)"]
+  git -- "SSH" --> key["the profile's ssh_key"]
+  shell["shell integration"] --> ghcli["gh / glab<br/>as the folder's account"]
+```
+
+The files involved:
 
 ```text
 ~/.config/gitpersona/config.toml        your profiles, directories and pins (you edit this, or let setup/ui do it)
@@ -358,17 +436,20 @@ Prompt and plugin-manager setups (tide, Powerlevel10k, Starship, fisher, oh-my-z
   for another host, or no GitHub profile applies. `glab` works the same way: in a GitLab profile's directory it runs
   with that account's token from your credential store (`GITLAB_TOKEN`, only for that process), unless you set a
   token or another host yourself.
-- **SSH:** a profile with `ssh_key` makes Git connect with that key (`IdentitiesOnly=yes`) in the profile's
-  repositories; keys your `~/.ssh/config` names for the host may still be offered.
-  `gitpersona check-ssh` connects once with each key, only when you run it, and reports which account the host
-  greets; nothing else ever starts ssh.
+- **SSH:** a profile with `ssh_key` makes Git connect with that key in the profile's repositories
+  (`ssh -i <key> -o IdentitiesOnly=yes -o ControlPath=none`): only that key is offered, and a shared connection
+  (`ControlMaster` in `~/.ssh/config`) opened with another key is never reused, because it would push as that key's
+  account. `gitpersona verify` warns when a shared connection could still mix accounts for repositories without a
+  profile key. `gitpersona check-ssh` and `gitpersona verify --ssh` connect once per key, only when you run them, and
+  report which account the host greets; nothing else ever starts ssh.
 - **Shells:** your default shell is read from the system user record (not `$SHELL`, which terminals, IDEs and
   tools often change), the shell you use right now from the process tree, and installed shells from `/etc/shells`.
   fish gets its own file in `conf.d`; zsh uses `~/.zshenv`; bash uses `~/.bashrc`. In tide add the
   `gitpersona` item; in Powerlevel10k add the `gitpersona` segment; elsewhere call `gitpersona_prompt`.
 - **Privacy:** GitPersona never opens, reads, lists or uses your private keys, and never prints or stores tokens.
   Its only network use is asking `gh` for your accounts' public names and emails during setup, and the ssh
-  connection `check-ssh` makes when you run it.
+  connections `check-ssh` and `verify --ssh` make when you run them. `verify` without `--ssh` reads only Git and SSH
+  settings. Paths are shown with `~`, and the web console listens only on 127.0.0.1 behind a one-time link.
 - **Your files:** it adds one marked block to your global Git configuration (following a symlinked
   `~/.gitconfig` and `GIT_CONFIG_GLOBAL`), backs up everything it changes, and keeps the newest 20 backups in
   `~/.config/gitpersona/backups/`.
@@ -382,6 +463,23 @@ Prompt and plugin-manager setups (tide, Powerlevel10k, Starship, fisher, oh-my-z
 - To remove everything, run `gitpersona uninstall`, remove the GitPersona lines from your shell startup file
   (`~/.zshenv`, `~/.bashrc`, or `~/.config/fish/conf.d/gitpersona.fish`), then delete `~/.config/gitpersona` and the
   binary.
+
+## Troubleshooting
+
+| Symptom | Cause and fix |
+|---|---|
+| `doctor`: an account is not signed in to `gh` | Run `gh auth login` for that account (once); GitPersona borrows the token `gh` keeps |
+| `verify`: commits use another author | The repository sets `user.name` / `user.email` itself; remove them with `git config --local --unset user.email` (verify prints the exact command) |
+| `verify`: a remote pushes as another account | The repository sets `credential.username` itself, or its remote URL names a user; remove the setting, or `gitpersona pin` the repository to the profile it belongs to |
+| `verify`: a token is written in a remote URL | Anyone who can read `.git/config` can use it. Set the URL without it: `git remote set-url origin https://github.com/<owner>/<repo>.git`, then revoke the token |
+| `verify`: SSH pushes are "unconfirmed" | The key ssh offers is not named in your settings (ssh-agent or a default key). Give the profile an `ssh_key`, or run `gitpersona verify --ssh` to ask the host |
+| `verify`: an SSH connection is shared between keys | `ControlMaster` in `~/.ssh/config` reuses a connection opened with another key. Profiles with `ssh_key` already skip it; for others set `ControlPath none` for that host |
+| `doctor`: an `includeIf "hasconfig:…"` rule never applies | Your Git is older than 2.36 and ignores such rules; update Git |
+| `gh` uses the wrong account in a terminal | The shell integration is missing or another directory comes before it on `PATH`: run `gitpersona install-shell`, then open a new terminal |
+| Git asks for a password on a GitLab or other host | No token for that account yet: `gitpersona auth login --profile <id>` |
+| macOS says the binary cannot be checked | It is not signed by Apple yet; Homebrew removes the quarantine flag. For a downloaded archive: `xattr -d com.apple.quarantine gitpersona` |
+
+`gitpersona doctor --json` and `gitpersona verify --json` give the same results for scripts.
 
 ## FAQ
 
@@ -399,14 +497,28 @@ keeps no copy and never prints them.
 token per account: `store` writes tokens to a file in clear text, `cache` forgets them, and `credential.useHttpPath`
 keeps one per repository. `doctor` says what to change.
 
+**Which languages does it speak?** The web console is in English and Simplified Chinese: it starts in your system's
+language, else your browser's, else English. The command line is in English.
+
+**Does it support Windows?** Not yet; macOS (Apple silicon and Intel) and Linux are supported and tested on every
+change, and Windows is planned.
+
 **What about worktrees and submodules?** A worktree follows its main repository, and a submodule follows the
 repository it belongs to, because Git matches rules by where the `.git` directory lives.
 
 ## Contributing
 
 Contributions are welcome. Please read [CONTRIBUTING.md](CONTRIBUTING.md) and the
-[development standards](docs/development/standards.md) first. `make check` runs formatting, vet, the privacy check
-and all tests with coverage.
+[development standards](docs/development/standards.md) first.
+
+```sh
+make check         # formatting, vet, the privacy check and all tests (coverage at least 95%)
+make lint          # golangci-lint
+make e2e           # the web console in headless Chrome
+make screenshots   # redraw the pictures in docs/images from a demo home
+```
+
+What changed in each version is in [CHANGELOG.md](CHANGELOG.md); the design notes are in [docs/prd](docs/prd/README.md).
 
 ## Security
 

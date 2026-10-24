@@ -269,7 +269,7 @@ export const en = {
   "repos.noMixups": "No repository commits or pushes as another identity.",
   "repos.noRemote": "No remote.",
   "repos.notFound": "Not found: {dirs}",
-  "repos.openBelow": " Open them below.",
+  "repos.openBelow": "; open them below.",
   "repos.outsideGroup": "Outside your profiles (Git uses your own settings)",
   "repos.outsideMany": "{n} outside profiles",
   "repos.outsideOne": "1 outside profiles",

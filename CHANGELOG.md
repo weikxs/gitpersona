@@ -89,6 +89,9 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ### Changed
 
+- The README shows every section of the console (English and Chinese, light and dark) and the terminal output of
+  `setup`, `verify` and `doctor`, with a diagram of how it works and a troubleshooting table. The pictures come from
+  a demo home with made-up accounts, and `make screenshots` fails if one would show a local path.
 - `signing = { method = "none" }` now also makes `git commit -S` refuse, instead of signing with a key from your
   global settings or another profile.
 - Your own `includeIf` rules and GitPersona have a clear boundary: GitPersona decides in the directories you give to
@@ -104,6 +107,9 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ### Fixed
 
+- `doctor` shows the paths of `gh` with `~` (where gh was found, and a gh that is not GitPersona's), like every other
+  path, instead of the full path of the home folder.
+- On the page, a backup's **Restore** button stays beside it when the list of files is long.
 - Whether paths ignore case is asked of the file system holding your home folder (read only), not assumed from the
   system: on a Mac formatted with case-sensitive APFS, `~/Work` and `~/work` are no longer one folder.
 - On Linux, doctor suggests a credential helper that is installed (Git Credential Manager or libsecret's), and

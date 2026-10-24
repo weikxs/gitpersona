@@ -287,7 +287,7 @@ func (e Env) checkGitHubAccounts(ctx context.Context, cfg config.Config) []check
 	}
 
 	source := provider.GitHub{GH: gh, Run: e.Run}
-	checks := []check{{ok: true, label: e.tr("GitHub CLI found at %s", gh)}}
+	checks := []check{{ok: true, label: e.tr("GitHub CLI found at %s", e.display(gh))}}
 	signedIn := map[string][]string{} // host -> accounts, queried once per host
 	unknownHost := map[string]bool{}  // hosts gh could not be asked about
 	for _, p := range profiles {

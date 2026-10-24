@@ -311,7 +311,7 @@ ul.rows li {
   border-top: 1px solid var(--border);
 }
 ul.rows li:first-child { border-top: 0; }
-ul.rows li > :first-child { min-width: 0; overflow-wrap: anywhere; }
+ul.rows li > :first-child { flex: 1 1 16rem; min-width: 0; overflow-wrap: anywhere; }
 
 .empty { color: var(--muted); }
 
