@@ -4,7 +4,7 @@ BINARY   := gitpersona
 PKG      := github.com/weikxs/gitpersona
 BIN_DIR  := bin
 COVERAGE := coverage.out
-MIN_COVERAGE := 80
+MIN_COVERAGE := 90
 # Tests keep all their files under /tmp, never in the real home directory.
 TEST_TMPDIR := /tmp/gitpersona-test
 GO_TEST := mkdir -p $(TEST_TMPDIR) && TMPDIR=$(TEST_TMPDIR) go test -race

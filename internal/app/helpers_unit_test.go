@@ -1,6 +1,8 @@
 package app
 
 import (
+	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -35,16 +37,21 @@ func TestLabelMatchesTreatsStarAsAnyRunOfCharacters(t *testing.T) {
 	}
 }
 
-func TestSuggestedHelperIsTheSystemKeychain(t *testing.T) {
-	want := map[string]string{"darwin": "osxkeychain", "windows": "manager"}[runtime.GOOS]
-	if want == "" {
-		want = "libsecret"
+func TestHelperAdviceNamesAHelperThatIsInstalled(t *testing.T) {
+	w := newWorld(t)
+	env, _ := w.env(t, w.home)
+	env.LookPath = func(name string) (string, error) {
+		if name == "git-credential-manager" {
+			return "/demo/bin/" + name, nil
+		}
+		return "", errors.New("not found")
+	}
+	want := "manager"
+	if runtime.GOOS == "darwin" {
+		want = "osxkeychain" // Git on macOS always has it, and it comes first
 	}
 
-	if got := suggestedHelper(); got != want {
-		t.Errorf("suggestedHelper() = %q on %s, want %q", got, runtime.GOOS, want)
-	}
-	if advice := helperAdvice(); !strings.Contains(advice, "credential.helper "+want) {
+	if advice := env.helperAdvice(context.Background()); !strings.Contains(advice, "credential.helper "+want) {
 		t.Errorf("helperAdvice() = %q, want it to name %s", advice, want)
 	}
 }
