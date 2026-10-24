@@ -3,10 +3,12 @@ package main
 import (
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
 	"runtime"
 
 	"github.com/weikxs/gitpersona/internal/app"
+	"github.com/weikxs/gitpersona/internal/i18n"
 	"github.com/weikxs/gitpersona/internal/web"
 )
 
@@ -22,7 +24,10 @@ func runUI(ctx context.Context, env app.Env, openBrowser bool, section string) e
 	if err != nil {
 		return fmt.Errorf("start the configuration page: %w", err)
 	}
-	srv, err := web.New(ln.Addr().String(), web.Handlers{})
+	system := i18n.System(runtime.GOOS, os.Getenv, func(name string, args ...string) ([]byte, error) {
+		return exec.CommandContext(ctx, name, args...).Output()
+	})
+	srv, err := web.New(ln.Addr().String(), web.Handlers{SystemLang: string(system)})
 	if err != nil {
 		return err
 	}

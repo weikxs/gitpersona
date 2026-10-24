@@ -6,7 +6,7 @@ import { api } from "../api.js";
 import { h, replace, badge, field, busy, confirm } from "../dom.js";
 import { t, tn } from "../i18n.js";
 import { icon } from "../icons.js";
-import { groupByAccount, accountLabel, signedIn, avatar, authorDiffers } from "./accounts.js";
+import { groupByAccount, accountLabel, signedIn, avatar } from "./accounts.js";
 
 // The last repository check, kept while the page is open (it takes a few
 // seconds); a change on the page asks again.
@@ -25,15 +25,16 @@ export function renderOverview(section, { state, run }) {
   const alerts = h("div", {});
   const accounts = h("div", {});
   section.append(stats, alerts,
-    h("div", { class: "section-title" }, h("h3", {}, t("overview.accounts")),
-      h("a", { href: "#profiles" }, t("overview.manageAccounts"))),
-    accounts,
+    h("div", { class: "card flush" },
+      h("div", { class: "card-head" }, h("h3", {}, t("overview.accounts")),
+        h("a", { href: "#profiles" }, t("overview.manageAccounts"))),
+      accounts),
     h("div", { class: "section-title" }, h("h3", {}, t("overview.tools"))),
     h("div", { class: "grid" }, resolveCard(), doctorCard(state.doctor, run)));
   const draw = () => {
     replace(stats, statTiles(state, verified));
     replace(alerts, attention(state, verified));
-    replace(accounts, h("div", { class: "grid" }, groupByAccount(state.config).map((g) => accountCard(g, state, verified))));
+    replace(accounts, accountsTable(state, verified));
   };
   draw();
   if (!verified) {
@@ -102,32 +103,39 @@ function alert(kind, title, items, action) {
     action);
 }
 
-// accountCard shows one account: its identities, the folders and pins
-// each covers, and how its repositories check out.
-function accountCard(group, state, report) {
-  const ids = new Set(group.profiles.map((p) => p.id));
-  const repos = report?.repositories.filter((r) => ids.has(r.profile)) ?? [];
-  const pins = state.config.pins.filter((pin) => ids.has(pin.profile));
-  const login = signedIn(group, state);
-  return h("article", { class: "card persona", "aria-label": accountLabel(group) },
-    h("div", { class: "persona-head" }, avatar(group.account),
-      h("div", { class: "who" }, h("h4", {}, accountLabel(group)),
-        h("div", { class: "sub" }, group.profiles.length > 1
-          ? tn(group.profiles.length, "account.identityOne", "account.identityMany")
-          : `${group.profiles[0].name} <${group.profiles[0].email}>`)),
-      login === null ? null : login ? badge("ok", t("account.signedIn")) : badge("warn", t("account.notSignedIn"))),
-    group.profiles.length > 1 && authorDiffers(group) ? h("p", { class: "muted" }, t("account.whySeveral")) : null,
-    group.profiles.map((p) => identityBlock(p, group, state)),
-    pins.length > 0 ? h("p", { class: "muted" }, icon("pin"), " ", tn(pins.length, "account.pinOne", "account.pinMany")) : null,
-    h("div", { class: "foot" }, tally(repos, report), state.config.default && ids.has(state.config.default) ? badge("info", t("account.default")) : null));
-}
-
-function identityBlock(p, group, state) {
-  return h("div", {},
-    group.profiles.length > 1 ? h("p", { class: "muted" }, h("strong", {}, `${p.name} <${p.email}>`), ` · ${p.id}`) : null,
-    p.dirs.length === 0
-      ? h("p", { class: "empty" }, state.config.pins.some((pin) => pin.profile === p.id) ? t("account.onlyPins") : t("account.noDirs"))
-      : h("ul", { class: "dirs" }, p.dirs.map((d) => h("li", {}, icon("folder"), d))));
+// accountsTable shows every account with one row per identity: the
+// account spans its rows, and each identity has its folders and how its
+// repositories check out.
+function accountsTable(state, report) {
+  const groups = groupByAccount(state.config);
+  if (groups.length === 0) return h("p", { class: "empty" }, t("accounts.none"));
+  const rows = [];
+  for (const group of groups) {
+    const login = signedIn(group, state);
+    group.profiles.forEach((p, i) => {
+      const repos = report?.repositories.filter((r) => r.profile === p.id) ?? [];
+      const pins = state.config.pins.filter((pin) => pin.profile === p.id);
+      rows.push(h("tr", {},
+        i === 0 ? h("td", { rowspan: String(group.profiles.length) },
+          h("div", { class: "account-cell" }, avatar(group.account),
+            h("div", {}, h("strong", {}, accountLabel(group)),
+              group.profiles.length > 1 ? h("div", { class: "muted" }, tn(group.profiles.length, "account.identityOne", "account.identityMany")) : null))) : null,
+        h("td", {}, h("span", { class: "identity-line" }, p.name),
+          h("span", { class: "identity-line muted" }, p.email),
+          p.id === state.config.default ? badge("info", t("account.default")) : null),
+        h("td", {}, p.dirs.length === 0 && pins.length === 0 ? h("span", { class: "muted" }, t("table.noFolders")) : null,
+          p.dirs.map((d) => h("div", { class: "folder" }, icon("folder"), d)),
+          pins.map((pin) => h("div", { class: "folder" }, icon("pin"), pin.repo))),
+        h("td", {}, tally(repos, report)),
+        i === 0 ? h("td", { rowspan: String(group.profiles.length) },
+          login === null ? h("span", { class: "muted" }, "—")
+            : h("span", { class: login ? "dot ok" : "dot warn" }, login ? t("account.signedIn") : t("account.notSignedIn"))) : null));
+    });
+  }
+  return h("div", { class: "table-wrap" }, h("table", { class: "data" },
+    h("thead", {}, h("tr", {}, ["table.account", "table.identity", "table.folders", "table.repositories", "table.login"]
+      .map((key) => h("th", { scope: "col" }, t(key))))),
+    h("tbody", {}, rows)));
 }
 
 // tally shows how the account's repositories check out.

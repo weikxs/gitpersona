@@ -1,5 +1,6 @@
 // Interface text in English and Simplified Chinese. The page starts in the
-// browser's language and remembers a language the user picks. Messages from
+// system's language, else the browser's, else English; a language picked
+// with the switch lasts while this tab is open. Messages from
 // GitPersona itself (health checks, findings, errors) come translated from
 // the server, which reads the language from every request.
 
@@ -15,25 +16,34 @@ let current = initial();
 
 function initial() {
   try {
-    const stored = localStorage.getItem(STORE_KEY);
-    if (stored && DICTIONARIES[stored]) return stored;
+    const picked = sessionStorage.getItem(STORE_KEY);
+    if (picked && DICTIONARIES[picked]) return picked;
   } catch {
-    // Storage may be unavailable; fall back to the browser's language.
+    // Storage may be unavailable; the system or browser decides.
   }
-  const preferred = navigator.languages?.length ? navigator.languages : [navigator.language || "en"];
-  return preferred.some((tag) => /^zh\b/i.test(tag)) ? "zh" : "en";
+  // GitPersona reads the system's language when it serves the page; it is
+  // empty when the system uses a language the page does not have.
+  const system = document.querySelector('meta[name="system-lang"]')?.content ?? "";
+  if (DICTIONARIES[system]) return system;
+  const preferred = navigator.languages?.length ? navigator.languages : [navigator.language || ""];
+  for (const tag of preferred) {
+    if (/^zh\b/i.test(tag)) return "zh";
+    if (/^en\b/i.test(tag)) return "en";
+  }
+  return "en";
 }
 
 export function lang() {
   return current;
 }
 
-// setLang switches the language and remembers it for this browser.
+// setLang switches the language for as long as this tab is open; the next
+// page follows the system again.
 export function setLang(next) {
   if (!DICTIONARIES[next]) return;
   current = next;
   try {
-    localStorage.setItem(STORE_KEY, next);
+    sessionStorage.setItem(STORE_KEY, next);
   } catch {
     // The choice then lasts until the page is reloaded.
   }

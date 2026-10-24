@@ -32,6 +32,7 @@ const (
 	defaultIdle     = 15 * time.Minute
 	readTimeout     = 10 * time.Second
 	csrfPlaceholder = "{{CSRF}}"
+	langPlaceholder = "{{LANG}}"
 )
 
 const contentSecurityPolicy = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; " +
@@ -40,6 +41,9 @@ const contentSecurityPolicy = "default-src 'self'; script-src 'self'; style-src 
 // Handlers are the API routes, as ServeMux patterns ("GET /api/state").
 type Handlers struct {
 	API map[string]http.HandlerFunc
+	// SystemLang is the system's language when the page has it ("en" or
+	// "zh"); the page starts in it, else in the browser's, else English.
+	SystemLang string
 }
 
 // Server is the configuration page server.
@@ -47,6 +51,7 @@ type Server struct {
 	addr string
 	key  string
 	csrf string
+	lang string
 	mux  *http.ServeMux
 	idle time.Duration
 
@@ -67,7 +72,10 @@ func New(addr string, h Handlers) (*Server, error) {
 	if ip := net.ParseIP(host); ip == nil || !ip.IsLoopback() {
 		return nil, fmt.Errorf("refusing to listen on %s: only loopback addresses are allowed", addr)
 	}
-	s := &Server{addr: addr, key: randomToken(), csrf: randomToken(), mux: http.NewServeMux(),
+	if h.SystemLang != "" && h.SystemLang != "en" && h.SystemLang != "zh" {
+		return nil, fmt.Errorf("unknown page language %q", h.SystemLang)
+	}
+	s := &Server{addr: addr, key: randomToken(), csrf: randomToken(), lang: h.SystemLang, mux: http.NewServeMux(),
 		idle: defaultIdle, done: make(chan struct{})}
 	for pattern, handler := range h.API {
 		s.mux.HandleFunc(pattern, handler)
@@ -169,7 +177,8 @@ func (s *Server) index(w http.ResponseWriter, _ *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	_, _ = w.Write([]byte(strings.Replace(string(page), csrfPlaceholder, s.csrf, 1)))
+	html := strings.Replace(string(page), csrfPlaceholder, s.csrf, 1)
+	_, _ = w.Write([]byte(strings.Replace(html, langPlaceholder, s.lang, 1)))
 }
 
 // Listen opens a listener on a random loopback port; pass its address to New.

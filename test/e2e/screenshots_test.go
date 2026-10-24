@@ -140,7 +140,7 @@ func TestDashboardScreenshots(t *testing.T) {
 	base, _, _ := strings.Cut(link, "?")
 	for _, lang := range []string{"zh", "en"} {
 		// The language is read when the page loads.
-		b.eval(fmt.Sprintf(`localStorage.setItem("gitpersona-lang", %q)`, lang), nil)
+		b.eval(fmt.Sprintf(`sessionStorage.setItem("gitpersona-lang", %q)`, lang), nil)
 		b.call("Page.reload", map[string]any{})
 		b.waitFor("the page", `document.querySelector("#view section h2")`)
 		for _, dark := range []bool{false, true} {
