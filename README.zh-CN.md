@@ -97,14 +97,14 @@ make build
 ./bin/gitpersona version   # 然后把 bin/gitpersona 放到 PATH 里
 ```
 
-**Homebrew**（macOS，第一个正式版本发布后）：
+**Homebrew**（macOS 和 Linux，第一个正式版本发布后）：
 
 ```sh
 brew install weikxs/tap/gitpersona
 ```
 
-程序暂未经过 Apple 签名，所以 Cask 安装后会去掉 macOS 给它加的隔离标记，详见 [SECURITY.md](SECURITY.md)。
-Linux 上请用上面的 `go install`，或从 [Release 页面](https://github.com/weikxs/gitpersona/releases)下载压缩包。
+程序暂未经过 Apple 签名，所以在 macOS 上 Cask 安装后会去掉系统给它加的隔离标记，详见 [SECURITY.md](SECURITY.md)。
+各平台的压缩包也可以从 [Release 页面](https://github.com/weikxs/gitpersona/releases)下载。
 
 ## 快速上手
 

@@ -103,14 +103,14 @@ make build
 ./bin/gitpersona version   # then put bin/gitpersona on your PATH
 ```
 
-**Homebrew** (macOS, with the first release):
+**Homebrew** (macOS and Linux, with the first release):
 
 ```sh
 brew install weikxs/tap/gitpersona
 ```
 
-The binary is not signed by Apple yet, so the cask removes macOS's quarantine flag from it after installing; see
-[SECURITY.md](SECURITY.md). On Linux, use `go install` above or the archives on the
+The binary is not signed by Apple yet, so on macOS the cask removes the quarantine flag from it after installing;
+see [SECURITY.md](SECURITY.md). Archives for every platform are also on the
 [releases page](https://github.com/weikxs/gitpersona/releases).
 
 ## Quick start

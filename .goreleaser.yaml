@@ -56,7 +56,15 @@ homebrew_casks:
     repository:
       owner: weikxs
       name: homebrew-tap
-      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+      branch: main
+      # Pushed over SSH with a deploy key that can write only to the tap; the
+      # private key is the HOMEBREW_TAP_SSH_KEY secret of this repository.
+      git:
+        url: "git@github.com:weikxs/homebrew-tap.git"
+        private_key: "{{ .Env.HOMEBREW_TAP_SSH_KEY }}"
+    commit_author:
+      name: Weikxs
+      email: weikxs.dev@gmail.com
     homepage: https://github.com/weikxs/gitpersona
     description: Git profiles that follow your directories
     license: MIT
