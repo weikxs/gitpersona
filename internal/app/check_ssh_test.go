@@ -156,3 +156,27 @@ for a; do case "$a" in *id_globex) echo "Permission denied (publickey)." >&2; ex
 		t.Errorf("check-ssh error = %v", err)
 	}
 }
+
+// ssh -v sometimes writes a debug message in the middle of the host's
+// greeting; the account must still be read.
+func TestTheGreetingIsReadWhenDebugOutputSplitsIt(t *testing.T) {
+	const debug = "debug1: client_input_channel_req: channel 0 rtype exit-status reply 0\n"
+	const rest = " You've successfully authenticated, but GitHub does not provide shell access.\n"
+	for _, output := range []string{
+		"Hi octo-alex!" + rest,
+		"Hi octo-alex" + debug + "!" + rest,
+		"Hi octo-alex! " + debug + rest[1:],
+		"Hi " + debug + "octo-alex!" + rest,
+		"Hi octo_alex" + debug + "!" + rest,
+	} {
+		text := withoutDebug("debug1: Authenticating to github.com:22 as 'git'\n" + output)
+		m := welcomes[0].FindStringSubmatch(text)
+		want := "octo-alex"
+		if strings.Contains(output, "octo_alex") {
+			want = "octo_alex"
+		}
+		if m == nil || m[1] != want {
+			t.Errorf("greeting %q read as %q", output, text)
+		}
+	}
+}

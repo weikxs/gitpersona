@@ -107,6 +107,8 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
   otherwise says which to install, instead of always `libsecret`.
 - A profile's SSH command turns off connection sharing (`-o ControlPath=none`): with `ControlMaster` in
   `~/.ssh/config`, a push could reuse a connection another key had opened and push as that key's account.
+- `check-ssh` and `verify --ssh` read the host's greeting even when ssh's debug output splits it (it did in about
+  one connection in three, which reported that the host named no account).
 - `check-ssh` recognizes GitHub accounts with an underscore (enterprise managed users, `name_short`).
 - A repository in a profile's folder that names another signed-in account for pushes (`credential.<url>.username`,
   or `user@` in the remote URL) pushes as that account with its own `gh` token, instead of getting no token at all;

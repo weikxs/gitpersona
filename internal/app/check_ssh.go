@@ -228,12 +228,19 @@ func (e Env) sshGreet(ctx context.Context, args []string, target string) sshGree
 	return g
 }
 
+// debugFragment is one debug message of ssh -v, up to and with its line end.
+var debugFragment = regexp.MustCompile(`debug[1-3]: [^\n]*\n?`)
+
 // withoutDebug drops the debug lines of ssh -v, and its notice about a
 // new host key, from its output.
 func withoutDebug(s string) string {
+	// ssh writes its debug lines into the same stream as the host's greeting,
+	// sometimes in the middle of it ("Hi demodebug1: …\n! You've …"), so the
+	// debug text is cut out wherever it starts, not dropped line by line.
+	s = debugFragment.ReplaceAllString(s, "")
 	var kept []string
 	for _, line := range strings.Split(s, "\n") {
-		if !strings.HasPrefix(line, "debug") && !strings.HasPrefix(line, "OpenSSH_") && !strings.HasPrefix(line, "Warning: Permanently added") {
+		if !strings.HasPrefix(line, "OpenSSH_") && !strings.HasPrefix(line, "Warning: Permanently added") {
 			kept = append(kept, line)
 		}
 	}
