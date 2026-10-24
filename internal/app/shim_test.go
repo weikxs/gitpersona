@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -203,5 +204,25 @@ func TestRealBinaryAsGHFollowsTheDirectory(t *testing.T) {
 		if strings.Contains(string(got), "token-for-") {
 			t.Fatalf("a token reached the output:\n%s", got)
 		}
+	}
+}
+
+// An empty GH_TOKEN exported in the shell chooses nothing: gh still gets the
+// profile's token, and only one GH_TOKEN.
+func TestGHShimIgnoresAnEmptyGHToken(t *testing.T) {
+	w := newWorld(t)
+	env, _, call := shimEnv(t, w, w.repos["sdk"])
+	t.Setenv("GH_TOKEN", "")
+
+	code := GHShim(context.Background(), env, []string{"pr", "create"})
+
+	var tokens []string
+	for _, kv := range call.env {
+		if k, v, ok := strings.Cut(kv, "="); ok && k == "GH_TOKEN" {
+			tokens = append(tokens, v)
+		}
+	}
+	if code != 0 || !slices.Equal(tokens, []string{"token-for-octo-alex"}) {
+		t.Fatalf("code %d, GH_TOKEN entries %q; want one, the profile's token", code, tokens)
 	}
 }

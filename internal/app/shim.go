@@ -43,7 +43,7 @@ func GHShim(ctx context.Context, e Env, args []string) int {
 		fmt.Fprintf(e.Stderr, "gitpersona: %v\n", err)
 		return exitCodeFailure
 	}
-	environ := os.Environ()
+	environ := withoutEmptyTokens(os.Environ())
 	// gh auth manages accounts itself (and refuses to while GH_TOKEN is set).
 	isAuth := len(args) > 0 && args[0] == "auth"
 	if account, host, ok := e.ghTarget(); ok && !isAuth {
@@ -66,6 +66,15 @@ func GHShim(ctx context.Context, e Env, args []string) int {
 }
 
 const exitCodeFailure = 1
+
+// withoutEmptyTokens drops GH_TOKEN= and GITHUB_TOKEN= with empty values.
+// They choose nothing, but a process may read the first of two GH_TOKEN
+// entries, so an empty one could hide the profile's token.
+func withoutEmptyTokens(environ []string) []string {
+	return slices.DeleteFunc(slices.Clone(environ), func(kv string) bool {
+		return kv == "GH_TOKEN=" || kv == "GITHUB_TOKEN="
+	})
+}
 
 // ghTarget returns the account and host gh should use here, if GitPersona
 // should choose at all.

@@ -432,3 +432,21 @@ func TestPerRepositoryTokensForSomeRepositoriesAreFound(t *testing.T) {
 		t.Errorf("auth login with useHttpPath for a path = %v", err)
 	}
 }
+
+// A repository inside one profile's folder that names another signed-in
+// account for pushes gets that account's token, not none and not the
+// profile's.
+func TestARepositoryNamingAnotherAccountPushesAsIt(t *testing.T) {
+	w := newWorld(t)
+	env, _ := w.env(t, w.home)
+	if err := Apply(context.Background(), env, ApplyOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, w.repos["billing"], "config", "credential.https://github.com.username", "octo-alex")
+
+	answer := runGitInput(t, w.repos["billing"], "protocol=https\nhost=github.com\n\n", "credential", "fill")
+
+	if !strings.Contains(answer, "username=octo-alex") || !strings.Contains(answer, "password=token-for-octo-alex") {
+		t.Errorf("git credential fill in an acme repository naming octo-alex =\n%s", answer)
+	}
+}

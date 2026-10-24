@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/weikxs/gitpersona/internal/config"
+	"github.com/weikxs/gitpersona/internal/discover"
 	"github.com/weikxs/gitpersona/internal/paths"
 )
 
@@ -139,11 +140,29 @@ func (e Env) checkOldRules(ctx context.Context, cfg config.Config) []check {
 		}
 	}
 	checks = append(checks, e.checkCoveredKeptRules(ctx, cfg)...)
+	var scanned *discover.Found // the profiles' folders, scanned once if needed
 	for _, r := range e.otherIdentityRules(ctx) {
-		if cfg.Default == "" && len(ownerDirs(owners)) > 0 && refining(r.Condition) {
-			checks = append(checks, check{warn: true,
-				label: fmt.Sprintf("your includeIf rule %q (%s) does not apply in your profiles' folders, where the profile decides",
-					r.Condition, author(r.Name, r.Email)),
+		// A rule whose identity a profile has is covered: pin a repository to
+		// that profile where the rule should decide (setup said so).
+		represented := slices.ContainsFunc(owners, func(o ruleOwner) bool {
+			return o.sameIdentity(r.Email, cmp.Or(r.Name, e.globalIdentity(ctx).Name))
+		})
+		if cfg.Default == "" && len(ownerDirs(owners)) > 0 && refining(r.Condition) && !represented {
+			if scanned == nil {
+				found := e.scanProfileDirs(ctx, owners)
+				scanned = &found
+			}
+			ruleAuthor := author(cmp.Or(r.Name, e.globalIdentity(ctx).Name), r.Email)
+			affected, known := e.reposMatchingRule(ctx, r.Condition, ruleAuthor, owners, *scanned, false)
+			if known && len(affected) == 0 {
+				continue // no repository in the profiles' folders follows it today
+			}
+			label := fmt.Sprintf("your includeIf rule %q (%s) does not apply in your profiles' folders, where the profile decides",
+				r.Condition, author(r.Name, r.Email))
+			if known {
+				label += fmt.Sprintf(": %d of their repositories match it, such as %s", len(affected), affected[0])
+			}
+			checks = append(checks, check{warn: true, label: label,
 				advice: "pin the repositories where it should apply to a profile with that identity, or remove the rule"})
 		}
 		if cfg.Default != "" {
@@ -281,4 +300,13 @@ func ownerDirs(owners []ruleOwner) []string {
 		dirs = append(dirs, o.dirs...)
 	}
 	return dirs
+}
+
+// scanProfileDirs looks for the repositories in the profiles' folders.
+func (e Env) scanProfileDirs(ctx context.Context, owners []ruleOwner) discover.Found {
+	roots, err := e.ResolveScanRoots(ownerDirs(owners))
+	if err != nil {
+		return discover.Found{}
+	}
+	return e.scannedRepos(ctx, roots)
 }

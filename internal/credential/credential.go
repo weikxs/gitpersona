@@ -48,13 +48,26 @@ func get(ctx context.Context, req map[string]string, out io.Writer, target Targe
 	if !answers(req, target) {
 		return nil
 	}
-	token, err := src.Token(ctx, target.Host, target.Account)
+	account := accountFor(req, target)
+	token, err := src.Token(ctx, target.Host, account)
 	token = strings.TrimSpace(token)
 	if err != nil || token == "" || strings.ContainsAny(token, "\r\n") {
 		return nil // fall through; never surface the reason, it may contain secrets
 	}
-	_, err = fmt.Fprintf(out, "username=%s\npassword=%s\n", target.Account, token)
+	_, err = fmt.Fprintf(out, "username=%s\npassword=%s\n", account, token)
 	return err
+}
+
+// accountFor returns the account to answer for: the profile's, or the one
+// the request names. A repository or remote URL that names another account
+// explicitly (credential.username in the repository, user@ in the URL)
+// pushes as that account, with the token gh keeps for it; when gh has none,
+// the helper stays silent.
+func accountFor(req map[string]string, target Target) string {
+	if user := req["username"]; user != "" {
+		return user
+	}
+	return target.Account
 }
 
 // answers reports whether this helper is responsible for the request.
@@ -62,13 +75,7 @@ func answers(req map[string]string, target Target) bool {
 	if target.Provider != "github" { // other providers arrive in a later milestone
 		return false
 	}
-	if req["protocol"] != "https" || !strings.EqualFold(req["host"], target.Host) {
-		return false
-	}
-	if user := req["username"]; user != "" && user != target.Account {
-		return false // the remote URL names another account explicitly
-	}
-	return true
+	return req["protocol"] == "https" && strings.EqualFold(req["host"], target.Host)
 }
 
 // ParseRequest reads "key=value" lines up to the first blank line or EOF.

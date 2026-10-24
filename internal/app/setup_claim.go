@@ -348,7 +348,7 @@ func (e Env) refiningRulesInProfiles(ctx context.Context, owners []ruleOwner, gl
 			continue
 		}
 		ruleAuthor := author(cmp.Or(r.Name, globalName), r.Email)
-		affected, known := e.reposMatchingRule(ctx, r.Condition, ruleAuthor, owners, found)
+		affected, known := e.reposMatchingRule(ctx, r.Condition, ruleAuthor, owners, found, true)
 		if known && len(affected) == 0 {
 			continue // no repository in the profiles' folders is affected
 		}
@@ -371,7 +371,10 @@ func (e Env) refiningRulesInProfiles(ctx context.Context, owners []ruleOwner, gl
 // and the profile that takes the folder commits as someone else. known is
 // false when that cannot be told: another kind of rule, or a scan that did
 // not finish.
-func (e Env) reposMatchingRule(ctx context.Context, condition, ruleAuthor string, owners []ruleOwner, found discover.Found) (affected []string, known bool) {
+//
+// today is false after setup, when the profiles already decide the author:
+// then every matching repository whose profile commits as someone else counts.
+func (e Env) reposMatchingRule(ctx context.Context, condition, ruleAuthor string, owners []ruleOwner, found discover.Found, today bool) (affected []string, known bool) {
 	pattern, ok := strings.CutPrefix(condition, "hasconfig:remote.*.url:")
 	if !ok || !found.Complete || found.TooDeep {
 		return nil, false
@@ -385,7 +388,7 @@ func (e Env) reposMatchingRule(ctx context.Context, condition, ruleAuthor string
 		if !inside || strings.EqualFold(author(o.name, o.email), ruleAuthor) || !e.anyRemoteMatches(ctx, r.Dir, host, owner) {
 			continue
 		}
-		if !strings.EqualFold(e.repoAuthor(ctx, r.Dir), ruleAuthor) {
+		if today && !strings.EqualFold(e.repoAuthor(ctx, r.Dir), ruleAuthor) {
 			continue // a later rule of the user's decides there today
 		}
 		affected = append(affected, r.Dir)

@@ -113,6 +113,9 @@ func newWorld(t *testing.T) world {
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
 	t.Setenv("GIT_CONFIG_GLOBAL", filepath.Join(home, ".gitconfig"))
 	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+	// A token in the developer's shell would make the gh shim step aside.
+	t.Setenv("GH_TOKEN", "")
+	t.Setenv("GITHUB_TOKEN", "")
 	originalPath := os.Getenv("PATH")
 	// Without gh, PATH holds Git alone: the real gh must never run.
 	noGH := filepath.Join(root, "bin-without-gh")

@@ -313,3 +313,38 @@ func TestARemoteRuleMatchesAnyRemoteAndHostGlobs(t *testing.T) {
 		})
 	}
 }
+
+func TestDoctorMentionsARemoteRuleOnlyWhenRepositoriesMatchIt(t *testing.T) {
+	for _, aliasRepo := range []bool{false, true} {
+		w := newWorld(t)
+		withoutConfig(t, w)
+		appendRule(t, w, "work", "[user]\n\tname = Alex Acme\n\temail = acme@demo.example\n[credential \"https://github.com\"]\n\tusername = acme-alex\n")
+		f := filepath.Join(w.home, ".gitconfig")
+		mustWrite(t, f, readFile(t, f)+"[includeIf \"hasconfig:remote.*.url:git@github-side:*/**\"]\n\tpath = ~/.gitconfig-side\n", 0o600)
+		mustWrite(t, filepath.Join(w.home, ".gitconfig-side"), "[user]\n\tname = Side\n\temail = side@demo.example\n", 0o600)
+		runGit(t, w.home, "init", "-q", filepath.Join(w.home, "work/app"))
+		if aliasRepo {
+			runGit(t, w.home, "init", "-q", filepath.Join(w.home, "work/side"))
+			runGit(t, filepath.Join(w.home, "work/side"), "remote", "add", "origin", "git@github-side:demo-org/side.git")
+		}
+		env, out := w.env(t, w.home)
+		proposal, err := ProposeSetup(context.Background(), env)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := ApplySetup(context.Background(), env, proposal.Plan()); err != nil {
+			t.Fatal(err)
+		}
+		out.Reset()
+
+		_ = Doctor(context.Background(), env)
+
+		mentioned := strings.Contains(out.String(), "git@github-side")
+		switch {
+		case !aliasRepo && mentioned:
+			t.Errorf("no repository in ~/work follows the rule, so doctor should not warn:\n%s", out.String())
+		case aliasRepo && !strings.Contains(out.String(), "1 of their repositories match it, such as ~/work/side"):
+			t.Errorf("doctor should name ~/work/side:\n%s", out.String())
+		}
+	}
+}

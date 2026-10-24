@@ -92,6 +92,12 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ### Fixed
 
+- A repository in a profile's folder that names another signed-in account for pushes (`credential.<url>.username`,
+  or `user@` in the remote URL) pushes as that account with its own `gh` token, instead of getting no token at all;
+  when `gh` has no token for it, the helper stays silent as before.
+- `doctor` warns that one of your remote-URL `includeIf` rules does not apply in the profiles' folders only when a
+  repository there matches it, and names one of them.
+- An empty `GH_TOKEN` or `GITHUB_TOKEN` in the shell no longer keeps `gh` from getting the profile's token.
 - Your rules that set no identity but a signing key, `tag.gpgsign`, `gpg.format` or an SSH command keep their folder
   like the rules that do more than a profile can; `use`, `pin` and `doctor` warn when a profile still covers one.
 - Resets are written per folder: a profile includes its reset (signing, SSH command) only in the folders and pins that

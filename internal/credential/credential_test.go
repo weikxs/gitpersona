@@ -50,7 +50,7 @@ func TestServeGetStaysSilent(t *testing.T) {
 	}{
 		{name: "different host", input: "protocol=https\nhost=gitlab.com\n", source: &fakeSource{token: "t"}},
 		{name: "plain http", input: "protocol=http\nhost=github.com\n", source: &fakeSource{token: "t"}},
-		{name: "explicit other username", input: "protocol=https\nhost=github.com\nusername=octo-alex\n", source: &fakeSource{token: "t"}},
+		{name: "explicit other username gh does not know", input: "protocol=https\nhost=github.com\nusername=octo-alex\n", source: &fakeSource{err: errors.New("no oauth token")}, wantCalls: 1},
 		{name: "token lookup fails", input: "protocol=https\nhost=github.com\n", source: &fakeSource{err: errors.New("not logged in")}, wantCalls: 1},
 		{name: "empty token", input: "protocol=https\nhost=github.com\n", source: &fakeSource{token: "  \n"}, wantCalls: 1},
 		{name: "token with embedded newline", input: "protocol=https\nhost=github.com\n", source: &fakeSource{token: "a\nb"}, wantCalls: 1},
@@ -123,5 +123,21 @@ func TestParseRequest(t *testing.T) {
 	}
 	if got["protocol"] != "https" || got["host"] != "github.com" || got["ignored"] != "" {
 		t.Fatalf("ParseRequest() = %v", got)
+	}
+}
+
+// A repository that names another account (credential.username, or user@
+// in the remote URL) pushes as that account, with its own token from gh.
+func TestServeAnswersForTheAccountTheRequestNames(t *testing.T) {
+	src := &fakeSource{token: "octo-token"}
+	var out bytes.Buffer
+
+	err := Serve(context.Background(), "get", strings.NewReader("protocol=https\nhost=github.com\nusername=octo-alex\n"), &out, target, src)
+
+	if err != nil || out.String() != "username=octo-alex\npassword=octo-token\n" {
+		t.Fatalf("Serve() = %v, %q", err, out.String())
+	}
+	if src.gotAccount != "octo-alex" {
+		t.Errorf("token requested for %q, want the named account octo-alex, never the profile's", src.gotAccount)
 	}
 }
