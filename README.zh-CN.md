@@ -3,6 +3,7 @@
 [English](README.md) | **简体中文**
 
 [![CI](https://github.com/weikxs/gitpersona/actions/workflows/ci.yml/badge.svg)](https://github.com/weikxs/gitpersona/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/weikxs/gitpersona)](https://github.com/weikxs/gitpersona/releases)
 [![Go](https://img.shields.io/github/go-mod/go-version/weikxs/gitpersona)](go.mod)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Platforms](https://img.shields.io/badge/platforms-macOS%20%7C%20Linux-lightgrey)](#支持的系统)
@@ -19,8 +20,8 @@
   <img alt="在两个目录里运行 gitpersona whoami 显示两个账户；gitpersona verify 确认每个仓库都符合预期" src="docs/images/terminal-light.png" width="880">
 </picture>
 
-> **状态：预发布。** 下面的功能都已可用，并在 macOS 和 Linux 上测试：GitHub、GitLab、Bitbucket 及其他主机的配置文件、
-> 命令行、中英双语的网页控制台、shell 集成和 `gh` / `glab` 切换。第一个正式版本和 Homebrew tap 即将发布；在此之前请从源码安装。
+> **状态：第一个正式版本（0.1）。** 下面的功能都已可用，并在 macOS 和 Linux 上测试：GitHub、GitLab、Bitbucket 及其他主机的
+> 配置文件、命令行、中英双语的网页控制台、shell 集成和 `gh` / `glab` 切换。Windows 在计划中。欢迎反馈和提交 issue。
 
 ## 目录
 
@@ -46,8 +47,8 @@
 **1. 安装**（macOS：Apple 芯片和 Intel 都支持；以及 Linux）：
 
 ```sh
-brew install weikxs/tap/gitpersona                         # 第一个正式版本发布后
-go install github.com/weikxs/gitpersona/cmd/gitpersona@latest   # 现在即可，需要 Go 1.26+
+brew install weikxs/tap/gitpersona                              # Homebrew，macOS 和 Linux
+go install github.com/weikxs/gitpersona/cmd/gitpersona@latest   # 或者用 Go 1.26+
 ```
 
 **2. 在浏览器里完成配置。** 先用 `gh auth login` 把每个 GitHub 账户登录一次，然后运行：
@@ -257,7 +258,7 @@ make build
 ./bin/gitpersona version   # 然后把 bin/gitpersona 放到 PATH 里
 ```
 
-**Homebrew**（macOS 和 Linux，第一个正式版本发布后）：
+**Homebrew**（macOS 和 Linux）：
 
 ```sh
 brew install weikxs/tap/gitpersona
@@ -266,7 +267,7 @@ brew install weikxs/tap/gitpersona
 程序暂未经过 Apple 签名，所以在 macOS 上 Cask 安装后会去掉系统给它加的隔离标记，详见 [SECURITY.md](SECURITY.md)。
 Homebrew 会自动选择适合你的 Mac 的版本（Apple 芯片或 Intel）。
 
-**Linux 安装包**（第一个正式版本发布后）可以从 [Release 页面](https://github.com/weikxs/gitpersona/releases)下载，
+**Linux 安装包**可以从 [Release 页面](https://github.com/weikxs/gitpersona/releases)下载，
 提供 x86_64（`amd64`）和 arm64 两种：
 
 ```sh

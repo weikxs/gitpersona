@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-10-24
+
+The first release: macOS (Apple silicon and Intel) and Linux (x86_64 and arm64).
+
 ### Security
 
 - GitHub profiles no longer chain the user's own credential helpers, which could store a copy of the `gh` token.
@@ -256,3 +260,6 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 - Blank names, emails with angle brackets and a `.pub` file as `ssh_key` are rejected.
 - Project scaffold: Go module, `gitpersona version` / `help` commands, Makefile, CI, release configuration,
   privacy check, contribution and development standards.
+
+[Unreleased]: https://github.com/weikxs/gitpersona/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/weikxs/gitpersona/releases/tag/v0.1.0

@@ -3,6 +3,7 @@
 **English** | [简体中文](README.zh-CN.md)
 
 [![CI](https://github.com/weikxs/gitpersona/actions/workflows/ci.yml/badge.svg)](https://github.com/weikxs/gitpersona/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/weikxs/gitpersona)](https://github.com/weikxs/gitpersona/releases)
 [![Go](https://img.shields.io/github/go-mod/go-version/weikxs/gitpersona)](go.mod)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Platforms](https://img.shields.io/badge/platforms-macOS%20%7C%20Linux-lightgrey)](#supported-systems)
@@ -19,9 +20,9 @@ and a check that proves no repository commits or pushes as the wrong account.
   <img alt="gitpersona whoami in two folders shows two accounts; gitpersona verify finds every repository as expected" src="docs/images/terminal-light.png" width="880">
 </picture>
 
-> **Status: pre-release.** Everything below works and is tested on macOS and Linux: GitHub, GitLab, Bitbucket and
-> other-host profiles, the command line, the web console in English and Chinese, shell integration and `gh` / `glab`
-> switching. The first tagged release and the Homebrew tap are coming; until then, install from source.
+> **Status: first release (0.1).** Everything below works and is tested on macOS and Linux: GitHub, GitLab, Bitbucket
+> and other-host profiles, the command line, the web console in English and Chinese, shell integration and `gh` /
+> `glab` switching. Windows is planned. Feedback and issues are welcome.
 
 ## Contents
 
@@ -47,8 +48,8 @@ and a check that proves no repository commits or pushes as the wrong account.
 **1. Install** (macOS on Apple silicon or Intel, and Linux):
 
 ```sh
-brew install weikxs/tap/gitpersona                         # with the first release
-go install github.com/weikxs/gitpersona/cmd/gitpersona@latest   # today, with Go 1.26+
+brew install weikxs/tap/gitpersona                              # Homebrew, macOS and Linux
+go install github.com/weikxs/gitpersona/cmd/gitpersona@latest   # or with Go 1.26+
 ```
 
 **2. Set up in your browser.** Sign in to each GitHub account once with `gh auth login`, then:
@@ -269,7 +270,7 @@ make build
 ./bin/gitpersona version   # then put bin/gitpersona on your PATH
 ```
 
-**Homebrew** (macOS and Linux, with the first release):
+**Homebrew** (macOS and Linux):
 
 ```sh
 brew install weikxs/tap/gitpersona
@@ -278,7 +279,7 @@ brew install weikxs/tap/gitpersona
 The binary is not signed by Apple yet, so on macOS the cask removes the quarantine flag from it after installing;
 see [SECURITY.md](SECURITY.md). Homebrew picks the build for your Mac (Apple silicon or Intel) by itself.
 
-**Linux packages** (with the first release) from the [releases page](https://github.com/weikxs/gitpersona/releases),
+**Linux packages** from the [releases page](https://github.com/weikxs/gitpersona/releases),
 for x86_64 (`amd64`) and arm64:
 
 ```sh
