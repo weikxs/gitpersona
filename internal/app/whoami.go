@@ -78,7 +78,7 @@ func WhoamiWith(ctx context.Context, e Env, opts WhoamiOptions) error {
 		printWhoami(e, report)
 	}
 	if opts.Check && !report.Consistent {
-		return fmt.Errorf("this repository does not use profile %s: %s", report.Profile, mismatchAdvice(report))
+		return fmt.Errorf("this repository does not use profile %s: %s", report.Profile, e.mismatchAdvice(report))
 	}
 	return nil
 }
@@ -154,7 +154,7 @@ func (e Env) emailSource(ctx context.Context, root string) string {
 }
 
 // mismatchAdvice explains why Git does not use the profile and how to fix it.
-func mismatchAdvice(r WhoamiReport) string {
+func (e Env) mismatchAdvice(r WhoamiReport) string {
 	switch {
 	case r.EnvOverride != "":
 		return fmt.Sprintf("the environment variable %s overrides the profile; unset it (for example in your direnv or shell setup)", r.EnvOverride)
@@ -208,7 +208,7 @@ func printProfile(e Env, r WhoamiReport) {
 	fmt.Fprintf(e.Stdout, "  reason  %s\n", reason)
 	fmt.Fprintf(e.Stdout, "  path    %s\n", e.display(r.Path))
 	if !r.Consistent {
-		fmt.Fprintf(e.Stdout, "  warning %s\n", mismatchAdvice(r))
+		fmt.Fprintf(e.Stdout, "  warning %s\n", e.mismatchAdvice(r))
 	}
 }
 

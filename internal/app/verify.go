@@ -185,7 +185,7 @@ func (e Env) checkRepo(ctx context.Context, vc verifyContext, dir string) RepoCh
 		profile, _ = vc.cfg.ProfileByID(who.Profile)
 		check.ProfileAuthor = author(profile.Name, profile.Email)
 		if !who.Consistent {
-			check.problem("commits use %s, not the profile's %s: %s", orNothing(check.Author), check.ProfileAuthor, mismatchAdvice(who))
+			check.problem("commits use %s, not the profile's %s: %s", orNothing(check.Author), check.ProfileAuthor, e.mismatchAdvice(who))
 		}
 	}
 	for _, remote := range e.remotesOf(ctx, norm) {

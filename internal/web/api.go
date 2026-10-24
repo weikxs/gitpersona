@@ -16,10 +16,14 @@ import (
 	"github.com/weikxs/gitpersona/internal/backup"
 	"github.com/weikxs/gitpersona/internal/config"
 	"github.com/weikxs/gitpersona/internal/discover"
+	"github.com/weikxs/gitpersona/internal/i18n"
 	"github.com/weikxs/gitpersona/internal/paths"
 	"github.com/weikxs/gitpersona/internal/provider"
 	"github.com/weikxs/gitpersona/internal/shell"
 )
+
+// langHeader carries the language the page shows (en or zh).
+const langHeader = "X-GitPersona-Lang"
 
 // maxBody bounds request bodies; the page only sends small JSON objects.
 const maxBody = 64 << 10
@@ -102,12 +106,14 @@ func (a api) handle(h handlerFunc) http.HandlerFunc {
 		log := &bytes.Buffer{}
 		env := a.env
 		env.Stdout, env.Stderr = log, log
+		// The page says which language it shows; messages follow it.
+		env.Lang = i18n.Parse(r.Header.Get(langHeader))
 		data, err := h(call{ctx: r.Context(), r: r, env: env, log: log})
 		// Messages never show the home path, which often holds the user's name.
 		resp := envelope{OK: err == nil, Data: data, Log: a.env.WithTilde(log.String())}
 		w.Header().Set("Content-Type", "application/json")
 		if err != nil {
-			resp.Error = a.env.WithTilde(err.Error())
+			resp.Error = a.env.WithTilde(i18n.Text(env.Lang, err))
 			w.WriteHeader(http.StatusBadRequest)
 		}
 		_ = json.NewEncoder(w).Encode(resp)

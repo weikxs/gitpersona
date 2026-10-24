@@ -18,6 +18,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/weikxs/gitpersona/internal/i18n"
 	"github.com/weikxs/gitpersona/internal/paths"
 	"github.com/weikxs/gitpersona/internal/provider"
 	"github.com/weikxs/gitpersona/internal/shell"
@@ -32,6 +33,10 @@ type Env struct {
 	CaseInsensitive bool
 	// GlobalGitConfig is GIT_CONFIG_GLOBAL when set; empty means ~/.gitconfig.
 	GlobalGitConfig string
+	// Lang is the language of the messages shown to the user: the page's
+	// language for the configuration page; English (the zero value) on the
+	// command line. Content written to files never depends on it.
+	Lang i18n.Lang
 
 	Stdin  io.Reader
 	Stdout io.Writer
@@ -239,3 +244,22 @@ func (e Env) BackupDir() string { return e.backupDir() }
 
 // Display shortens a path under the home directory to ~/...
 func (e Env) Display(path string) string { return e.display(path) }
+
+// tr is a message for the user in e's language. Only for text that is shown:
+// never for file content, values that are parsed, or keys that are compared.
+func (e Env) tr(format string, args ...any) string {
+	return i18n.T(e.lang(), format, args...)
+}
+
+// trErr is an error for the user, shown in any language (the page translates
+// it where it shows it; the command line shows English). It wraps with %w.
+func (e Env) trErr(format string, args ...any) error {
+	return i18n.Errorf(format, args...)
+}
+
+func (e Env) lang() i18n.Lang {
+	if e.Lang == "" {
+		return i18n.EN
+	}
+	return e.Lang
+}

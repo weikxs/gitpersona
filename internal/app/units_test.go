@@ -146,7 +146,7 @@ func TestMismatchAdviceNamesTheCauseOfADisagreement(t *testing.T) {
 		"a worktree setting":      {WhoamiReport{EmailSource: "~/repo/.git/config.worktree", EffectiveEmail: "w@demo.example"}, "git config --worktree --unset user.email"},
 		"another file":            {WhoamiReport{EmailSource: "~/.gitconfig"}, "~/.gitconfig"},
 	} {
-		if got := mismatchAdvice(tc.report); !strings.Contains(got, tc.want) {
+		if got := (Env{}).mismatchAdvice(tc.report); !strings.Contains(got, tc.want) {
 			t.Errorf("%s: mismatchAdvice() = %q, want it to contain %q", name, got, tc.want)
 		}
 	}

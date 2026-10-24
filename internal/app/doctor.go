@@ -85,9 +85,9 @@ func (e Env) fixAll(ctx context.Context, checks []check) bool {
 			continue
 		}
 		done[c.fixKey] = true
-		fmt.Fprintf(e.Stdout, "Fixing: %s\n", c.label)
+		fmt.Fprintln(e.Stdout, e.tr("Fixing: %s", c.label))
 		if err := c.fix(ctx, e); err != nil {
-			fmt.Fprintf(e.Stdout, "    could not fix it: %v\n", err)
+			fmt.Fprintln(e.Stdout, "    "+e.tr("could not fix it: %v", err))
 		}
 	}
 	if len(done) > 0 {
@@ -168,21 +168,28 @@ func (e Env) checkConfig() (config.Config, check) {
 		err = cfg.Validate(e.Home, e.CaseInsensitive)
 	}
 	if errors.Is(err, config.ErrNotFound) {
-		return cfg, check{label: "no configuration yet (" + e.display(e.configFile()) + ")",
-			advice: "run `gitpersona setup` to create it from what you already have"}
+		return cfg, check{label: e.tr("no configuration yet (%s)", e.display(e.configFile())),
+			advice: e.tr("run `gitpersona setup` to create it from what you already have")}
 	}
 	if err != nil {
-		return cfg, check{label: "configuration: " + err.Error(), advice: "fix " + e.display(e.configFile())}
+		return cfg, check{label: e.tr("configuration: %v", err), advice: e.tr("fix %s", e.display(e.configFile()))}
 	}
-	return cfg, check{ok: true, label: fmt.Sprintf("configuration is valid (%s, %s)",
-		plural(len(cfg.Profiles), "profile"), plural(len(cfg.Pins), "pin"))}
+	profiles := e.tr("%d profiles", len(cfg.Profiles))
+	if len(cfg.Profiles) == 1 {
+		profiles = e.tr("1 profile")
+	}
+	pins := e.tr("%d pins", len(cfg.Pins))
+	if len(cfg.Pins) == 1 {
+		pins = e.tr("1 pin")
+	}
+	return cfg, check{ok: true, label: e.tr("configuration is valid (%s, %s)", profiles, pins)}
 }
 
-func differ(n int) string {
+func (e Env) differ(n int) string {
 	if n == 1 {
-		return "1 file differs"
+		return e.tr("1 file differs")
 	}
-	return fmt.Sprintf("%d files differ", n)
+	return e.tr("%d files differ", n)
 }
 
 func plural(n int, noun string) string {
@@ -196,7 +203,7 @@ func (e Env) checkGenerated(ctx context.Context) check {
 	changes, err := planApply(ctx, e)
 	switch {
 	case err != nil:
-		return check{label: "generated Git configuration: " + err.Error()}
+		return check{label: e.tr("generated Git configuration: %v", err)}
 	case len(changes) > 0:
 		names := make([]string, len(changes))
 		for i, c := range changes {
@@ -204,13 +211,13 @@ func (e Env) checkGenerated(ctx context.Context) check {
 		}
 		return check{
 			fix: applyFix, fixKey: "apply",
-			label: fmt.Sprintf("generated Git configuration is out of date (%s: %s)",
-				differ(len(changes)), strings.Join(names, ", ")),
-			advice: "run `gitpersona apply` (this also happens after gitpersona is moved or upgraded, " +
-				"or the configuration or your global Git settings change)",
+			label: e.tr("generated Git configuration is out of date (%s: %s)",
+				e.differ(len(changes)), strings.Join(names, ", ")),
+			advice: e.tr("run `gitpersona apply` (this also happens after gitpersona is moved or upgraded, " +
+				"or the configuration or your global Git settings change)"),
 		}
 	default:
-		return check{ok: true, label: "generated Git configuration is up to date"}
+		return check{ok: true, label: e.tr("generated Git configuration is up to date")}
 	}
 }
 
@@ -231,8 +238,8 @@ func (e Env) checkPins(cfg config.Config) []check {
 		}
 		if _, err := os.Stat(filepath.Join(norm, ".git")); err != nil {
 			checks = append(checks, check{warn: true,
-				label:  fmt.Sprintf("pin %s: no Git repository there yet", pin.Repo),
-				advice: "clone it there, or remove the pin with `gitpersona unpin` inside the repository"})
+				label:  e.tr("pin %s: no Git repository there yet", pin.Repo),
+				advice: e.tr("clone it there, or remove the pin with `gitpersona unpin` inside the repository")})
 		}
 	}
 	return checks
@@ -246,10 +253,10 @@ func (e Env) checkCurrentRepository(ctx context.Context, cfg config.Config) []ch
 		return nil
 	}
 	if !r.Consistent {
-		return []check{{label: fmt.Sprintf("this repository does not use profile %s (%s)", r.Profile, r.Account),
-			advice: mismatchAdvice(r)}}
+		return []check{{label: e.tr("this repository does not use profile %s (%s)", r.Profile, r.Account),
+			advice: e.mismatchAdvice(r)}}
 	}
-	return []check{{ok: true, label: fmt.Sprintf("this repository uses profile %s (%s)", r.Profile, r.Account)}}
+	return []check{{ok: true, label: e.tr("this repository uses profile %s (%s)", r.Profile, r.Account)}}
 }
 
 // checkBlockIsLast flags settings after the GitPersona block in the global
@@ -259,16 +266,16 @@ func (e Env) checkCurrentRepository(ctx context.Context, cfg config.Config) []ch
 func (e Env) checkBlockIsLast() check {
 	content, err := readOptional(e.resolvedUserGitConfig())
 	if err != nil {
-		return check{label: err.Error()}
+		return check{label: e.tr("%v", err)}
 	}
 	if block.ContentAfter(content) {
 		return check{
 			fix: applyFix, fixKey: "apply",
-			label:  fmt.Sprintf("%s has settings after the GitPersona block, which override every profile", e.display(e.userGitConfig())),
-			advice: "run `gitpersona apply` to move the block to the end (your settings are kept)",
+			label:  e.tr("%s has settings after the GitPersona block, which override every profile", e.display(e.userGitConfig())),
+			advice: e.tr("run `gitpersona apply` to move the block to the end (your settings are kept)"),
 		}
 	}
-	return check{ok: true, label: "the GitPersona block is the last part of " + e.display(e.userGitConfig())}
+	return check{ok: true, label: e.tr("the GitPersona block is the last part of %s", e.display(e.userGitConfig()))}
 }
 
 func (e Env) checkGitHubAccounts(ctx context.Context, cfg config.Config) []check {
@@ -283,11 +290,11 @@ func (e Env) checkGitHubAccounts(ctx context.Context, cfg config.Config) []check
 	}
 	gh, err := e.LookPath("gh")
 	if err != nil {
-		return []check{{label: "GitHub CLI (gh) not found", advice: "install it from https://cli.github.com and sign in with `gh auth login`"}}
+		return []check{{label: e.tr("GitHub CLI (gh) not found"), advice: e.tr("install it from https://cli.github.com and sign in with `gh auth login`")}}
 	}
 
 	source := provider.GitHub{GH: gh, Run: e.Run}
-	checks := []check{{ok: true, label: "GitHub CLI found at " + gh}}
+	checks := []check{{ok: true, label: e.tr("GitHub CLI found at %s", gh)}}
 	signedIn := map[string][]string{} // host -> accounts, queried once per host
 	unknownHost := map[string]bool{}  // hosts gh could not be asked about
 	for _, p := range profiles {
@@ -298,8 +305,8 @@ func (e Env) checkGitHubAccounts(ctx context.Context, cfg config.Config) []check
 			accounts, err = source.SignedInAccounts(sctx, p.Host)
 			cancel()
 			if err != nil {
-				checks = append(checks, check{label: fmt.Sprintf("could not ask gh which accounts are signed in on %s", p.Host),
-					advice: "run `gh auth status` to see what is wrong (GitPersona needs gh 2.40 or newer)"})
+				checks = append(checks, check{label: e.tr("could not ask gh which accounts are signed in on %s", p.Host),
+					advice: e.tr("run `gh auth status` to see what is wrong (GitPersona needs gh 2.40 or newer)")})
 			}
 			signedIn[p.Host], unknownHost[p.Host] = accounts, err != nil
 		}
@@ -308,12 +315,12 @@ func (e Env) checkGitHubAccounts(ctx context.Context, cfg config.Config) []check
 		}
 		if !slices.Contains(accounts, p.Account) {
 			checks = append(checks, check{
-				label:  fmt.Sprintf("profile %s: %s is not signed in to gh on %s", p.ID, p.Account, p.Host),
-				advice: fmt.Sprintf("run `gh auth login --hostname %s` and sign in as %s", p.Host, p.Account),
+				label:  e.tr("profile %s: %s is not signed in to gh on %s", p.ID, p.Account, p.Host),
+				advice: e.tr("run `gh auth login --hostname %s` and sign in as %s", p.Host, p.Account),
 			})
 			continue
 		}
-		checks = append(checks, check{ok: true, label: fmt.Sprintf("profile %s: %s is signed in to gh on %s", p.ID, p.Account, p.Host)})
+		checks = append(checks, check{ok: true, label: e.tr("profile %s: %s is signed in to gh on %s", p.ID, p.Account, p.Host)})
 	}
 	return checks
 }

@@ -129,7 +129,7 @@ func TestWhoamiFailsWithoutAConfiguration(t *testing.T) {
 }
 
 func TestMismatchAdviceSuggestsDoctorWhenGitDoesNotSayWhereTheEmailComesFrom(t *testing.T) {
-	got := mismatchAdvice(WhoamiReport{EffectiveEmail: "someone@demo.example"})
+	got := (Env{}).mismatchAdvice(WhoamiReport{EffectiveEmail: "someone@demo.example"})
 
 	if !strings.Contains(got, `"someone@demo.example"`) || !strings.Contains(got, "gitpersona doctor") {
 		t.Errorf("mismatchAdvice = %q", got)

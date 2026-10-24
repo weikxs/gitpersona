@@ -1,0 +1,40 @@
+package i18n
+
+// Messages of internal/app/doctor.go.
+func init() {
+	register(ZH, map[string]string{
+		"%v":                        "%v",
+		"Fixing: %s":                "正在修复：%s",
+		"could not fix it: %v":      "无法修复：%v",
+		"no configuration yet (%s)": "还没有配置（%s）",
+		"run `gitpersona setup` to create it from what you already have": "运行 `gitpersona setup`，根据你现有的设置创建",
+		"configuration: %v":               "配置：%v",
+		"fix %s":                          "请修正 %s",
+		"%d profiles":                     "%d 个配置文件",
+		"1 profile":                       "1 个配置文件",
+		"%d pins":                         "%d 个钉住",
+		"1 pin":                           "1 个钉住",
+		"configuration is valid (%s, %s)": "配置有效（%s，%s）",
+		"1 file differs":                  "1 个文件不同",
+		"%d files differ":                 "%d 个文件不同",
+		"generated Git configuration: %v": "生成的 Git 配置：%v",
+		"generated Git configuration is out of date (%s: %s)":                             "生成的 Git 配置已过期（%s：%s）",
+		"generated Git configuration is up to date":                                       "生成的 Git 配置是最新的",
+		"pin %s: no Git repository there yet":                                             "钉住 %s：那里还没有 Git 仓库",
+		"clone it there, or remove the pin with `gitpersona unpin` inside the repository": "把仓库克隆到那里，或在仓库里用 `gitpersona unpin` 取消钉住",
+		"this repository does not use profile %s (%s)":                                    "这个仓库没有使用配置文件 %s（%s）",
+		"this repository uses profile %s (%s)":                                            "这个仓库使用配置文件 %s（%s）",
+		"%s has settings after the GitPersona block, which override every profile":        "%s 在 GitPersona 区块之后还有设置，会覆盖所有配置文件",
+		"run `gitpersona apply` to move the block to the end (your settings are kept)":    "运行 `gitpersona apply` 把区块移到末尾（你的设置会保留）",
+		"the GitPersona block is the last part of %s":                                     "GitPersona 区块位于 %s 的末尾",
+		"GitHub CLI (gh) not found":                                                       "找不到 GitHub CLI（gh）",
+		"install it from https://cli.github.com and sign in with `gh auth login`":         "从 https://cli.github.com 安装，然后用 `gh auth login` 登录",
+		"GitHub CLI found at %s":                                                          "已找到 GitHub CLI：%s",
+		"could not ask gh which accounts are signed in on %s":                             "无法向 gh 查询 %s 上已登录的账户",
+		"run `gh auth status` to see what is wrong (GitPersona needs gh 2.40 or newer)":   "运行 `gh auth status` 查看原因（GitPersona 需要 gh 2.40 或更新版本）",
+		"profile %s: %s is not signed in to gh on %s":                                     "配置文件 %s：%s 没有在 %s 上登录 gh",
+		"run `gh auth login --hostname %s` and sign in as %s":                             "运行 `gh auth login --hostname %s`，以 %s 登录",
+		"profile %s: %s is signed in to gh on %s":                                         "配置文件 %s：%s 已在 %s 上登录 gh",
+		"run `gitpersona apply` (this also happens after gitpersona is moved or upgraded, or the configuration or your global Git settings change)": "运行 `gitpersona apply`（移动或升级 gitpersona、修改配置或全局 Git 设置后都会出现这种情况）",
+	})
+}
