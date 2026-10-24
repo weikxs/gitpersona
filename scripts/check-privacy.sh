@@ -11,6 +11,8 @@ readonly DENYLIST=".privacy-denylist"
 readonly SELF="scripts/check-privacy.sh"
 
 # Real home directories. Tests use /tmp/home instead (see docs/development/standards.md).
+# The backslashes in the Windows pattern are regex escapes, not a quote.
+# shellcheck disable=SC1003
 home_patterns=(
   '(^|[^A-Za-z0-9._/-])/Users/[A-Za-z0-9._-]+/'    # macOS home directories (not /tmp/Users/...)
   '(^|[^A-Za-z0-9._/-])/home/[a-z_][a-z0-9._-]*/'  # Linux home directories (not /tmp/home/...)

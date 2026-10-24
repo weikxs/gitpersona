@@ -117,7 +117,7 @@ jobs:
           "$RUNNER_TEMP/bin/gitpersona" version
       - name: The build matches this CPU
         run: |
-          case "$(uname -m)" in x86_64) want=x86-64 ;; *) want='arm64|aarch64' ;; esac
+          case "$(uname -m)" in x86_64) want='x86-64|x86_64' ;; *) want='arm64|aarch64' ;; esac
           file "$RUNNER_TEMP/bin/gitpersona" | grep -Eq "$want"
 
   release-config:
