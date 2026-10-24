@@ -29,7 +29,6 @@ export const en = {
   "accounts.lead": "Each account and the identities it commits with. Changes are saved and applied right away, and each one is backed up, so you can undo it under Backups.",
   "accounts.moveAsk": "Move {dir} to {id}?",
   "accounts.moveText": "{dir} uses {owner} now. Moving it makes its repositories use {id} instead.",
-  "accounts.noPins": "None. Pin a repository that sits under another identity's folder.",
   "accounts.none": "No accounts yet.",
   "accounts.pin": "Pin a repository",
   "accounts.pinButton": "Pin",

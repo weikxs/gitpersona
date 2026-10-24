@@ -29,7 +29,6 @@ export const zh = {
   "accounts.lead": "每个账户及其提交时使用的身份。修改会立即保存并应用，每次都会先备份，可以在“备份”中撤销。",
   "accounts.moveAsk": "把 {dir} 移到 {id}？",
   "accounts.moveText": "{dir} 目前使用 {owner}，移动后其中的仓库会改用 {id}。",
-  "accounts.noPins": "没有。可以钉住放在其他身份目录下的仓库。",
   "accounts.none": "还没有账户。",
   "accounts.pin": "钉住仓库",
   "accounts.pinButton": "钉住",
