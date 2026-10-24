@@ -52,6 +52,13 @@ nfpms:
 checksum:
   name_template: checksums.txt
 
+# Named explicitly, so links in the release and the cask never depend on the
+# remote of the checkout.
+release:
+  github:
+    owner: weikxs
+    name: gitpersona
+
 changelog:
   use: github
   groups:
