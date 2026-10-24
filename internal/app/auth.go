@@ -37,19 +37,20 @@ func AuthLogin(ctx context.Context, e Env, opts AuthOptions) error {
 	if err := e.requireSafeHelper(ctx, p); err != nil {
 		return err
 	}
-	token, err := e.readToken(fmt.Sprintf("Token for %s on %s (input is hidden): ", p.Account, p.Host))
+	token, err := e.readToken(e.tr("Token for %s on %s (input is hidden): ", p.Account, p.Host))
 	if err != nil {
 		return err
 	}
 	if _, err := e.runInput()(ctx, credentialRequest(p, token), noPrompt, "git", "-C", e.Home, "credential", "approve"); err != nil {
-		return fmt.Errorf("the credential helper did not save the token: %w", err)
+		return e.trErr("the credential helper did not save the token: %w", err)
 	}
-	users := "Git uses"
+	saved := e.tr("Saved the token for %s on %s in your credential store; Git uses it in profile %s's directories.",
+		p.Account, p.Host, p.ID)
 	if p.Provider == config.ProviderGitLab {
-		users = "Git and glab use"
+		saved = e.tr("Saved the token for %s on %s in your credential store; Git and glab use it in profile %s's directories.",
+			p.Account, p.Host, p.ID)
 	}
-	fmt.Fprintf(e.Stdout, "Saved the token for %s on %s in your credential store; %s it in profile %s's directories.\n",
-		p.Account, p.Host, users, p.ID)
+	fmt.Fprintln(e.Stdout, saved)
 	return nil
 }
 
@@ -60,9 +61,9 @@ func AuthLogout(ctx context.Context, e Env, opts AuthOptions) error {
 		return err
 	}
 	if _, err := e.runInput()(ctx, credentialRequest(p, ""), noPrompt, "git", "-C", e.Home, "credential", "reject"); err != nil {
-		return fmt.Errorf("the credential helper did not remove the token: %w", err)
+		return e.trErr("the credential helper did not remove the token: %w", err)
 	}
-	fmt.Fprintf(e.Stdout, "Removed the token for %s on %s from your credential store.\n", p.Account, p.Host)
+	fmt.Fprintln(e.Stdout, e.tr("Removed the token for %s on %s from your credential store.", p.Account, p.Host))
 	return nil
 }
 
@@ -89,27 +90,27 @@ func AuthStatus(ctx context.Context, e Env, opts AuthOptions) error {
 		shown++
 		if err := e.checkAuthProfile(p); err != nil {
 			invalid++
-			fmt.Fprintf(e.Stdout, "✗ %s\n", err)
+			fmt.Fprintln(e.Stdout, e.tr("✗ %v", err))
 			continue
 		}
 		if _, err := e.profileToken(ctx, p); err != nil {
 			missing++
-			fmt.Fprintf(e.Stdout, "✗ %s: no token for %s on %s (or your credential helper failed); run `gitpersona auth login --profile %s`\n", p.ID, p.Account, p.Host, p.ID)
+			fmt.Fprintln(e.Stdout, e.tr("✗ %s: no token for %s on %s (or your credential helper failed); run `gitpersona auth login --profile %s`", p.ID, p.Account, p.Host, p.ID))
 			continue
 		}
-		fmt.Fprintf(e.Stdout, "✓ %s: the credential store has a token for %s on %s\n", p.ID, p.Account, p.Host)
+		fmt.Fprintln(e.Stdout, e.tr("✓ %s: the credential store has a token for %s on %s", p.ID, p.Account, p.Host))
 	}
 	switch {
 	case shown == 0 && opts.Profile != "":
-		return fmt.Errorf("profile %s is a GitHub profile; check its account with `gh auth status`", opts.Profile)
+		return e.trErr("profile %s is a GitHub profile; check its account with `gh auth status`", opts.Profile)
 	case shown == 0:
-		fmt.Fprintln(e.Stdout, "No profile is on a host other than GitHub; GitHub accounts are signed in with `gh auth login`.")
+		fmt.Fprintln(e.Stdout, e.tr("No profile is on a host other than GitHub; GitHub accounts are signed in with `gh auth login`."))
 	case missing > 0 && invalid > 0:
-		return fmt.Errorf("no token for %d of %d profiles, and %d need a valid host and account", missing, shown, invalid)
+		return e.trErr("no token for %d of %d profiles, and %d need a valid host and account", missing, shown, invalid)
 	case missing > 0:
-		return fmt.Errorf("no token for %d of %d profiles", missing, shown)
+		return e.trErr("no token for %d of %d profiles", missing, shown)
 	case invalid > 0:
-		return fmt.Errorf("%d of %d profiles need a valid host and account", invalid, shown)
+		return e.trErr("%d of %d profiles need a valid host and account", invalid, shown)
 	}
 	return nil
 }
@@ -119,7 +120,7 @@ func AuthStatus(ctx context.Context, e Env, opts AuthOptions) error {
 // Mistakes in other profiles do not stop auth for this one.
 func (e Env) checkAuthProfile(p config.Profile) error {
 	if !config.ValidHost(p.Host) || !config.ValidAccount(p.Account) {
-		return fmt.Errorf("profile %s needs a valid host and account in %s (host %q, account %q)",
+		return e.trErr("profile %s needs a valid host and account in %s (host %q, account %q)",
 			p.ID, e.display(e.configFile()), p.Host, p.Account)
 	}
 	return nil
@@ -159,18 +160,18 @@ func (e Env) authProfile(opts AuthOptions) (config.Profile, error) {
 	if opts.Profile != "" {
 		found, ok := cfg.ProfileByID(opts.Profile)
 		if !ok {
-			return p, fmt.Errorf("no profile %q; the profiles are %s", opts.Profile, profileIDs(cfg))
+			return p, e.trErr("no profile %q; the profiles are %s", opts.Profile, profileIDs(cfg))
 		}
 		p = found
 	} else {
 		r := e.resolveDir(cfg)
 		if !r.Found {
-			return p, errors.New("no profile applies here; name one with --profile")
+			return p, e.trErr("no profile applies here; name one with --profile")
 		}
 		p = r.Profile
 	}
 	if p.Provider == config.ProviderGitHub {
-		return p, fmt.Errorf("profile %s is on GitHub, whose accounts gh keeps; sign in with `gh auth login --hostname %s`", p.ID, p.Host)
+		return p, e.trErr("profile %s is on GitHub, whose accounts gh keeps; sign in with `gh auth login --hostname %s`", p.ID, p.Host)
 	}
 	return p, e.checkAuthProfile(p)
 }
@@ -183,7 +184,7 @@ func (e Env) requireSafeHelper(ctx context.Context, p config.Profile) error {
 		return err
 	}
 	if issue.problem != "" {
-		return fmt.Errorf("%s; %s first", issue.problem, issue.advice)
+		return e.trErr("%s; %s first", issue.problem, issue.advice)
 	}
 	return nil
 }
@@ -197,19 +198,19 @@ func (e Env) readToken(prompt string) (string, error) {
 		raw, err := term.ReadPassword(int(f.Fd()))
 		fmt.Fprintln(e.Stderr)
 		if err != nil {
-			return "", fmt.Errorf("read the token: %w", err)
+			return "", e.trErr("read the token: %w", err)
 		}
 		token = string(raw)
 	} else {
 		line, err := bufio.NewReader(e.Stdin).ReadString('\n')
 		if err != nil && line == "" {
-			return "", errors.New("no token given; paste it when asked, or pipe it on standard input")
+			return "", e.trErr("no token given; paste it when asked, or pipe it on standard input")
 		}
 		token = line
 	}
 	token = strings.TrimSpace(token)
 	if token == "" || strings.ContainsAny(token, "\r\n\x00") {
-		return "", errors.New("the token is empty or not on one line")
+		return "", e.trErr("the token is empty or not on one line")
 	}
 	return token, nil
 }

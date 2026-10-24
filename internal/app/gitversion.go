@@ -62,13 +62,13 @@ func (e Env) checkGitVersion(ctx context.Context) check {
 	v, ok := e.gitVersion(ctx)
 	switch {
 	case !ok:
-		return check{warn: true, label: "could not tell which version of Git this is",
-			advice: "run `git version`; GitPersona needs Git " + minGit.short() + " or newer"}
+		return check{warn: true, label: e.tr("could not tell which version of Git this is"),
+			advice: e.tr("run `git version`; GitPersona needs Git %s or newer", minGit.short())}
 	case !v.atLeast(minGit):
-		return check{label: fmt.Sprintf("Git %s is older than %s, the oldest GitPersona supports", v, minGit.short()),
-			advice: "update Git (for example with your package manager or Homebrew)"}
+		return check{label: e.tr("Git %s is older than %s, the oldest GitPersona supports", v, minGit.short()),
+			advice: e.tr("update Git (for example with your package manager or Homebrew)")}
 	}
-	return check{ok: true, label: "Git " + v.String()}
+	return check{ok: true, label: e.tr("Git %s", v)}
 }
 
 // short is the version without the patch number ("2.36").

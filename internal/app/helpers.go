@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"fmt"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -152,18 +151,18 @@ func splitHostPort(hp string) (host, port string) {
 
 // helperProblem says what is wrong with the helpers that would keep a
 // token, or "" when one keeps it safely, one per account.
-func helperProblem(host string, helpers []string) string {
+func (e Env) helperProblem(host string, helpers []string) string {
 	kinds := make([]string, len(helpers))
 	for i, h := range helpers {
 		kinds[i] = helperKind(h)
 	}
 	switch {
 	case len(helpers) == 0:
-		return fmt.Sprintf("no credential helper would keep the token for %s, so Git asks for one on every push over HTTPS", host)
+		return e.tr("no credential helper would keep the token for %s, so Git asks for one on every push over HTTPS", host)
 	case slices.Contains(kinds, "plain"):
-		return fmt.Sprintf("the credential helper for %s (store) keeps tokens in a file in clear text", host)
+		return e.tr("the credential helper for %s (store) keeps tokens in a file in clear text", host)
 	case !slices.ContainsFunc(kinds, func(k string) bool { return k != "memory" }):
-		return fmt.Sprintf("the credential helper for %s (cache) forgets tokens after a while, so Git asks again", host)
+		return e.tr("the credential helper for %s (cache) forgets tokens after a while, so Git asks again", host)
 	}
 	return ""
 }
@@ -173,11 +172,11 @@ func helperProblem(host string, helpers []string) string {
 func (e Env) helperAdvice(ctx context.Context) string {
 	execPath, _ := e.git(ctx, e.Home, "--exec-path")
 	if h := installedHelper(runtime.GOOS, execPath, e.LookPath); h != "" {
-		return "use the system keychain, for example `git config --global credential.helper " + h + "`"
+		return e.tr("use the system keychain, for example `git config --global credential.helper %s`", h)
 	}
-	return "install a helper that keeps tokens in the system keychain, such as Git Credential Manager " +
+	return e.tr("install a helper that keeps tokens in the system keychain, such as Git Credential Manager " +
 		"(https://github.com/git-ecosystem/git-credential-manager) or your distribution's git-credential-libsecret, " +
-		"then set it with `git config --global credential.helper <name>`"
+		"then set it with `git config --global credential.helper <name>`")
 }
 
 // installedHelper returns the first secure helper of this system that is
@@ -311,7 +310,7 @@ func (e Env) perRepositoryTokens(ctx context.Context, host string) (string, erro
 		return "", err
 	}
 	if slices.ContainsFunc(some, discover.GitTrue) {
-		return "some repositories of " + host, nil
+		return e.tr("some repositories of %s", host), nil
 	}
 	return "", nil
 }
@@ -329,25 +328,25 @@ func (e Env) helpersProblem(ctx context.Context, p config.Profile) ([]string, he
 	if err != nil {
 		return nil, helperIssue{}, err
 	}
-	if problem := helperProblem(p.Host, push); problem != "" {
+	if problem := e.helperProblem(p.Host, push); problem != "" {
 		return push, helperIssue{problem, e.helperAdvice(ctx)}, nil
 	}
 	if where, err := e.perRepositoryTokens(ctx, p.Host); err != nil || where != "" {
 		return push, helperIssue{
-			fmt.Sprintf("credential.useHttpPath is on for %s, so your helper keeps a token per repository while GitPersona saves one per account", where),
-			"turn it off where you set it (`git config --show-origin --get-regexp 'credential.*usehttppath'` shows where)"}, err
+			e.tr("credential.useHttpPath is on for %s, so your helper keeps a token per repository while GitPersona saves one per account", where),
+			e.tr("turn it off where you set it (`git config --show-origin --get-regexp 'credential.*usehttppath'` shows where)")}, err
 	}
 	save, err := e.hostHelpers(ctx, p.Host, p.Account)
 	if err != nil {
 		return nil, helperIssue{}, err
 	}
-	accountSettings := fmt.Sprintf("remove the credential helper settings for https://%s@%s (or %s@%s)", p.Account, p.Host, p.Account, p.Host)
+	accountSettings := e.tr("remove the credential helper settings for https://%s@%s (or %s@%s)", p.Account, p.Host, p.Account, p.Host)
 	if slices.ContainsFunc(save, func(h string) bool { return helperKind(h) == "plain" }) {
-		return push, helperIssue{fmt.Sprintf("a credential helper for %s on %s (store) would keep the token in a file in clear text", p.Account, p.Host),
-			e.helperAdvice(ctx) + ", and " + accountSettings}, nil
+		return push, helperIssue{e.tr("a credential helper for %s on %s (store) would keep the token in a file in clear text", p.Account, p.Host),
+			e.tr("%s, and %s", e.helperAdvice(ctx), accountSettings)}, nil
 	}
 	if !slices.ContainsFunc(save, func(h string) bool { return helperKind(h) != "memory" && slices.Contains(push, h) }) {
-		return push, helperIssue{fmt.Sprintf("your settings for %s on %s save the token with %s, which a push to %s does not ask",
+		return push, helperIssue{e.tr("your settings for %s on %s save the token with %s, which a push to %s does not ask",
 			p.Account, p.Host, strings.Join(save, ", "), p.Host), accountSettings}, nil
 	}
 	return push, helperIssue{}, nil
@@ -364,13 +363,13 @@ func (e Env) checkHelpers(ctx context.Context, cfg config.Config) []check {
 		helpers, issue, err := e.helpersProblem(ctx, p)
 		switch {
 		case err != nil:
-			checks = append(checks, check{label: err.Error()})
+			checks = append(checks, check{label: e.tr("%v", err)})
 		case issue.problem != "":
-			checks = append(checks, check{warn: true, label: "profile " + p.ID + ": " + issue.problem,
-				advice: issue.advice + ", then `gitpersona auth login --profile " + p.ID + "`"})
+			checks = append(checks, check{warn: true, label: e.tr("profile %s: %s", p.ID, issue.problem),
+				advice: e.tr("%s, then `gitpersona auth login --profile %s`", issue.advice, p.ID)})
 		default:
 			checks = append(checks, check{ok: true,
-				label: fmt.Sprintf("profile %s: credentials for %s on %s come from %s (`gitpersona auth status` checks the token)",
+				label: e.tr("profile %s: credentials for %s on %s come from %s (`gitpersona auth status` checks the token)",
 					p.ID, p.Account, p.Host, strings.Join(helpers, ", "))})
 		}
 	}

@@ -54,15 +54,15 @@ func List(_ context.Context, e Env, asJSON bool) error {
 	for _, p := range report.Profiles {
 		label := p.ID
 		if p.ID == report.Default {
-			label += " (default)"
+			label = e.tr("%s (default)", label)
 		}
-		fmt.Fprintf(e.Stdout, "%s  %s on %s <%s>\n", label, p.Account, p.Host, p.Email)
+		fmt.Fprintln(e.Stdout, e.tr("%s  %s on %s <%s>", label, p.Account, p.Host, p.Email))
 		for _, d := range p.Dirs {
-			fmt.Fprintf(e.Stdout, "  dir %s\n", d)
+			fmt.Fprintln(e.Stdout, e.tr("  dir %s", d))
 		}
 		for _, pin := range report.Pins {
 			if pin.Profile == p.ID {
-				fmt.Fprintf(e.Stdout, "  pin %s\n", pin.Repo)
+				fmt.Fprintln(e.Stdout, e.tr("  pin %s", pin.Repo))
 			}
 		}
 	}

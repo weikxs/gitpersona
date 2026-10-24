@@ -6,7 +6,6 @@ package app
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"io/fs"
 	"os"
@@ -65,11 +64,11 @@ func FromOS(stdin io.Reader, stdout, stderr io.Writer) (Env, error) {
 	}
 	wd, err := os.Getwd()
 	if err != nil {
-		return Env{}, fmt.Errorf("find current directory: %w", err)
+		return Env{}, i18n.Errorf("find current directory: %w", err)
 	}
 	exe, err := os.Executable()
 	if err != nil {
-		return Env{}, fmt.Errorf("find gitpersona executable: %w", err)
+		return Env{}, i18n.Errorf("find gitpersona executable: %w", err)
 	}
 	exe = stableExecutable(exe, exec.LookPath)
 	return Env{
@@ -170,7 +169,7 @@ func (e Env) gitConfigAll(ctx context.Context, key string) ([]string, error) {
 		switch {
 		case errors.As(err, &exit) && exit.ExitCode() == gitConfigMissing:
 		case err != nil:
-			return nil, fmt.Errorf("read global Git setting %s from %s: %w", key, e.display(file), err)
+			return nil, e.trErr("read global Git setting %s from %s: %w", key, e.display(file), err)
 		case out != "":
 			values = append(values, strings.Split(out, "\n")...)
 		}
@@ -201,7 +200,7 @@ func (e Env) gitConfigRegexp(ctx context.Context, pattern string) ([][2]string, 
 		switch {
 		case errors.As(err, &exit) && exit.ExitCode() == gitConfigMissing:
 		case err != nil:
-			return nil, fmt.Errorf("read Git settings %s (%s): %w", pattern, e.display(src[len(src)-1]), err)
+			return nil, e.trErr("read Git settings %s (%s): %w", pattern, e.display(src[len(src)-1]), err)
 		default:
 			for _, entry := range strings.Split(out, "\x00") {
 				// A name without a value ("helper" with no "=") is not
@@ -231,7 +230,7 @@ func readOptional(path string) (string, error) {
 		return "", nil
 	}
 	if err != nil {
-		return "", fmt.Errorf("read %s: %w", path, err)
+		return "", i18n.Errorf("read %s: %w", path, err)
 	}
 	return string(data), nil
 }

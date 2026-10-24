@@ -15,6 +15,7 @@ import (
 	"github.com/weikxs/gitpersona/internal/config"
 	"github.com/weikxs/gitpersona/internal/fsutil"
 	"github.com/weikxs/gitpersona/internal/generate"
+	"github.com/weikxs/gitpersona/internal/i18n"
 	"github.com/weikxs/gitpersona/internal/paths"
 )
 
@@ -106,23 +107,22 @@ func Apply(ctx context.Context, e Env, opts ApplyOptions) error {
 // undoes the whole operation, and then writes the changes.
 func (e Env) applyChanges(changes []change, opts ApplyOptions) error {
 	if len(changes) == 0 {
-		fmt.Fprintln(e.Stdout, "Everything is already up to date.")
+		fmt.Fprintln(e.Stdout, e.tr("Everything is already up to date."))
 		return nil
 	}
 	if opts.DryRun {
 		for _, c := range changes {
-			fmt.Fprintf(e.Stdout, "would %s %s\n", c.verb(), e.display(c.path))
+			fmt.Fprintln(e.Stdout, e.changeLine(c, true))
 		}
-		fmt.Fprintln(e.Stdout, "Nothing was written (dry run).")
+		fmt.Fprintln(e.Stdout, e.tr("Nothing was written (dry run)."))
 		return nil
 	}
 	if removals := e.removals(changes); len(removals) > 0 && !opts.Yes {
-		msg := fmt.Sprintf("apply would remove %s; run `gitpersona apply --dry-run` to review, then `gitpersona apply --yes`",
-			strings.Join(removals, ", "))
+		joined := strings.Join(removals, ", ")
 		if !opts.SkipRemovals {
-			return errors.New(msg)
+			return e.trErr("apply would remove %s; run `gitpersona apply --dry-run` to review, then `gitpersona apply --yes`", joined)
 		}
-		fmt.Fprintf(e.Stdout, "Not removing anything: %s\n", msg)
+		fmt.Fprintln(e.Stdout, e.tr("Not removing anything: apply would remove %s; run `gitpersona apply --dry-run` to review, then `gitpersona apply --yes`", joined))
 		changes = slices.DeleteFunc(slices.Clone(changes), func(c change) bool { return c.remove })
 		if len(changes) == 0 {
 			return nil
@@ -140,20 +140,39 @@ func (e Env) applyChanges(changes []change, opts ApplyOptions) error {
 	}
 	if removed != "" {
 		if err := os.WriteFile(filepath.Join(snapshot, removedRulesFile), []byte(removed), fsutil.FilePerm); err != nil {
-			return fmt.Errorf("record the removed rules in the backup: %w", err)
+			return e.trErr("record the removed rules in the backup: %w", err)
 		}
 	}
 	for _, c := range changes {
 		if err := c.write(); err != nil {
-			return fmt.Errorf("%w (previous files are saved in %s)", err, snapshot)
+			return e.trErr("%w (previous files are saved in %s)", err, snapshot)
 		}
-		fmt.Fprintf(e.Stdout, "%sd %s\n", c.verb(), e.display(c.path))
+		fmt.Fprintln(e.Stdout, e.changeLine(c, false))
 	}
-	fmt.Fprintf(e.Stdout, "Backup saved in %s\n", e.display(snapshot))
+	fmt.Fprintln(e.Stdout, e.tr("Backup saved in %s", e.display(snapshot)))
 	if opts.NoPrune {
 		return nil
 	}
 	return backup.Prune(e.backupDir(), backupsToKeep)
+}
+
+// changeLine says what apply does (or, for a dry run, would do) to one file.
+func (e Env) changeLine(c change, dryRun bool) string {
+	path := e.display(c.path)
+	switch {
+	case dryRun && c.remove:
+		return e.tr("would remove %s", path)
+	case dryRun && c.create:
+		return e.tr("would create %s", path)
+	case dryRun:
+		return e.tr("would update %s", path)
+	case c.remove:
+		return e.tr("removed %s", path)
+	case c.create:
+		return e.tr("created %s", path)
+	default:
+		return e.tr("updated %s", path)
+	}
 }
 
 func (e Env) removals(changes []change) []string {
@@ -270,9 +289,14 @@ func (e Env) loadConfig() (config.Config, error) {
 // one; it is a config.ErrNotFound.
 type noConfigError struct{ shown string }
 
-func (n noConfigError) Error() string {
-	return "no configuration yet (" + n.shown + "); run `gitpersona setup` to create it from what you already have"
+func (n noConfigError) message() i18n.Message {
+	return i18n.M("no configuration yet (%s); run `gitpersona setup` to create it from what you already have", n.shown)
 }
+
+func (n noConfigError) Error() string { return n.message().String() }
+
+// In is the error in another language (see i18n.Text).
+func (n noConfigError) In(l i18n.Lang) string { return n.message().In(l) }
 
 func (n noConfigError) Unwrap() error { return config.ErrNotFound }
 
@@ -306,7 +330,7 @@ func (e Env) resolvedUserGitConfig() string {
 const maxSymlinkHops = 40
 
 // errGlobalConfigDisabled explains GIT_CONFIG_GLOBAL=/dev/null.
-var errGlobalConfigDisabled = fmt.Errorf("the global Git configuration is disabled (GIT_CONFIG_GLOBAL=%s); "+
+var errGlobalConfigDisabled = i18n.Errorf("the global Git configuration is disabled (GIT_CONFIG_GLOBAL=%s); "+
 	"GitPersona works through it, so unset GIT_CONFIG_GLOBAL or point it to a file", os.DevNull)
 
 // userWritablePerm is the owner-write bit; without it the user has marked the
@@ -343,7 +367,7 @@ func (e Env) gitConfigWithBlock(edit func(string) string) (change, error) {
 	edited := base != current
 	updated, err := block.UpsertLast(base, generate.IncludeBody(e.includePath()))
 	if err != nil {
-		return change{}, fmt.Errorf("%s: %w. Open the file and keep exactly one pair of the lines %q and %q "+
+		return change{}, e.trErr("%s: %w. Open the file and keep exactly one pair of the lines %q and %q "+
 			"(or delete both), then run `gitpersona apply` again", e.display(link), err, block.Begin, block.End)
 	}
 
@@ -351,11 +375,11 @@ func (e Env) gitConfigWithBlock(edit func(string) string) (change, error) {
 	if info, err := os.Stat(path); err == nil {
 		perm = info.Mode().Perm() // the file belongs to the user; keep its mode
 		if perm&userWritablePerm == 0 && edited {
-			return change{}, fmt.Errorf("%s is read-only, so the old includeIf rules cannot be removed; "+
+			return change{}, e.trErr("%s is read-only, so the old includeIf rules cannot be removed; "+
 				"make it writable (chmod u+w) or keep them (setup --keep-old-rules)", e.display(link))
 		}
 		if perm&userWritablePerm == 0 && updated != current {
-			return change{}, fmt.Errorf("%s is read-only; make it writable (chmod u+w), or add these lines at its end "+
+			return change{}, e.trErr("%s is read-only; make it writable (chmod u+w), or add these lines at its end "+
 				"yourself (keep the marker lines so GitPersona recognizes them):\n\n%s",
 				e.display(link), block.Render(generate.IncludeBody(e.includePath())))
 		}
@@ -379,7 +403,7 @@ func (e Env) staleGenerated(desired []change) []change {
 func (c change) write() error {
 	if c.remove || c.linkTo != "" {
 		if err := os.Remove(c.path); err != nil && !os.IsNotExist(err) {
-			return fmt.Errorf("remove %s: %w", c.path, err)
+			return i18n.Errorf("remove %s: %w", c.path, err)
 		}
 	}
 	if c.remove {
@@ -390,7 +414,7 @@ func (c change) write() error {
 			return err
 		}
 		if err := os.Symlink(c.linkTo, c.path); err != nil {
-			return fmt.Errorf("link %s: %w", c.path, err)
+			return i18n.Errorf("link %s: %w", c.path, err)
 		}
 		return nil
 	}

@@ -3,7 +3,6 @@ package app
 import (
 	"cmp"
 	"context"
-	"fmt"
 	"slices"
 	"strings"
 	"sync"
@@ -76,10 +75,15 @@ type RemoteCheck struct {
 	// PushAs is the account the host sees on a push, or "" when GitPersona
 	// cannot tell (your own credential helper or an unknown SSH key decides).
 	PushAs string `json:"push_as,omitempty"`
-	// Via says how: "gh token", "your credential helper", "SSH key ~/.ssh/…".
-	Via string `json:"via"`
-	// ChosenBy says where the repository itself chose the push account, or "".
-	ChosenBy string `json:"chosen_by,omitempty"`
+	// Via says how, for people: "gh token", "your credential helper",
+	// "SSH key ~/.ssh/…", in the language of the request. ViaKind is the same
+	// as a code that never changes: one of the Via* constants.
+	Via     string `json:"via"`
+	ViaKind string `json:"via_kind"`
+	// ChosenBy says where the repository itself chose the push account, or "",
+	// for people; ChosenKind is the same as a code (the Chosen* constants).
+	ChosenBy   string `json:"chosen_by,omitempty"`
+	ChosenKind string `json:"chosen_kind,omitempty"`
 	// Keys are the SSH keys ssh offers, in order, written with ~.
 	Keys []string `json:"keys"`
 	// Greeted is set when the SSH host was asked (verify --ssh); PushAs is
@@ -185,7 +189,7 @@ func (e Env) checkRepo(ctx context.Context, vc verifyContext, dir string) RepoCh
 		profile, _ = vc.cfg.ProfileByID(who.Profile)
 		check.ProfileAuthor = author(profile.Name, profile.Email)
 		if !who.Consistent {
-			check.problem("commits use %s, not the profile's %s: %s", orNothing(check.Author), check.ProfileAuthor, e.mismatchAdvice(who))
+			check.problem(e.tr("commits use %s, not the profile's %s: %s", e.orNothing(check.Author), check.ProfileAuthor, e.mismatchAdvice(who)))
 		}
 	}
 	for _, remote := range e.remotesOf(ctx, norm) {
@@ -199,17 +203,19 @@ func (e Env) checkRepo(ctx context.Context, vc verifyContext, dir string) RepoCh
 	return check
 }
 
-func (c *RepoCheck) problem(format string, args ...any) {
-	c.Findings = append(c.Findings, CheckFinding{Level: VerdictProblem, Text: fmt.Sprintf(format, args...)})
+// problem, note and unconfirmed add a finding; text is already in the
+// language of the request (written with Env.tr).
+func (c *RepoCheck) problem(text string) {
+	c.Findings = append(c.Findings, CheckFinding{Level: VerdictProblem, Text: text})
 }
 
-func (c *RepoCheck) note(format string, args ...any) {
-	c.Findings = append(c.Findings, CheckFinding{Level: VerdictNote, Text: fmt.Sprintf(format, args...)})
+func (c *RepoCheck) note(text string) {
+	c.Findings = append(c.Findings, CheckFinding{Level: VerdictNote, Text: text})
 }
 
 // unconfirmed records that the push account cannot be told from the settings.
-func (c *RepoCheck) unconfirmed(format string, args ...any) {
-	c.Findings = append(c.Findings, CheckFinding{Level: VerdictUnconfirmed, Text: fmt.Sprintf(format, args...)})
+func (c *RepoCheck) unconfirmed(text string) {
+	c.Findings = append(c.Findings, CheckFinding{Level: VerdictUnconfirmed, Text: text})
 }
 
 func (c *RepoCheck) verdict(managed bool) string {
@@ -277,9 +283,9 @@ func authorOrEmpty(name, email string) string {
 	return author(name, email)
 }
 
-func orNothing(s string) string {
+func (e Env) orNothing(s string) string {
 	if strings.TrimSpace(s) == "" {
-		return "no author"
+		return e.tr("no author")
 	}
 	return s
 }

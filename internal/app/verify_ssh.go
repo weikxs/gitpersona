@@ -173,10 +173,10 @@ func (e Env) flagSharedConnections(checks []RepoCheck) {
 					others = append(others, e.display(k))
 				}
 			}
-			c.problem("remote %s: ssh shares one connection to %s (ControlMaster, ControlPath %s) with pushes that use %s; "+
+			c.problem(e.tr("remote %s: ssh shares one connection to %s (ControlMaster, ControlPath %s) with pushes that use %s; "+
 				"a push here can go out over it, signed in with that key instead of %s. Set `ControlMaster no` for %s in "+
 				"~/.ssh/config, or give the profile an ssh_key (GitPersona's SSH command never shares a connection)",
-				rc.Name, rc.Host, rc.sharedPath, strings.Join(others, ", "), e.display(rc.keys[0]), rc.Host)
+				rc.Name, rc.Host, rc.sharedPath, strings.Join(others, ", "), e.display(rc.keys[0]), rc.Host))
 		}
 		c.Verdict = c.verdict(c.Profile != "")
 	}

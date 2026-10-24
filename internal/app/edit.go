@@ -10,6 +10,7 @@ import (
 
 	"github.com/weikxs/gitpersona/internal/config"
 	"github.com/weikxs/gitpersona/internal/fsutil"
+	"github.com/weikxs/gitpersona/internal/i18n"
 	"github.com/weikxs/gitpersona/internal/paths"
 	"github.com/weikxs/gitpersona/internal/resolve"
 )
@@ -27,14 +28,14 @@ func Use(ctx context.Context, e Env, profileID string) error {
 	dir := e.display(e.WorkDir)
 	opts := e.editOptions()
 	if r := e.resolveDir(cfg); r.Found && r.Reason == resolve.ReasonRule && r.Profile.ID == profileID && !samePath(r.Match, dir, opts) {
-		fmt.Fprintf(e.Stdout, "%s already uses profile %s through %s; nothing to change.\n", dir, profileID, r.Match)
+		fmt.Fprintln(e.Stdout, e.tr("%s already uses profile %s through %s; nothing to change.", dir, profileID, r.Match))
 		return nil
 	}
 
 	edited, want, from := text, cfg, ""
 	if removed, owner, err := config.RemoveDir(text, dir, opts); err == nil {
 		if owner == profileID {
-			fmt.Fprintf(e.Stdout, "%s already uses profile %s.\n", dir, profileID)
+			fmt.Fprintln(e.Stdout, e.tr("%s already uses profile %s.", dir, profileID))
 			return nil
 		}
 		edited, want, from = removed, withoutDir(cfg, owner, dir, opts), owner
@@ -48,9 +49,9 @@ func Use(ctx context.Context, e Env, profileID string) error {
 		return err
 	}
 	if from != "" {
-		fmt.Fprintf(e.Stdout, "%s now uses profile %s (moved from %s).\n", dir, profileID, from)
+		fmt.Fprintln(e.Stdout, e.tr("%s now uses profile %s (moved from %s).", dir, profileID, from))
 	} else {
-		fmt.Fprintf(e.Stdout, "%s now uses profile %s.\n", dir, profileID)
+		fmt.Fprintln(e.Stdout, e.tr("%s now uses profile %s.", dir, profileID))
 	}
 	e.warnAboutCoveredRules(ctx, dir, profileID)
 	return nil
@@ -64,8 +65,8 @@ func (e Env) warnAboutCoveredRules(ctx context.Context, place, profileID string)
 		inside := coversWith(e.comparisonKey, []string{place}, r.Dir)
 		around := coversWith(e.comparisonKey, []string{r.Dir}, place)
 		if inside || around {
-			fmt.Fprintf(e.Stdout, "! Your includeIf rule for %s does more than a profile can (%s); profile %s now applies in %s, "+
-				"so that is lost there.\n", r.Dir, r.Keep, profileID, place)
+			fmt.Fprintln(e.Stdout, e.tr("! Your includeIf rule for %s does more than a profile can (%s); profile %s now applies in %s, "+
+				"so that is lost there.", r.Dir, r.Keep, profileID, place))
 		}
 	}
 }
@@ -83,7 +84,7 @@ func Remove(ctx context.Context, e Env, dir string) error {
 	edited, owner, err := config.RemoveDir(text, dir, opts)
 	if err != nil {
 		if r := e.resolveDirAt(cfg, dir); r.Found && r.Reason == resolve.ReasonRule {
-			return fmt.Errorf("%s has no rule of its own; it uses profile %s through %s (run `gitpersona remove %s` to remove that rule)",
+			return e.trErr("%s has no rule of its own; it uses profile %s through %s (run `gitpersona remove %s` to remove that rule)",
 				dir, r.Profile.ID, r.Match, r.Match)
 		}
 		return err
@@ -95,7 +96,7 @@ func Remove(ctx context.Context, e Env, dir string) error {
 	if norm, err := paths.Normalize(dir, e.Home); err == nil {
 		shown = e.display(norm)
 	}
-	fmt.Fprintf(e.Stdout, "%s no longer uses profile %s.\n", shown, owner)
+	fmt.Fprintln(e.Stdout, e.tr("%s no longer uses profile %s.", shown, owner))
 	return nil
 }
 
@@ -120,7 +121,7 @@ func Pin(ctx context.Context, e Env, profileID string) error {
 	if err := e.saveEdited(ctx, "pin "+profileID, edited, withPin(cfg, repo, profileID, opts)); err != nil {
 		return err
 	}
-	fmt.Fprintf(e.Stdout, "%s is pinned to profile %s.\n", repo, profileID)
+	fmt.Fprintln(e.Stdout, e.tr("%s is pinned to profile %s.", repo, profileID))
 	e.warnAboutCoveredRules(ctx, repo, profileID)
 	return nil
 }
@@ -143,7 +144,7 @@ func Unpin(ctx context.Context, e Env) error {
 	if err := e.saveEdited(ctx, "unpin", edited, withoutPin(cfg, repo, opts)); err != nil {
 		return err
 	}
-	fmt.Fprintf(e.Stdout, "%s is no longer pinned.\n", repo)
+	fmt.Fprintln(e.Stdout, e.tr("%s is no longer pinned.", repo))
 	return nil
 }
 
@@ -153,12 +154,12 @@ func Unpin(ctx context.Context, e Env) error {
 func (e Env) pinnableRepo(ctx context.Context) (string, error) {
 	root, ok := e.repoRoot(ctx, e.WorkDir)
 	if !ok {
-		return "", fmt.Errorf("%s is not inside a Git repository", e.display(e.WorkDir))
+		return "", e.trErr("%s is not inside a Git repository", e.display(e.WorkDir))
 	}
 	gitDir, _ := e.git(ctx, root, "rev-parse", "--absolute-git-dir")
 	common, _ := e.git(ctx, root, "rev-parse", "--path-format=absolute", "--git-common-dir")
 	if gitDir != common {
-		return "", fmt.Errorf("%s is a worktree; worktrees follow their main repository (%s), so pin that instead",
+		return "", e.trErr("%s is a worktree; worktrees follow their main repository (%s), so pin that instead",
 			e.display(root), e.display(strings.TrimSuffix(common, "/.git")))
 	}
 	return e.display(asWritten(e.WorkDir, root)), nil
@@ -185,7 +186,7 @@ func asWritten(workDir, root string) string {
 func (e Env) saveEdited(ctx context.Context, command, edited string, want config.Config) error {
 	got, err := config.Parse([]byte(edited))
 	if err != nil || !reflect.DeepEqual(got, want) {
-		return fmt.Errorf("could not change %s safely; edit it by hand (nothing was written)", e.display(e.configFile()))
+		return e.trErr("could not change %s safely; edit it by hand (nothing was written)", e.display(e.configFile()))
 	}
 	if err := got.Validate(e.Home, e.CaseInsensitive); err != nil {
 		return err
@@ -230,9 +231,9 @@ func knownProfile(cfg config.Config, id, command string) error {
 		return nil
 	}
 	if id == "" {
-		return fmt.Errorf("choose a profile: gitpersona %s <%s>", command, profileIDs(cfg))
+		return i18n.Errorf("choose a profile: gitpersona %s <%s>", command, profileIDs(cfg))
 	}
-	return fmt.Errorf("unknown profile %q; choose one of: %s", id, profileIDs(cfg))
+	return i18n.Errorf("unknown profile %q; choose one of: %s", id, profileIDs(cfg))
 }
 
 // resolveDir resolves the current directory by directory rules.

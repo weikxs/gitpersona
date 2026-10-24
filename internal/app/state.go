@@ -74,7 +74,7 @@ func State(ctx context.Context, e Env) StateReport {
 			report.Accounts = accounts
 		}
 	} else {
-		report.AccountsError = "the GitHub CLI (gh) is not installed"
+		report.AccountsError = e.tr("the GitHub CLI (gh) is not installed")
 	}
 	return report
 }
@@ -115,7 +115,7 @@ func (e Env) fileChanges(changes []change) []FileChange {
 		fc := FileChange{Path: name, Action: c.verb()}
 		switch {
 		case c.linkTo != "":
-			fc.Diff = "link to " + e.display(c.linkTo)
+			fc.Diff = e.tr("link to %s", e.display(c.linkTo))
 		default:
 			before := ""
 			if info, err := os.Lstat(c.path); err == nil && info.Mode()&os.ModeSymlink == 0 {

@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/weikxs/gitpersona/internal/config"
 )
@@ -42,7 +41,7 @@ func UpdateProfile(ctx context.Context, e Env, id string, c ProfileChanges) erro
 		return err
 	}
 	if _, ok := cfg.ProfileByID(id); !ok {
-		return fmt.Errorf("unknown profile %q; choose one of: %s", id, profileIDs(cfg))
+		return e.trErr("unknown profile %q; choose one of: %s", id, profileIDs(cfg))
 	}
 	edited, want := text, cfg
 	for key, value := range map[string]*string{"account": c.Account, "name": c.Name, "email": c.Email, "ssh_key": c.SSHKey} {

@@ -12,6 +12,7 @@ import (
 	"github.com/weikxs/gitpersona/internal/backup"
 	"github.com/weikxs/gitpersona/internal/block"
 	"github.com/weikxs/gitpersona/internal/generate"
+	"github.com/weikxs/gitpersona/internal/i18n"
 )
 
 // Rollback lists the backups (when which is empty) or restores one ("latest"
@@ -23,22 +24,22 @@ func Rollback(ctx context.Context, e Env, which string, yes bool) error {
 		return err
 	}
 	if len(infos) == 0 {
-		fmt.Fprintln(e.Stdout, "No backups yet.")
+		fmt.Fprintln(e.Stdout, e.tr("No backups yet."))
 		return nil
 	}
 	if which == "" {
 		for i, info := range infos {
 			name := filepath.Base(info.Dir)
 			if i == 0 {
-				name += " (latest)"
+				name = e.tr("%s (latest)", name)
 			}
 			made := ""
 			if info.Manifest.Command != "" {
-				made = "  by `gitpersona " + info.Manifest.Command + "`"
+				made = e.tr("  by `gitpersona %s`", info.Manifest.Command)
 			}
 			fmt.Fprintf(e.Stdout, "%s%s\n    %s\n", name, made, strings.Join(e.entryNames(info.Manifest), ", "))
 		}
-		fmt.Fprintln(e.Stdout, "\nRestore one with: gitpersona rollback <name|latest> --yes")
+		fmt.Fprintln(e.Stdout, "\n"+e.tr("Restore one with: gitpersona rollback <name|latest> --yes"))
 		return nil
 	}
 
@@ -48,7 +49,7 @@ func Rollback(ctx context.Context, e Env, which string, yes bool) error {
 	}
 	names := e.entryNames(chosen.Manifest)
 	if !yes {
-		return fmt.Errorf("rollback would restore %s; run `gitpersona rollback %s --yes`", strings.Join(names, ", "), which)
+		return e.trErr("rollback would restore %s; run `gitpersona rollback %s --yes`", strings.Join(names, ", "), which)
 	}
 	paths := make([]string, len(chosen.Manifest.Entries))
 	for i, en := range chosen.Manifest.Entries {
@@ -61,8 +62,8 @@ func Rollback(ctx context.Context, e Env, which string, yes bool) error {
 	if err := backup.Restore(chosen.Dir); err != nil {
 		return err
 	}
-	fmt.Fprintf(e.Stdout, "Restored %s from %s.\nThe state before the rollback is saved in %s.\n",
-		strings.Join(names, ", "), filepath.Base(chosen.Dir), e.display(undo))
+	fmt.Fprintln(e.Stdout, e.tr("Restored %s from %s.\nThe state before the rollback is saved in %s.",
+		strings.Join(names, ", "), filepath.Base(chosen.Dir), e.display(undo)))
 	return e.regenerateAfterRollback(ctx)
 }
 
@@ -79,7 +80,7 @@ func (e Env) regenerateAfterRollback(ctx context.Context) error {
 	if _, err := os.Stat(e.configFile()); err != nil {
 		return nil
 	}
-	fmt.Fprintln(e.Stdout, "Regenerating the Git configuration for the restored settings:")
+	fmt.Fprintln(e.Stdout, e.tr("Regenerating the Git configuration for the restored settings:"))
 	return Apply(ctx, e, ApplyOptions{Yes: true, NoPrune: true})
 }
 
@@ -92,7 +93,7 @@ func pickSnapshot(infos []backup.Info, which string) (backup.Info, error) {
 			return info, nil
 		}
 	}
-	return backup.Info{}, fmt.Errorf("no backup named %q; run `gitpersona rollback` to list them", which)
+	return backup.Info{}, i18n.Errorf("no backup named %q; run `gitpersona rollback` to list them", which)
 }
 
 func (e Env) entryNames(m backup.Manifest) []string {
@@ -120,17 +121,17 @@ func Uninstall(_ context.Context, e Env, yes bool) error {
 		for i, c := range changes {
 			names[i] = e.display(c.path)
 		}
-		return fmt.Errorf("uninstall would change %s; run `gitpersona uninstall --yes`", strings.Join(names, ", "))
+		return e.trErr("uninstall would change %s; run `gitpersona uninstall --yes`", strings.Join(names, ", "))
 	}
 	if err := e.applyChanges(changes, ApplyOptions{Yes: true, Command: "uninstall"}); err != nil {
 		return err
 	}
 	for _, r := range restored {
-		fmt.Fprintf(e.Stdout, "Put back your includeIf rule %q, which GitPersona had taken over.\n", r.condition)
+		fmt.Fprintln(e.Stdout, e.tr("Put back your includeIf rule %q, which GitPersona had taken over.", r.condition))
 	}
 	_ = os.Remove(filepath.Join(e.ConfigDir, "profiles")) // only succeeds when empty
 	_ = os.Remove(e.shimDir())
-	fmt.Fprintf(e.Stdout, "GitPersona is uninstalled. Your configuration stays in %s.\n", e.display(e.configFile()))
+	fmt.Fprintln(e.Stdout, e.tr("GitPersona is uninstalled. Your configuration stays in %s.", e.display(e.configFile())))
 	return nil
 }
 

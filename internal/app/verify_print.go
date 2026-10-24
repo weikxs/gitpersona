@@ -3,10 +3,10 @@ package app
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"strings"
 
+	"github.com/weikxs/gitpersona/internal/i18n"
 	"github.com/weikxs/gitpersona/internal/resolve"
 )
 
@@ -21,7 +21,7 @@ type VerifyOptions struct {
 
 // errVerifyProblems is returned when a repository would commit or push as
 // someone else; the report already says which.
-var errVerifyProblems = errors.New("some repositories would commit or push as another identity; see above")
+var errVerifyProblems = i18n.Errorf("some repositories would commit or push as another identity; see above")
 
 // Verify checks every repository: who commits and who pushes there.
 func Verify(ctx context.Context, e Env, opts VerifyOptions) error {
@@ -54,45 +54,61 @@ func printVerify(e Env, r VerifyReport, all bool) {
 		printRepoCheck(e, c)
 	}
 	if len(r.Missing) > 0 {
-		fmt.Fprintf(e.Stdout, "not found: %s\n", strings.Join(r.Missing, ", "))
+		fmt.Fprintln(e.Stdout, e.tr("not found: %s", strings.Join(r.Missing, ", ")))
 	}
 	if !r.Complete {
-		fmt.Fprintln(e.Stdout, "the scan stopped early or did not go deep enough; some repositories may be missing")
+		fmt.Fprintln(e.Stdout, e.tr("the scan stopped early or did not go deep enough; some repositories may be missing"))
 	}
 	c := r.Counts
-	fmt.Fprintf(e.Stdout, "%d repositories in %s: %d as expected, %d with notes, %d with problems, %d unconfirmed, %d outside your profiles\n",
-		len(r.Repositories), strings.Join(r.Scanned, ", "), c.OK, c.Notes, c.Problems, c.Unconfirmed, c.Unmanaged)
+	fmt.Fprintln(e.Stdout, e.tr("%d repositories in %s: %d as expected, %d with notes, %d with problems, %d unconfirmed, %d outside your profiles",
+		len(r.Repositories), strings.Join(r.Scanned, ", "), c.OK, c.Notes, c.Problems, c.Unconfirmed, c.Unmanaged))
 	if c.Unconfirmed > 0 {
-		fmt.Fprintln(e.Stdout, "(`gitpersona verify --ssh` asks the SSH hosts which account the unconfirmed ones push as)")
+		fmt.Fprintln(e.Stdout, e.tr("(`gitpersona verify --ssh` asks the SSH hosts which account the unconfirmed ones push as)"))
 	}
 	if !all && c.OK > 0 {
-		fmt.Fprintln(e.Stdout, "(`gitpersona verify --all` lists every repository; `gitpersona ui` shows them on a page)")
+		fmt.Fprintln(e.Stdout, e.tr("(`gitpersona verify --all` lists every repository; `gitpersona ui` shows them on a page)"))
 	}
 }
 
 func printRepoCheck(e Env, c RepoCheck) {
-	where := "no profile: Git uses your own settings"
+	where := e.tr("no profile: Git uses your own settings")
 	if c.Profile != "" {
-		where = fmt.Sprintf("%s · %s", c.Profile, reasonWithMatch(c.Reason, c.Match))
+		where = e.tr("%s · %s", c.Profile, e.reasonWithMatch(c.Reason, c.Match))
 	}
 	fmt.Fprintf(e.Stdout, "%s %s  (%s)\n", verdictMarks[c.Verdict], c.Path, where)
-	fmt.Fprintf(e.Stdout, "    author  %s\n", orNothing(c.Author))
+	fmt.Fprintln(e.Stdout, e.tr("    author  %s", e.orNothing(c.Author)))
 	for _, rc := range c.Remotes {
 		as := rc.PushAs
 		if as == "" {
-			as = "an account GitPersona cannot tell"
+			as = e.tr("an account GitPersona cannot tell")
 		}
-		fmt.Fprintf(e.Stdout, "    push    %s → %s as %s (%s)\n", rc.Name, rc.Address, as, rc.Via)
+		fmt.Fprintln(e.Stdout, e.tr("    push    %s → %s as %s (%s)", rc.Name, rc.Address, as, rc.Via))
 	}
 	for _, f := range c.Findings {
 		fmt.Fprintf(e.Stdout, "    %-7s %s\n", f.Level, f.Text)
 	}
 }
 
-func reasonWithMatch(reason, match string) string {
-	text := resolve.Reason(reason).Describe()
+// reasonWithMatch says why a profile applies (a reason code of resolve) and,
+// for a rule or a pin, which one.
+func (e Env) reasonWithMatch(reason, match string) string {
+	text := e.describeReason(reason)
 	if match != "" {
 		text += " " + match
 	}
 	return text
+}
+
+// describeReason is resolve.Reason.Describe in e's language.
+func (e Env) describeReason(reason string) string {
+	switch resolve.Reason(reason) {
+	case resolve.ReasonPin:
+		return e.tr("pinned repository")
+	case resolve.ReasonRule:
+		return e.tr("directory rule")
+	case resolve.ReasonDefault:
+		return e.tr("default profile")
+	default:
+		return e.tr("no rule matches")
+	}
 }

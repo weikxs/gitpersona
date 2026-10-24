@@ -78,7 +78,7 @@ func WhoamiWith(ctx context.Context, e Env, opts WhoamiOptions) error {
 		printWhoami(e, report)
 	}
 	if opts.Check && !report.Consistent {
-		return fmt.Errorf("this repository does not use profile %s: %s", report.Profile, e.mismatchAdvice(report))
+		return e.trErr("this repository does not use profile %s: %s", report.Profile, e.mismatchAdvice(report))
 	}
 	return nil
 }
@@ -157,58 +157,51 @@ func (e Env) emailSource(ctx context.Context, root string) string {
 func (e Env) mismatchAdvice(r WhoamiReport) string {
 	switch {
 	case r.EnvOverride != "":
-		return fmt.Sprintf("the environment variable %s overrides the profile; unset it (for example in your direnv or shell setup)", r.EnvOverride)
+		return e.tr("the environment variable %s overrides the profile; unset it (for example in your direnv or shell setup)", r.EnvOverride)
 	case r.LocalEmail != "":
-		return fmt.Sprintf("this repository sets user.email %q itself; remove it with `git config --local --unset user.email`", r.LocalEmail)
+		return e.tr("this repository sets user.email %q itself; remove it with `git config --local --unset user.email`", r.LocalEmail)
 	case strings.HasSuffix(r.EmailSource, "config.worktree"):
-		return fmt.Sprintf("this worktree sets user.email %q itself; remove it with `git config --worktree --unset user.email`", r.EffectiveEmail)
+		return e.tr("this worktree sets user.email %q itself; remove it with `git config --worktree --unset user.email`", r.EffectiveEmail)
 	case r.EmailSource != "":
-		return fmt.Sprintf("Git currently uses %q from %s", r.EffectiveEmail, r.EmailSource)
+		return e.tr("Git currently uses %q from %s", r.EffectiveEmail, r.EmailSource)
 	default:
-		return fmt.Sprintf("Git currently uses %q; run `gitpersona doctor`", r.EffectiveEmail)
+		return e.tr("Git currently uses %q; run `gitpersona doctor`", r.EffectiveEmail)
 	}
 }
 
 func printWhoami(e Env, r WhoamiReport) {
 	if !r.InRepository {
-		fmt.Fprintf(e.Stdout, "Not inside a Git repository (%s).\n", e.display(r.Path))
+		fmt.Fprintln(e.Stdout, e.tr("Not inside a Git repository (%s).", e.display(r.Path)))
 	}
 	if !r.Found {
-		fmt.Fprintln(e.Stdout, "No GitPersona profile applies here; Git uses its own settings.")
+		fmt.Fprintln(e.Stdout, e.tr("No GitPersona profile applies here; Git uses its own settings."))
 		if r.InRepository && r.EffectiveEmail != "" {
-			fmt.Fprintf(e.Stdout, "  author  %s <%s>%s\n", r.EffectiveName, r.EffectiveEmail, fromFile(r.EmailSource))
+			fmt.Fprintln(e.Stdout, e.tr("  author  %s <%s>%s", r.EffectiveName, r.EffectiveEmail, e.fromFile(r.EmailSource)))
 		}
 	} else {
 		printProfile(e, r)
 	}
 	if n := r.NewRepositories; n != nil {
-		reason := resolve.Reason(n.Reason).Describe()
-		if n.Match != "" {
-			reason += " " + n.Match
-		}
-		fmt.Fprintf(e.Stdout, "Repositories created or cloned here will use %s (profile %s, %s).\n", n.Account, n.Profile, reason)
+		fmt.Fprintln(e.Stdout, e.tr("Repositories created or cloned here will use %s (profile %s, %s).",
+			n.Account, n.Profile, e.reasonWithMatch(n.Reason, n.Match)))
 	}
 }
 
 func printProfile(e Env, r WhoamiReport) {
-	fmt.Fprintf(e.Stdout, "%s  (profile %s · %s on %s)\n", r.Account, r.Profile, r.Provider, r.Host)
+	fmt.Fprintln(e.Stdout, e.tr("%s  (profile %s · %s on %s)", r.Account, r.Profile, r.Provider, r.Host))
 	name, email := r.Name, r.Email
 	if r.InRepository && r.EffectiveEmail != "" {
 		name, email = r.EffectiveName, r.EffectiveEmail // what commits really use
 	}
-	source := fromFile(r.EmailSource)
+	source := e.fromFile(r.EmailSource)
 	if env := os.Getenv("GIT_AUTHOR_EMAIL"); env != "" {
-		email, source = env, " (from GIT_AUTHOR_EMAIL)" // set for every commit, whatever the configuration says
+		email, source = env, e.tr(" (from GIT_AUTHOR_EMAIL)") // set for every commit, whatever the configuration says
 	}
-	fmt.Fprintf(e.Stdout, "  author  %s <%s>%s\n", name, email, source)
-	reason := resolve.Reason(r.Reason).Describe()
-	if r.Match != "" {
-		reason += " " + r.Match
-	}
-	fmt.Fprintf(e.Stdout, "  reason  %s\n", reason)
-	fmt.Fprintf(e.Stdout, "  path    %s\n", e.display(r.Path))
+	fmt.Fprintln(e.Stdout, e.tr("  author  %s <%s>%s", name, email, source))
+	fmt.Fprintln(e.Stdout, e.tr("  reason  %s", e.reasonWithMatch(r.Reason, r.Match)))
+	fmt.Fprintln(e.Stdout, e.tr("  path    %s", e.display(r.Path)))
 	if !r.Consistent {
-		fmt.Fprintf(e.Stdout, "  warning %s\n", e.mismatchAdvice(r))
+		fmt.Fprintln(e.Stdout, e.tr("  warning %s", e.mismatchAdvice(r)))
 	}
 }
 
@@ -222,9 +215,9 @@ func WhoamiReportFor(ctx context.Context, e Env) (WhoamiReport, error) {
 }
 
 // fromFile says which file the author's email comes from, or "".
-func fromFile(source string) string {
+func (e Env) fromFile(source string) string {
 	if source == "" {
 		return ""
 	}
-	return " (email from " + source + ")"
+	return e.tr(" (email from %s)", source)
 }

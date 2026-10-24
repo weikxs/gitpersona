@@ -10,6 +10,24 @@ import (
 	"github.com/weikxs/gitpersona/internal/discover"
 )
 
+// How a push signs in (RemoteCheck.ViaKind) and where the repository chose
+// the push account (RemoteCheck.ChosenKind). These codes are stable; the
+// matching texts are for people and depend on the language.
+const (
+	ViaGH         = "gh"         // gh's token, through GitPersona's helper
+	ViaGitPersona = "gitpersona" // GitPersona's helper for another host
+	ViaHelper     = "helper"     // the user's own credential helper
+	ViaURLToken   = "url-token"  // a token written in the remote URL
+	ViaSSHKey     = "ssh-key"    // an SSH key file
+	ViaSSHAgent   = "ssh-agent"  // ssh-agent or ssh's default keys
+
+	ChosenURLSecret      = "url-secret"       // the URL carries the token
+	ChosenURLUser        = "url-user"         // the URL names the account
+	ChosenRepoUsername   = "repo-username"    // credential.username in the repository
+	ChosenEnvSSHCommand  = "env-ssh-command"  // GIT_SSH_COMMAND
+	ChosenRepoSSHCommand = "repo-ssh-command" // core.sshCommand in the repository
+)
+
 // remote is one remote's push URL, as Git uses it (insteadOf applied).
 type remote struct {
 	name string
@@ -39,6 +57,9 @@ func (e Env) checkRemote(ctx context.Context, vc verifyContext, dir string, r re
 	host, owner, user := discover.RemoteParts(r.url)
 	rc := RemoteCheck{Name: r.name, Address: remoteAddress(r.url), Protocol: remoteProtocol(r.url), Host: host,
 		Owner: owner, Keys: []string{}}
+	if rc.Address == localRepository {
+		rc.Address = e.tr("local repository")
+	}
 	switch rc.Protocol {
 	case "https", "http":
 		e.httpsPush(ctx, dir, r.url, user, &rc)
@@ -57,23 +78,24 @@ func (e Env) httpsPush(ctx context.Context, dir, url, user string, rc *RemoteChe
 	account, provider, ours := gitPersonaHelper(helper)
 	if urlHasPassword(url) {
 		// Git sends the URL's password and asks no helper: the token decides.
-		rc.Via, rc.ChosenBy, rc.secretInURL = "a token written in the remote URL", "the remote URL", true
+		rc.Via, rc.ViaKind = e.tr("a token written in the remote URL"), ViaURLToken
+		rc.ChosenBy, rc.ChosenKind, rc.secretInURL = e.tr("the remote URL"), ChosenURLSecret, true
 		return
 	}
 	rc.PushAs = firstNonEmpty(user, named, account)
 	switch {
 	case user != "":
-		rc.ChosenBy = "the remote URL names it"
+		rc.ChosenBy, rc.ChosenKind = e.tr("the remote URL names it"), ChosenURLUser
 	case local != "":
-		rc.ChosenBy = "credential.username in the repository"
+		rc.ChosenBy, rc.ChosenKind = e.tr("credential.username in the repository"), ChosenRepoUsername
 	}
 	switch {
 	case ours && provider == config.ProviderGitHub:
-		rc.Via = "gh token"
+		rc.Via, rc.ViaKind = e.tr("gh token"), ViaGH
 	case ours:
-		rc.Via = "GitPersona"
+		rc.Via, rc.ViaKind = e.tr("GitPersona"), ViaGitPersona
 	default:
-		rc.Via = "your credential helper"
+		rc.Via, rc.ViaKind = e.tr("your credential helper"), ViaHelper
 	}
 }
 
@@ -84,11 +106,11 @@ func (e Env) sshPush(ctx context.Context, vc verifyContext, dir, alias string, r
 	command := os.Getenv("GIT_SSH_COMMAND")
 	switch {
 	case command != "":
-		rc.ChosenBy = "GIT_SSH_COMMAND"
+		rc.ChosenBy, rc.ChosenKind = "GIT_SSH_COMMAND", ChosenEnvSSHCommand
 	default:
 		command, _ = e.git(ctx, dir, "config", "core.sshCommand")
 		if local, _ := e.git(ctx, dir, "config", "--local", "core.sshCommand"); local != "" {
-			rc.ChosenBy = "core.sshCommand in the repository"
+			rc.ChosenBy, rc.ChosenKind = e.tr("core.sshCommand in the repository"), ChosenRepoSSHCommand
 		}
 	}
 	keys := e.dedupeKeys(append(identityFlags(command), resolved.files...))
@@ -98,10 +120,11 @@ func (e Env) sshPush(ctx context.Context, vc verifyContext, dir, alias string, r
 		rc.Keys = append(rc.Keys, e.display(k))
 	}
 	if len(keys) == 0 {
-		rc.Via = "ssh-agent or ssh's default keys"
+		rc.Via, rc.ViaKind = e.tr("ssh-agent or ssh's default keys"), ViaSSHAgent
 		return
 	}
-	rc.Via = "SSH key " + e.display(keys[0])
+	rc.ViaKind = ViaSSHKey
+	rc.Via = e.tr("SSH key %s", e.display(keys[0]))
 	if p, ok := vc.keys[keys[0]]; ok && strings.EqualFold(p.Host, rc.Host) {
 		rc.PushAs = p.Account
 	}
@@ -110,21 +133,21 @@ func (e Env) sshPush(ctx context.Context, vc verifyContext, dir, alias string, r
 		rc.Greeted, rc.PushAs = true, g.account
 		switch {
 		case g.account != "":
-			rc.Via += ", " + rc.Host + " greets " + g.account
+			rc.Via = e.tr("SSH key %s, %s greets %s", e.display(keys[0]), rc.Host, g.account)
 			switch {
 			case strings.Contains(g.accepted, "/"):
-				rc.Via = "SSH key " + e.display(g.accepted) + ", " + rc.Host + " greets " + g.account
+				rc.Via = e.tr("SSH key %s, %s greets %s", e.display(g.accepted), rc.Host, g.account)
 			case g.accepted != "":
 				// A key from ssh-agent, named by its comment (often a name or an
 				// email), which is not shown.
-				rc.Via = "a key from ssh-agent, " + rc.Host + " greets " + g.account
+				rc.Via, rc.ViaKind = e.tr("a key from ssh-agent, %s greets %s", rc.Host, g.account), ViaSSHAgent
 			}
 		case g.deployKey != "":
-			rc.Via += ", a deploy key for " + g.deployKey
+			rc.Via = e.tr("SSH key %s, a deploy key for %s", e.display(keys[0]), g.deployKey)
 		case g.denied != "":
-			rc.Via += ", refused: " + g.denied
+			rc.Via = e.tr("SSH key %s, refused: %s", e.display(keys[0]), e.shownLine(g.denied))
 		default:
-			rc.Via += ", the host did not say which account"
+			rc.Via = e.tr("SSH key %s, the host did not say which account", e.display(keys[0]))
 		}
 	}
 }
@@ -135,35 +158,35 @@ func (c *RepoCheck) judgePush(e Env, vc verifyContext, profile config.Profile, r
 		return
 	}
 	if !strings.EqualFold(rc.Host, profile.Host) {
-		c.note("remote %s is on %s, where profile %s does not decide; your own settings apply", rc.Name, rc.Host, profile.ID)
+		c.note(e.tr("remote %s is on %s, where profile %s does not decide; your own settings apply", rc.Name, rc.Host, profile.ID))
 		return
 	}
 	switch {
 	case rc.secretInURL:
-		c.problem("remote %s has a token written in its URL (kept in plain text in .git/config); Git pushes with it, "+
-			"whichever account it belongs to: `git remote set-url %s https://%s` removes it", rc.Name, rc.Name, rc.Address)
+		c.problem(e.tr("remote %s has a token written in its URL (kept in plain text in .git/config); Git pushes with it, "+
+			"whichever account it belongs to: `git remote set-url %s https://%s` removes it", rc.Name, rc.Name, rc.Address))
 	case rc.PushAs == "" && rc.Greeted:
-		c.problem("pushes to remote %s do not sign in as an account (%s); the profile's account is %s", rc.Name, rc.Via, profile.Account)
+		c.problem(e.tr("pushes to remote %s do not sign in as an account (%s); the profile's account is %s", rc.Name, rc.Via, profile.Account))
 	case rc.PushAs == "":
-		c.unconfirmed("which account remote %s pushes as is not in your settings (%s); `gitpersona verify --ssh` "+
-			"asks %s, or give profile %s an ssh_key", rc.Name, rc.Via, rc.Host, profile.ID)
+		c.unconfirmed(e.tr("which account remote %s pushes as is not in your settings (%s); `gitpersona verify --ssh` "+
+			"asks %s, or give profile %s an ssh_key", rc.Name, rc.Via, rc.Host, profile.ID))
 	case strings.EqualFold(rc.PushAs, profile.Account):
-	case rc.ChosenBy != "":
-		c.note("remote %s pushes as %s, which the repository chooses itself (%s)", rc.Name, rc.PushAs, rc.ChosenBy)
+	case rc.ChosenKind != "":
+		c.note(e.tr("remote %s pushes as %s, which the repository chooses itself (%s)", rc.Name, rc.PushAs, rc.ChosenBy))
 	default:
-		c.problem("remote %s pushes as %s, not as the profile's %s (%s)", rc.Name, rc.PushAs, profile.Account, rc.Via)
+		c.problem(e.tr("remote %s pushes as %s, not as the profile's %s (%s)", rc.Name, rc.PushAs, profile.Account, rc.Via))
 	}
-	if rc.Via == "gh token" && rc.PushAs != "" && !ghHolds(vc, rc.Host, rc.PushAs) {
-		c.problem("%s is not signed in to gh on %s, so pushes to remote %s fail; run `gh auth login --hostname %s`",
-			rc.PushAs, rc.Host, rc.Name, rc.Host)
+	if rc.ViaKind == ViaGH && rc.PushAs != "" && !ghHolds(vc, rc.Host, rc.PushAs) {
+		c.problem(e.tr("%s is not signed in to gh on %s, so pushes to remote %s fail; run `gh auth login --hostname %s`",
+			rc.PushAs, rc.Host, rc.Name, rc.Host))
 	}
 	for _, key := range rc.keys[min(1, len(rc.keys)):] {
 		if p, ok := vc.keys[key]; ok && strings.EqualFold(p.Host, rc.Host) && !strings.EqualFold(p.Account, rc.PushAs) {
-			c.note("if %s refuses the first key, ssh also offers %s, the key of %s", rc.Host, e.display(key), p.Account)
+			c.note(e.tr("if %s refuses the first key, ssh also offers %s, the key of %s", rc.Host, e.display(key), p.Account))
 		}
 	}
 	if owner, ok := otherAccountOwns(vc.cfg, rc); ok {
-		c.note("remote %s belongs to your account %s, but pushes go as %s", rc.Name, owner, rc.PushAs)
+		c.note(e.tr("remote %s belongs to your account %s, but pushes go as %s", rc.Name, owner, rc.PushAs))
 	}
 }
 
@@ -265,6 +288,10 @@ func remoteProtocol(url string) string {
 	}
 }
 
+// localRepository is the address of a remote that is a path on this computer;
+// checkRemote shows it in the language of the request.
+const localRepository = "local repository"
+
 // remoteAddress is host/path of a remote URL without user names, passwords
 // or a trailing .git, safe to show.
 func remoteAddress(url string) string {
@@ -274,7 +301,7 @@ func remoteAddress(url string) string {
 	} else if remoteProtocol(url) == "ssh" {
 		rest = strings.Replace(url, ":", "/", 1)
 	} else {
-		return "local repository"
+		return localRepository
 	}
 	host, path, _ := strings.Cut(rest, "/")
 	if at := strings.LastIndex(host, "@"); at >= 0 {

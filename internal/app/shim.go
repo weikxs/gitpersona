@@ -40,7 +40,7 @@ func (e Env) ghEntryChange(cfg config.Config) (change, bool) {
 func GHShim(ctx context.Context, e Env, args []string) int {
 	realGH, err := e.realGH()
 	if err != nil {
-		fmt.Fprintf(e.Stderr, "gitpersona: %v\n", err)
+		fmt.Fprintln(e.Stderr, "gitpersona: "+e.tr("%v", err))
 		return exitCodeFailure
 	}
 	environ := withoutEmptyTokens(os.Environ())
@@ -52,14 +52,14 @@ func GHShim(ctx context.Context, e Env, args []string) int {
 		if err != nil || token == "" {
 			// Never fall back to gh's active account here: acting as another
 			// account is exactly what GitPersona exists to prevent.
-			fmt.Fprintf(e.Stderr, "gitpersona: %s is not signed in to gh on %s, and this directory uses it.\n"+
-				"Sign in with `gh auth login --hostname %s`, or set GH_TOKEN to choose an account yourself.\n", account, host, host)
+			fmt.Fprintln(e.Stderr, "gitpersona: "+e.tr("%s is not signed in to gh on %s, and this directory uses it.\n"+
+				"Sign in with `gh auth login --hostname %s`, or set GH_TOKEN to choose an account yourself.", account, host, host))
 			return exitCodeFailure
 		}
 		environ = append(environ, "GH_TOKEN="+token)
 	}
 	if err := e.Exec(realGH, append([]string{ghCommand}, args...), environ); err != nil {
-		fmt.Fprintf(e.Stderr, "gitpersona: run %s: %v\n", realGH, err)
+		fmt.Fprintln(e.Stderr, "gitpersona: "+e.tr("run %s: %v", realGH, err))
 		return exitCodeFailure
 	}
 	return 0
@@ -117,7 +117,7 @@ func (e Env) shimProfile(provider string) (config.Profile, bool) {
 func (e Env) realGH() (string, error) {
 	path, err := e.realTool(ghCommand)
 	if err != nil {
-		return "", fmt.Errorf("%w; install it from https://cli.github.com", err)
+		return "", e.trErr("%w; install it from https://cli.github.com", err)
 	}
 	return path, nil
 }
@@ -141,5 +141,5 @@ func (e Env) realTool(name string) (string, error) {
 		}
 		return candidate, nil
 	}
-	return "", fmt.Errorf("could not find the real %s on PATH (outside %s)", name, e.display(e.shimDir()))
+	return "", e.trErr("could not find the real %s on PATH (outside %s)", name, e.display(e.shimDir()))
 }

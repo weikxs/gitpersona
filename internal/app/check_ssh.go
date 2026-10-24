@@ -90,19 +90,18 @@ func CheckSSH(ctx context.Context, e Env, opts CheckSSHOptions) error {
 	}
 	switch {
 	case opts.Profile != "" && checked == 0:
-		return fmt.Errorf("profile %s has no ssh_key; Git uses your own SSH settings there", opts.Profile)
+		return e.trErr("profile %s has no ssh_key; Git uses your own SSH settings there", opts.Profile)
 	case checked == 0:
-		fmt.Fprintln(e.Stdout, "No profile has an ssh_key; Git uses your own SSH settings.")
+		fmt.Fprintln(e.Stdout, e.tr("No profile has an ssh_key; Git uses your own SSH settings."))
 	}
-	var problems []string
-	if n := results[sshWrongAccount]; n > 0 {
-		problems = append(problems, fmt.Sprintf("%d signed in as another account", n))
-	}
-	if n := results[sshFailed]; n > 0 {
-		problems = append(problems, fmt.Sprintf("%d did not sign in", n))
-	}
-	if len(problems) > 0 {
-		return fmt.Errorf("of %d SSH keys, %s", checked, strings.Join(problems, " and "))
+	wrong, failed := results[sshWrongAccount], results[sshFailed]
+	switch {
+	case wrong > 0 && failed > 0:
+		return e.trErr("of %d SSH keys, %d signed in as another account and %d did not sign in", checked, wrong, failed)
+	case wrong > 0:
+		return e.trErr("of %d SSH keys, %d signed in as another account", checked, wrong)
+	case failed > 0:
+		return e.trErr("of %d SSH keys, %d did not sign in", checked, failed)
 	}
 	return nil
 }
@@ -120,47 +119,47 @@ const (
 func (e Env) checkProfileSSH(ctx context.Context, p config.Profile) sshResult {
 	key, err := paths.Normalize(p.SSHKey, e.Home)
 	if err != nil {
-		fmt.Fprintf(e.Stdout, "✗ %s: ssh_key %s: %v\n", p.ID, p.SSHKey, err)
+		fmt.Fprintln(e.Stdout, e.tr("✗ %s: ssh_key %s: %v", p.ID, p.SSHKey, err))
 		return sshFailed
 	}
 	if !keyFileExists(key, e.Home, false) { // only checks that it exists
-		fmt.Fprintf(e.Stdout, "✗ %s: ssh_key %s does not exist\n", p.ID, e.display(key))
+		fmt.Fprintln(e.Stdout, e.tr("✗ %s: ssh_key %s does not exist", p.ID, e.display(key)))
 		return sshFailed
 	}
 	// The profile's port is the HTTPS one; ssh takes its port from the
 	// user's SSH settings.
 	host, _ := splitHostPort(p.Host)
-	fmt.Fprintf(e.Stdout, "Connecting to %s with %s for profile %s…\n", host, e.display(key), p.ID)
+	fmt.Fprintln(e.Stdout, e.tr("Connecting to %s with %s for profile %s…", host, e.display(key), p.ID))
 	g := e.sshGreet(ctx, []string{"-o", "IdentitiesOnly=yes", "-i", key}, host)
 	switch {
 	case g.missing:
-		fmt.Fprintln(e.Stdout, "✗ ssh not found")
+		fmt.Fprintln(e.Stdout, e.tr("✗ ssh not found"))
 		return sshFailed
 	case g.denied != "":
-		fmt.Fprintf(e.Stdout, "✗ %s: the key did not sign in to %s: %s\n", p.ID, host, g.denied)
+		fmt.Fprintln(e.Stdout, e.tr("✗ %s: the key did not sign in to %s: %s", p.ID, host, e.shownLine(g.denied)))
 		return sshFailed
 	}
 	if g.accepted != "" && !sameFile(g.accepted, key) {
-		fmt.Fprintf(e.Stdout, "✗ %s: %s did not accept %s; ssh signed in with %s from your SSH settings instead\n",
-			p.ID, host, e.display(key), e.display(g.accepted))
+		fmt.Fprintln(e.Stdout, e.tr("✗ %s: %s did not accept %s; ssh signed in with %s from your SSH settings instead",
+			p.ID, host, e.display(key), e.display(g.accepted)))
 		return sshWrongAccount
 	}
 	if g.deployKey != "" {
-		fmt.Fprintf(e.Stdout, "✗ %s: the key is a deploy key for %s, not the key of account %s\n", p.ID, g.deployKey, p.Account)
+		fmt.Fprintln(e.Stdout, e.tr("✗ %s: the key is a deploy key for %s, not the key of account %s", p.ID, g.deployKey, p.Account))
 		return sshWrongAccount
 	}
 	switch {
 	case g.account == "" && g.authenticated:
-		fmt.Fprintf(e.Stdout, "? %s: the key signs in to %s, but the host does not say as which account\n", p.ID, host)
+		fmt.Fprintln(e.Stdout, e.tr("? %s: the key signs in to %s, but the host does not say as which account", p.ID, host))
 		return sshOK
 	case g.account == "":
-		fmt.Fprintf(e.Stdout, "✗ %s: the key did not sign in to %s: %s\n", p.ID, host, g.first)
+		fmt.Fprintln(e.Stdout, e.tr("✗ %s: the key did not sign in to %s: %s", p.ID, host, e.shownLine(g.first)))
 		return sshFailed
 	case !strings.EqualFold(g.account, p.Account):
-		fmt.Fprintf(e.Stdout, "✗ %s: the key signs in to %s as %s, not %s; Git pushes as %s with it\n", p.ID, host, g.account, p.Account, g.account)
+		fmt.Fprintln(e.Stdout, e.tr("✗ %s: the key signs in to %s as %s, not %s; Git pushes as %s with it", p.ID, host, g.account, p.Account, g.account))
 		return sshWrongAccount
 	}
-	fmt.Fprintf(e.Stdout, "✓ %s: the key signs in to %s as %s\n", p.ID, host, g.account)
+	fmt.Fprintln(e.Stdout, e.tr("✓ %s: the key signs in to %s as %s", p.ID, host, g.account))
 	return sshOK
 }
 
@@ -253,7 +252,19 @@ func sameFile(a, b string) bool {
 	return filepath.Clean(a) == filepath.Clean(b) || paths.ResolveSymlinks(a) == paths.ResolveSymlinks(b)
 }
 
-// lastLine returns the last non-empty line of s, or a placeholder.
+// noAnswer stands for an empty ssh output; it is shown with shownLine.
+const noAnswer = "no answer"
+
+// shownLine is a line of ssh output as the user reads it: what ssh printed,
+// or "no answer" in e's language.
+func (e Env) shownLine(line string) string {
+	if line == noAnswer {
+		return e.tr("no answer")
+	}
+	return line
+}
+
+// lastLine returns the last non-empty line of s, or noAnswer.
 func lastLine(s string) string {
 	lines := strings.Split(s, "\n")
 	for i := len(lines) - 1; i >= 0; i-- {
@@ -261,15 +272,15 @@ func lastLine(s string) string {
 			return line
 		}
 	}
-	return "no answer"
+	return noAnswer
 }
 
-// firstLine returns the first non-empty line of s, or a placeholder.
+// firstLine returns the first non-empty line of s, or noAnswer.
 func firstLine(s string) string {
 	for _, line := range strings.Split(s, "\n") {
 		if line = strings.TrimSpace(line); line != "" {
 			return line
 		}
 	}
-	return "no answer"
+	return noAnswer
 }
