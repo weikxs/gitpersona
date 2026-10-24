@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ## [Unreleased]
 
+### Added
+
+- `install.sh`: one command installs GitPersona on macOS and Linux
+  (`curl -fsSL https://raw.githubusercontent.com/weikxs/gitpersona/main/install.sh | sh`). It picks the build for the
+  system and CPU, checks it against the release's `checksums.txt`, installs to `~/.local/bin` (or `/usr/local/bin` as
+  root) without `sudo`, removes the macOS quarantine flag and adds the directory to PATH in the shell's startup file
+  once. `--version`, `--dir` and `--no-modify-path` change that; running it again upgrades. CI runs it on Apple
+  silicon and Intel Macs and on Linux x86_64 and arm64.
+
 ### Changed
 
 - Release notes are built from the version's section of this file, in the order large projects use: what

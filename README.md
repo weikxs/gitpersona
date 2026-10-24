@@ -48,8 +48,8 @@ and a check that proves no repository commits or pushes as the wrong account.
 **1. Install** (macOS on Apple silicon or Intel, and Linux):
 
 ```sh
-brew install weikxs/tap/gitpersona                              # Homebrew, macOS and Linux
-go install github.com/weikxs/gitpersona/cmd/gitpersona@latest   # or with Go 1.26+
+curl -fsSL https://raw.githubusercontent.com/weikxs/gitpersona/main/install.sh | sh   # macOS and Linux, fully automatic
+brew install weikxs/tap/gitpersona          # or Homebrew
 ```
 
 **2. Set up in your browser.** Sign in to each GitHub account once with `gh auth login`, then:
@@ -254,6 +254,59 @@ Ubuntu 22.04 containers (Ubuntu 22.04 has the oldest Git the tests use, 2.34).
 - Optional: [`glab`](https://gitlab.com/gitlab-org/cli) for GitLab, fish, zsh or bash for the shell integration
 
 ## Install
+
+### Install script (macOS and Linux, recommended)
+
+One command, fully automatic. It works the same on a Mac (Apple silicon or Intel) and on Linux (x86_64 or arm64,
+glibc or musl: Debian, Ubuntu, Fedora, Arch, Alpine and others):
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/weikxs/gitpersona/main/install.sh | sh
+```
+
+No `curl`? Use `wget -qO- https://raw.githubusercontent.com/weikxs/gitpersona/main/install.sh | sh`.
+
+What it does, step by step:
+
+1. Detects the system (macOS or Linux) and the CPU (x86_64 or arm64; an Apple silicon Mac gets the native build even
+   from a Rosetta terminal).
+2. Finds the latest release and downloads the matching archive from GitHub.
+3. Checks the archive against the release's `checksums.txt` (SHA-256), and stops without installing anything if it
+   does not match.
+4. Installs the `gitpersona` binary to `~/.local/bin` (to `/usr/local/bin` when run as root), replacing an older one
+   in place. On macOS it removes the quarantine flag, so Gatekeeper does not block the unsigned binary.
+5. If that directory is not on your `PATH`, adds it to your shell's startup file (`~/.zshrc`, `~/.bashrc` on Linux or
+   `~/.bash_profile` on macOS, fish's `conf.d`, or `~/.profile`), once, in a marked line.
+6. Runs `gitpersona version` to confirm the binary works.
+
+**On a Mac, step by step:**
+
+1. Open **Terminal**, paste the `curl` command above and press Return.
+2. When it prints `installed gitpersona …` and `done`, it is installed.
+3. Close the terminal and open a new one (so the new `PATH` applies), then continue with [Quick start](#quick-start):
+
+```sh
+gitpersona version
+gh auth login          # once per GitHub account
+gitpersona setup --web
+```
+
+**On Linux, step by step:** the same. Run the same `curl` command in a terminal (or the `wget` one), open a new
+terminal, and run the three commands above. As a normal user it installs to `~/.local/bin`; no `sudo` is needed.
+
+Options go after `sh -s --`:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/weikxs/gitpersona/main/install.sh | sh -s -- --version v0.1.0      # a specific release
+curl -fsSL https://raw.githubusercontent.com/weikxs/gitpersona/main/install.sh | sh -s -- --dir ~/bin           # another directory
+curl -fsSL https://raw.githubusercontent.com/weikxs/gitpersona/main/install.sh | sh -s -- --no-modify-path      # leave shell files alone
+```
+
+To upgrade, run the same command again. To read the script before running it:
+`curl -fsSL https://raw.githubusercontent.com/weikxs/gitpersona/main/install.sh -o install.sh && less install.sh && sh install.sh`. It needs only `sh`, `curl` or `wget`, `tar`
+and `sha256sum` or `shasum`, which every Mac and Linux system has; it never uses `sudo`.
+
+### Other ways
 
 **With Go** (1.26 or newer):
 

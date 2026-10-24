@@ -97,6 +97,29 @@ jobs:
         with:
           version: latest
 
+  # install.sh against the latest release, on each system it supports: it
+  # must pick the right build, check it and install a binary that runs.
+  install-script:
+    name: install.sh (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, macos-15-intel, ubuntu-latest, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Shellcheck
+        if: matrix.os == 'ubuntu-latest'
+        run: shellcheck install.sh scripts/*.sh test/install/*.sh
+      - name: Install with the script
+        run: |
+          sh install.sh --dir "$RUNNER_TEMP/bin" --no-modify-path
+          "$RUNNER_TEMP/bin/gitpersona" version
+      - name: The build matches this CPU
+        run: |
+          case "$(uname -m)" in x86_64) want=x86-64 ;; *) want='arm64|aarch64' ;; esac
+          file "$RUNNER_TEMP/bin/gitpersona" | grep -Eq "$want"
+
   release-config:
     name: goreleaser check
     runs-on: ubuntu-latest

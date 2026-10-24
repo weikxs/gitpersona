@@ -70,6 +70,7 @@ block "Removed" Removed
 block "Bug Fixes" Fixed
 cat <<EOF
 ## Install
+- Script (macOS and Linux, fully automatic): \`curl -fsSL https://raw.githubusercontent.com/weikxs/gitpersona/main/install.sh | sh\`
 - Homebrew (macOS and Linux): \`brew install weikxs/tap/gitpersona\`, or \`brew upgrade gitpersona\`
 - Go 1.26+: \`go install github.com/weikxs/gitpersona/cmd/gitpersona@$tag\`
 - A package or archive below; check it against \`checksums.txt\`

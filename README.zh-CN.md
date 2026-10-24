@@ -47,8 +47,8 @@
 **1. 安装**（macOS：Apple 芯片和 Intel 都支持；以及 Linux）：
 
 ```sh
-brew install weikxs/tap/gitpersona                              # Homebrew，macOS 和 Linux
-go install github.com/weikxs/gitpersona/cmd/gitpersona@latest   # 或者用 Go 1.26+
+curl -fsSL https://raw.githubusercontent.com/weikxs/gitpersona/main/install.sh | sh   # macOS 和 Linux，全自动安装
+brew install weikxs/tap/gitpersona          # 或者用 Homebrew
 ```
 
 **2. 在浏览器里完成配置。** 先用 `gh auth login` 把每个 GitHub 账户登录一次，然后运行：
@@ -242,6 +242,57 @@ Ubuntu 22.04 容器中运行（Ubuntu 22.04 带的 Git 2.34 是测试用到的�
 - 可选：GitLab 用的 [`glab`](https://gitlab.com/gitlab-org/cli)；shell 集成需要 fish、zsh 或 bash
 
 ## 安装
+
+### 安装脚本（macOS 和 Linux，推荐）
+
+一条命令，全自动完成。Mac（Apple 芯片或 Intel）和 Linux（x86_64 或 arm64，glibc 或 musl：Debian、Ubuntu、Fedora、
+Arch、Alpine 等）用法完全相同：
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/weikxs/gitpersona/main/install.sh | sh
+```
+
+没有 `curl` 的话用：`wget -qO- https://raw.githubusercontent.com/weikxs/gitpersona/main/install.sh | sh`
+
+脚本会依次完成：
+
+1. 识别系统（macOS 或 Linux）和 CPU（x86_64 或 arm64；Apple 芯片的 Mac 即使在 Rosetta 终端里运行，也会安装原生版本）。
+2. 找到最新的 Release，从 GitHub 下载对应的压缩包。
+3. 用 Release 里的 `checksums.txt`（SHA-256）校验压缩包；校验不通过就停止，什么都不安装。
+4. 把 `gitpersona` 安装到 `~/.local/bin`（以 root 运行时装到 `/usr/local/bin`），已有旧版本时直接替换。
+   在 macOS 上会去掉隔离标记，系统不会拦截这个未经 Apple 签名的程序。
+5. 如果这个目录不在 `PATH` 里，就在 shell 启动文件中加一行（`~/.zshrc`；Linux 上是 `~/.bashrc`，macOS 上是
+   `~/.bash_profile`；fish 的 `conf.d`；或 `~/.profile`），只加一次，带有标记注释。
+6. 运行 `gitpersona version`，确认程序能正常运行。
+
+**Mac 上的完整步骤：**
+
+1. 打开“终端”（Terminal），粘贴上面的 `curl` 命令，回车。
+2. 看到 `installed gitpersona …` 和 `done` 就表示装好了。
+3. 关掉终端再重新打开（让 PATH 生效），然后继续：
+
+```sh
+gitpersona version
+gh auth login          # 每个 GitHub 账户登录一次
+gitpersona setup --web
+```
+
+**Linux 上的完整步骤：** 和 Mac 一样，在终端里运行同一条 `curl` 命令（没有 curl 就用 `wget` 那条），
+重新打开终端后运行上面三条命令。普通用户装在 `~/.local/bin`，不需要 `sudo`。
+
+需要选项时写在 `sh -s --` 后面：
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/weikxs/gitpersona/main/install.sh | sh -s -- --version v0.1.0      # 安装指定版本
+curl -fsSL https://raw.githubusercontent.com/weikxs/gitpersona/main/install.sh | sh -s -- --dir ~/bin           # 装到其他目录
+curl -fsSL https://raw.githubusercontent.com/weikxs/gitpersona/main/install.sh | sh -s -- --no-modify-path      # 不改 shell 启动文件
+```
+
+升级：再运行一次同一条命令。想先看脚本内容再执行：
+`curl -fsSL https://raw.githubusercontent.com/weikxs/gitpersona/main/install.sh -o install.sh && less install.sh && sh install.sh`。
+脚本只需要 `sh`、`curl` 或 `wget`、`tar`，以及 `sha256sum` 或 `shasum`，Mac 和 Linux 都自带；脚本不会使用 `sudo`。
+
+### 其他安装方式
 
 **用 Go 安装**（1.26 或更新版本）：
 
