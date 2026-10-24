@@ -95,7 +95,7 @@ GitPersona is about identities, so this rule has no exceptions.
 ## 6. Tests (MUST)
 
 - **Test first:** write a failing test, make it pass, then refactor.
-- **Coverage:** at least 90% overall (`make cover` fails below it); the resolver and the generator aim for 95%.
+- **Coverage:** at least 95% overall (`make cover` fails below it); the resolver and the generator aim for 95%.
 - **Style:** table-driven tests with descriptive names; Arrange–Act–Assert.
 - **Isolation:** no network, no real `$HOME`, no real accounts. Use `t.TempDir()`, `t.Setenv("HOME", …)`,
   and fake `gh` / `glab` / `ssh` executables placed first on `PATH`.
@@ -139,7 +139,7 @@ GitPersona is about identities, so this rule has no exceptions.
 A change is done when:
 
 - [ ] tests were written first and pass with `-race` on macOS and Linux;
-- [ ] `make check` and `make lint` pass, coverage is at least 90%;
+- [ ] `make check` and `make lint` pass, coverage is at least 95%;
 - [ ] no real identities, local paths or secrets (`make privacy`);
 - [ ] errors are handled and messages are actionable;
 - [ ] `CHANGELOG.md`, README and help text are updated where relevant;

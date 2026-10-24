@@ -4,10 +4,12 @@ BINARY   := gitpersona
 PKG      := github.com/weikxs/gitpersona
 BIN_DIR  := bin
 COVERAGE := coverage.out
-MIN_COVERAGE := 90
+MIN_COVERAGE := 95
 # Tests keep all their files under /tmp, never in the real home directory.
 TEST_TMPDIR := /tmp/gitpersona-test
-GO_TEST := mkdir -p $(TEST_TMPDIR) && TMPDIR=$(TEST_TMPDIR) go test -race
+# internal/app runs real git hundreds of times: about 8 minutes with -race on a fast Mac, more on CI runners,
+# so the timeout is above Go's default of 10 minutes.
+GO_TEST := mkdir -p $(TEST_TMPDIR) && TMPDIR=$(TEST_TMPDIR) go test -race -timeout 20m
 
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 COMMIT  ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo none)
