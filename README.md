@@ -11,12 +11,18 @@
 Work in `~/Projects/acme` and you commit, push and open pull requests as your work account.
 Switch to `~/Projects/personal` and you are your personal account again. No commands to run, nothing to remember.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/terminal-dark.png">
+  <img alt="gitpersona whoami in two folders shows two accounts; gitpersona verify finds every repository as expected" src="docs/images/terminal-light.png" width="820">
+</picture>
+
 > **Status: pre-release.** Everything below works and is tested on macOS and Linux: GitHub, GitLab, Bitbucket and
 > other-host profiles, the command line, the configuration web page, shell integration and `gh` / `glab` switching.
 > The first tagged release and the Homebrew tap are coming; until then, install from source.
 
 ## Contents
 
+- [Get started in 3 steps](#get-started-in-3-steps)
 - [Why](#why)
 - [Features](#features)
 - [How it works](#how-it-works)
@@ -29,6 +35,41 @@ Switch to `~/Projects/personal` and you are your personal account again. No comm
 - [Undo and uninstall](#undo-and-uninstall)
 - [FAQ](#faq)
 - [Contributing](#contributing) · [Security](#security) · [License](#license)
+
+## Get started in 3 steps
+
+**1. Install** (macOS on Apple silicon or Intel, and Linux):
+
+```sh
+brew install weikxs/tap/gitpersona                         # with the first release
+go install github.com/weikxs/gitpersona/cmd/gitpersona@latest   # today, with Go 1.26+
+```
+
+**2. Set up in your browser.** Sign in to each GitHub account once with `gh auth login`, then:
+
+```sh
+gitpersona setup --web
+```
+
+GitPersona finds your accounts, your existing `includeIf` identities, SSH aliases and repositories, and shows
+one complete proposal. Nothing is written until you click **Apply**, and every file is backed up first.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/setup-dark.png">
+  <img alt="The setup page proposes one profile per account, with the folders and SSH key each one takes" src="docs/images/setup-light.png" width="820">
+</picture>
+
+**3. Check every repository.** `gitpersona verify` (or **Repositories** in `gitpersona ui`) lists, per repository,
+the author its commits use and the account each remote pushes as, and flags anything that would use another identity:
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/repositories-dark.png">
+  <img alt="The Repositories page groups repositories by profile and shows who commits and who pushes in each" src="docs/images/repositories-light.png" width="820">
+</picture>
+
+**Day to day there is nothing to do:** `cd` into a project and use `git`, `gh` or your IDE as usual.
+`gitpersona whoami` tells you who you are in the current folder; `gitpersona use <profile>` gives a new folder to a
+profile; `gitpersona pin <profile>` handles the odd repository that lives elsewhere.
 
 ## Why
 
@@ -212,6 +253,7 @@ Paths must be absolute or start with `~/`.
 | `gitpersona ui [--no-open]` | Open the configuration page in your browser: profiles, directories, pins, a diff preview before applying, health checks, shells and backups. It listens only on 127.0.0.1, the link works once, and it stops after 15 minutes without use |
 | `gitpersona apply [--dry-run] [--yes]` | Generate the Git configuration; `--dry-run` previews, `--yes` allows removing files of deleted profiles |
 | `gitpersona whoami [--json] [--check]` | Show which profile Git uses here and why; `--check` fails when Git disagrees |
+| `gitpersona verify [--all] [--ssh] [--json] [<folder>...]` | Check every repository in your profiles' folders and pins (and the folders you name): the author its commits use and the account each remote pushes as, against its profile; flags another identity, tokens in remote URLs and SSH connections shared between keys. It reads only settings; `--ssh` signs in to each SSH host once, as a push would, so the host names the account |
 | `gitpersona use <profile>` | Make the current directory use a profile (keeps your comments in config.toml) |
 | `gitpersona remove [dir]` | Stop assigning a directory to a profile |
 | `gitpersona pin <profile>` / `unpin` | Bind the current repository to a profile, or remove the pin |

@@ -50,6 +50,11 @@ fmt-check: ## Fail if any file is not gofmt-formatted
 vet: ## Run go vet
 	go vet ./...
 
+.PHONY: screenshots
+screenshots: ## Draw the README pictures in docs/images from a demo home (needs Chrome)
+	@mkdir -p docs/images
+	GITPERSONA_E2E=1 GITPERSONA_SHOTS=$(CURDIR)/docs/images go test ./test/e2e -run TestREADMEScreenshots -count=1
+
 .PHONY: lint
 lint: ## Run golangci-lint (install: brew install golangci-lint)
 	@command -v golangci-lint >/dev/null || { echo "golangci-lint not found; install it with: brew install golangci-lint"; exit 1; }

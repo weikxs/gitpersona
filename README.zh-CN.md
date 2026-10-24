@@ -11,11 +11,17 @@
 在 `~/Projects/acme` 里，你用公司账户提交、推送、开 PR；
 换到 `~/Projects/personal`，你又自动变回个人账户。不用执行任何命令，也不用记着切换。
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/terminal-dark.png">
+  <img alt="在两个目录里运行 gitpersona whoami 显示两个账户；gitpersona verify 确认每个仓库都符合预期" src="docs/images/terminal-light.png" width="820">
+</picture>
+
 > **状态：预发布。** 下面的功能都已可用，并在 macOS 和 Linux 上测试：GitHub、GitLab、Bitbucket 及其他主机的配置文件、
 > 命令行、配置 Web 页面、shell 集成和 `gh` / `glab` 切换。第一个正式版本和 Homebrew tap 即将发布；在此之前请从源码安装。
 
 ## 目录
 
+- [三步上手](#三步上手)
 - [为什么需要](#为什么需要)
 - [功能](#功能)
 - [工作原理](#工作原理)
@@ -28,6 +34,41 @@
 - [撤销与卸载](#撤销与卸载)
 - [常见问题](#常见问题)
 - [参与贡献](#参与贡献) · [安全](#安全) · [许可证](#许可证)
+
+## 三步上手
+
+**1. 安装**（macOS：Apple 芯片和 Intel 都支持；以及 Linux）：
+
+```sh
+brew install weikxs/tap/gitpersona                         # 第一个正式版本发布后
+go install github.com/weikxs/gitpersona/cmd/gitpersona@latest   # 现在即可，需要 Go 1.26+
+```
+
+**2. 在浏览器里完成配置。** 先用 `gh auth login` 把每个 GitHub 账户登录一次，然后运行：
+
+```sh
+gitpersona setup --web
+```
+
+GitPersona 会找出你的账户、已有的 `includeIf` 身份、SSH 别名和仓库，给出一份完整的方案。
+点 **Apply** 之前不会写入任何文件，写入前所有文件都会先备份。
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/setup-dark.png">
+  <img alt="配置页面为每个账户提出一个配置文件，并列出它接管的目录和 SSH 密钥" src="docs/images/setup-light.png" width="820">
+</picture>
+
+**3. 逐个核对仓库。** `gitpersona verify`（或 `gitpersona ui` 里的 **Repositories** 页面）列出每个仓库提交用的作者、
+每个远程推送用的账户，凡是会用错身份的都会标出来：
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/repositories-dark.png">
+  <img alt="Repositories 页面按配置文件分组，显示每个仓库由谁提交、由谁推送" src="docs/images/repositories-light.png" width="820">
+</picture>
+
+**日常使用什么都不用做：** 进入项目目录，照常使用 `git`、`gh` 或 IDE。
+想确认当前身份就运行 `gitpersona whoami`；新目录用 `gitpersona use <profile>` 指定身份；
+放在别处的个别仓库用 `gitpersona pin <profile>`。
 
 ## 为什么需要
 
@@ -203,6 +244,7 @@ profile = "globex"
 | `gitpersona ui [--no-open]` | 在浏览器里打开配置页面：配置文件、目录、钉住、应用前的差异预览、健康检查、shell 和备份。只监听 127.0.0.1，链接只能用一次，闲置 15 分钟后自动退出 |
 | `gitpersona apply [--dry-run] [--yes]` | 生成 Git 配置；`--dry-run` 只预览，`--yes` 允许删除已删除配置文件对应的文件 |
 | `gitpersona whoami [--json] [--check]` | 显示此处 Git 使用哪个配置文件及原因；`--check` 在 Git 实际结果不一致时报错 |
+| `gitpersona verify [--all] [--ssh] [--json] [<目录>...]` | 逐个核对配置文件目录和钉住的仓库（以及你指定的目录）：提交用的作者、每个远程推送用的账户，是否与配置文件一致；标出用错身份、远程地址里写有令牌、不同密钥共用 SSH 连接等问题。只读取配置；`--ssh` 会像推送一样登录每个 SSH 主机一次，由主机报出账户 |
 | `gitpersona use <profile>` | 让当前目录使用某个配置文件（保留 config.toml 里的注释） |
 | `gitpersona remove [dir]` | 不再把某个目录分配给配置文件 |
 | `gitpersona pin <profile>` / `unpin` | 把当前仓库绑定到某个配置文件，或取消钉住 |

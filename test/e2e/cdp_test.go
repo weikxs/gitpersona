@@ -337,7 +337,8 @@ func (b *browser) screenshot(name string) {
 	if dir == "" {
 		return
 	}
-	raw := b.call("Page.captureScreenshot", map[string]any{"format": "png", "captureBeyondViewport": true})
+	// Only what the screen shows, so pictures keep a steady size.
+	raw := b.call("Page.captureScreenshot", map[string]any{"format": "png"})
 	var shot struct {
 		Data []byte `json:"data"`
 	}
