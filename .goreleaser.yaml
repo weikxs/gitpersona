@@ -58,24 +58,12 @@ release:
   github:
     owner: weikxs
     name: gitpersona
+  name_template: "GitPersona {{ .Tag }}"
 
+# The release notes come from CHANGELOG.md (scripts/release-notes.sh); the
+# list of commits, with their hashes and author emails, is not used.
 changelog:
-  use: github
-  groups:
-    - title: Features
-      regexp: '^.*?feat(\(.+\))??!?:.+$'
-      order: 0
-    - title: Bug fixes
-      regexp: '^.*?fix(\(.+\))??!?:.+$'
-      order: 1
-    - title: Other changes
-      order: 999
-  filters:
-    exclude:
-      - "^docs:"
-      - "^test:"
-      - "^ci:"
-      - "^chore:"
+  disable: true
 
 homebrew_casks:
   - name: gitpersona

@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ## [Unreleased]
 
+### Changed
+
+- Release notes are built from the version's section of this file, in the order large projects use: what
+  GitPersona is, summary, upgrading steps, security, new features, changes, deprecations, removals and bug fixes
+  (empty ones are left out), then a table of downloads by platform and a link comparing with the previous version.
+  They no longer list commits with their hashes and author emails, and a release fails without a section here.
+
 ## [0.1.0] - 2026-10-24
 
 The first release: macOS (Apple silicon and Intel) and Linux (x86_64 and arm64).

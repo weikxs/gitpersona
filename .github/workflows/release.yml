@@ -19,10 +19,14 @@ jobs:
           go-version-file: go.mod
       - name: Test before releasing
         run: make check
+      # The notes come from this version's section of CHANGELOG.md, never
+      # from commit messages, hashes or author emails.
+      - name: Release notes
+        run: scripts/release-notes.sh "$GITHUB_REF_NAME" > "$RUNNER_TEMP/notes.md"
       - uses: goreleaser/goreleaser-action@v7
         with:
           version: "~> v2"
-          args: release --clean
+          args: release --clean --release-notes ${{ runner.temp }}/notes.md
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           HOMEBREW_TAP_SSH_KEY: ${{ secrets.HOMEBREW_TAP_SSH_KEY }}
