@@ -48,7 +48,10 @@ type UnassignedDir struct {
 // directory rules, pins, folders the user must choose for, SSH keys of SSH
 // aliases, the old rules the profiles take over, and the login shell to set
 // up.
-func (e Env) organize(ctx context.Context, p SetupProposal, existing []discover.Identity, used []bool) (SetupProposal, error) {
+// existing are the identities as the user wrote them; live the same
+// identities with only the folders where their rules apply today, which are
+// all a profile takes over.
+func (e Env) organize(ctx context.Context, p SetupProposal, existing, live []discover.Identity, used []bool) (SetupProposal, error) {
 	// The folders of existing rules come first: the scan has a time limit,
 	// and they decide whose an existing identity is.
 	roots, err := e.ResolveScanRoots(append(identityDirs(existing), DefaultScanRoots...))
@@ -60,13 +63,14 @@ func (e Env) organize(ctx context.Context, p SetupProposal, existing []discover.
 	repos := found.Repos
 
 	profiles := slices.Clone(p.Profiles)
-	claims := claimIdentities(newInference(profiles, repos, aliases, e.comparisonKey), existing, used, repos, aliases)
+	claims := claimIdentities(newInference(profiles, repos, aliases, e.comparisonKey), live, used, repos, aliases)
 	for _, i := range sortedClaims(claims) {
 		used[i] = true
 		k := slices.IndexFunc(profiles, func(x SetupProfile) bool { return x.Account == claims[i] })
-		profiles[k] = e.adopt(profiles[k], existing[i], p.Global.Name)
+		profiles[k] = e.adopt(profiles[k], live[i], p.Global.Name)
 	}
-	hosts, from := e.hostProfiles(profiles, existing, used, repos, aliases, p.Global.Name)
+	profiles = e.siblingProfiles(ctx, profiles, live, used, p.Global.Name)
+	hosts, from := e.hostProfiles(profiles, live, used, repos, aliases, p.Global.Name)
 	profiles = append(profiles, hosts...)
 
 	// A rule that does more than a profile can (x509 signing, extra SSH
@@ -83,11 +87,15 @@ func (e Env) organize(ctx context.Context, p SetupProposal, existing []discover.
 		}
 	}
 	l := inferLayout(github, repos, aliases, e.comparisonKey, layoutHints{reserved: reserved, roots: roots.Shown})
+	given := map[string]bool{} // an account's found folders go to its first profile only
 	for i, prof := range profiles {
 		if !prof.onGitHub() {
 			continue
 		}
-		prof.Found = l.found[prof.Account]
+		if account := strings.ToLower(prof.Account); !given[account] {
+			given[account] = true
+			prof.Found = l.found[prof.Account]
+		}
 		if prof.SSHKey == "" {
 			prof.SSHKey = e.aliasKey(prof.Account, aliases, l.aliasAccount)
 		}
@@ -112,7 +120,7 @@ func (e Env) organize(ctx context.Context, p SetupProposal, existing []discover.
 	p.Unmatched = e.leftOut(ctx, existing, used, owners, "", p.Global.Name)
 	p.KeptRules = e.keptOverrides(kept, owners, "")
 	p.Shadowed = append([]string{}, e.shadowedRules(ctx, owners)...)
-	p.Shadowed = append(p.Shadowed, e.refiningRulesInProfiles(ctx, owners, p.Global.Name)...)
+	p.Shadowed = append(p.Shadowed, e.refiningRulesInProfiles(ctx, owners, p.Global.Name, found)...)
 	p.OwnRules, p.SuggestedDefault = e.ownRules(ctx, p.Unmatched, p.KeptRules, p.Global.Name), p.Default
 	if len(p.OwnRules) > 0 {
 		p = e.withDefault(p, "")
@@ -120,6 +128,7 @@ func (e Env) organize(ctx context.Context, p SetupProposal, existing []discover.
 		p = e.withDefault(p, p.SuggestedDefault)
 	}
 
+	p.GhSwitchers = e.ghSwitchers()
 	p.Shells = []string{}
 	if k := e.loginShell(ctx).Kind; k != shell.Unknown {
 		if _, done := e.integrated(k); !done {

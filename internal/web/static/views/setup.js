@@ -331,8 +331,11 @@ function withSuggestions(suggestions) {
   const fresh = suggestions.filter((s) => !known(s.dir));
   const why = (s) => (s.repos !== s.total ? `${s.repos} of ${s.total} repositories there`
     : s.total === 1 ? "its one repository" : `all ${s.total} repositories there`);
+  // An account's suggestions go to its first profile: a second profile of
+  // the same account (another author) keeps only its own folder.
+  const first = (p) => wizard.profiles.find((x) => onGitHub(x) && x.account === p.account) === p;
   const profiles = wizard.profiles.map((p) => {
-    const found = fresh.filter((s) => s.account && onGitHub(p) && s.account === p.account);
+    const found = fresh.filter((s) => s.account && onGitHub(p) && s.account === p.account && first(p));
     return { ...p, dirs: [...p.dirs, ...found.map((s) => ({ dir: s.dir, on: true, why: why(s) }))] };
   });
   const unassigned = [...wizard.unassigned,

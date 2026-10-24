@@ -115,6 +115,13 @@ func repoConfig(text string) (url, email string) {
 	return first, email
 }
 
+// RemoteHostOwner returns the host (possibly an SSH alias) and the owner a
+// remote URL, or a URL pattern such as git@host:*/**, names.
+func RemoteHostOwner(url string) (host, owner string) {
+	host, owner, _ = parseRemote(url)
+	return host, owner
+}
+
 // hostPort returns the port of host:port, or "".
 func hostPort(h string) string {
 	_, port, _ := strings.Cut(h, ":")

@@ -113,18 +113,19 @@ func (e Env) agree(question string) bool {
 // printProposal shows what setup found and would configure.
 func (e Env) printProposal(p SetupProposal) {
 	w := e.Stdout
-	github := 0
+	github, accounts := 0, map[string]bool{}
 	for _, prof := range p.Profiles {
 		if prof.onGitHub() {
 			github++
+			accounts[strings.ToLower(prof.Account)] = true
 		}
 	}
-	fmt.Fprintf(w, "GitPersona found %s", plural(github, "GitHub account"))
+	fmt.Fprintf(w, "GitPersona found %s", plural(len(accounts), "GitHub account"))
 	if other := len(p.Profiles) - github; other > 0 {
 		fmt.Fprintf(w, ", %s for other hosts in your Git settings", plural(other, "account"))
 	}
 	if len(p.Roots) > 0 {
-		fmt.Fprintf(w, " and looked for repositories in %s", strings.Join(p.Roots, ", "))
+		fmt.Fprintf(w, " and looked for repositories in %s", strings.Join(outermost(p.Roots, e.comparisonKey), ", "))
 	}
 	fmt.Fprintln(w, ":")
 	if p.GitHubUnavailable != "" {
@@ -191,6 +192,9 @@ func (e Env) printProposal(p SetupProposal) {
 		fmt.Fprintf(w, "\n  Shell integration for %s, so gh and your prompt follow the directory (--no-shell to skip).\n",
 			strings.Join(p.Shells, ", "))
 	}
+	if len(p.GhSwitchers) > 0 && len(p.Shells) > 0 && slices.ContainsFunc(p.Profiles, SetupProfile.onGitHub) {
+		fmt.Fprintf(w, "\n  Note: %s.\n", ghSwitcherNote(p.GhSwitchers))
+	}
 	printUnassigned(w, p)
 	for _, u := range p.Unmatched {
 		printLeftOut(w, p, u, e.comparisonKey)
@@ -220,6 +224,20 @@ func printLeftOut(w io.Writer, p SetupProposal, u LeftOut, key func(string) stri
 	if len(u.ReplacedIn) > 0 {
 		fmt.Fprintf(w, "    Except in %s, which go to profiles.\n", strings.Join(u.ReplacedIn, ", "))
 	}
+}
+
+// outermost returns the folders not inside another one of them, in order.
+func outermost(dirs []string, key func(string) string) []string {
+	var out []string
+	for i, d := range dirs {
+		inside := slices.ContainsFunc(dirs, func(o string) bool {
+			return key(o) != key(d) && coversWith(key, []string{o}, d)
+		})
+		if !inside && !slices.ContainsFunc(dirs[:i], func(o string) bool { return key(o) == key(d) }) {
+			out = append(out, d)
+		}
+	}
+	return out
 }
 
 // allKept reports whether every folder of a left-out identity is a kept

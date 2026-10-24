@@ -5,10 +5,12 @@ import (
 	"context"
 	"fmt"
 	"maps"
+	"path"
 	"slices"
 	"strings"
 
 	"github.com/weikxs/gitpersona/internal/discover"
+	"github.com/weikxs/gitpersona/internal/paths"
 )
 
 // LeftOut is an identity of the user's existing includeIf setup that no
@@ -330,7 +332,9 @@ func (e Env) shadowedRules(ctx context.Context, owners []ruleOwner) []string {
 // refiningRulesInProfiles describes the user's identity rules for branches
 // or remotes (onbranch, hasconfig): inside the profiles' folders the profile
 // decides, so on those branches the identity changes there.
-func (e Env) refiningRulesInProfiles(ctx context.Context, owners []ruleOwner, globalName string) []string {
+// A rule on remote URLs is mentioned only when repositories in those
+// folders match it, or when the scan did not see them all.
+func (e Env) refiningRulesInProfiles(ctx context.Context, owners []ruleOwner, globalName string, found discover.Found) []string {
 	dirs := []string{}
 	for _, o := range owners {
 		dirs = append(dirs, o.dirs...)
@@ -343,10 +347,101 @@ func (e Env) refiningRulesInProfiles(ctx context.Context, owners []ruleOwner, gl
 		if !refining(r.Condition) {
 			continue
 		}
-		out = append(out, fmt.Sprintf("your rule %s (%s) no longer applies in your profiles' folders (%s), where the profile decides",
-			r.Condition, author(cmp.Or(r.Name, globalName), r.Email), strings.Join(dirs, ", ")))
+		ruleAuthor := author(cmp.Or(r.Name, globalName), r.Email)
+		affected, known := e.reposMatchingRule(ctx, r.Condition, ruleAuthor, owners, found)
+		if known && len(affected) == 0 {
+			continue // no repository in the profiles' folders is affected
+		}
+		which := ""
+		if known {
+			which = fmt.Sprintf(": %d repositories there match it, such as %s", len(affected), affected[0])
+			if len(affected) == 1 {
+				which = ": 1 repository there matches it, " + affected[0]
+			}
+		}
+		out = append(out, fmt.Sprintf("your rule %s (%s) no longer applies in your profiles' folders (%s), where the profile decides%s",
+			r.Condition, ruleAuthor, strings.Join(dirs, ", "), which))
 	}
 	return out
+}
+
+// reposMatchingRule returns the repositories in the owners' folders whose
+// author changes there: a hasconfig:remote.*.url rule matches their remote,
+// decides their author today (a later rule of the user's may override it),
+// and the profile that takes the folder commits as someone else. known is
+// false when that cannot be told: another kind of rule, or a scan that did
+// not finish.
+func (e Env) reposMatchingRule(ctx context.Context, condition, ruleAuthor string, owners []ruleOwner, found discover.Found) (affected []string, known bool) {
+	pattern, ok := strings.CutPrefix(condition, "hasconfig:remote.*.url:")
+	if !ok || !found.Complete || found.TooDeep {
+		return nil, false
+	}
+	host, owner := discover.RemoteHostOwner(pattern)
+	if host == "" {
+		return nil, false
+	}
+	for _, r := range found.Repos {
+		o, inside := e.ownerOf(owners, r.Dir)
+		if !inside || strings.EqualFold(author(o.name, o.email), ruleAuthor) || !e.anyRemoteMatches(ctx, r.Dir, host, owner) {
+			continue
+		}
+		if !strings.EqualFold(e.repoAuthor(ctx, r.Dir), ruleAuthor) {
+			continue // a later rule of the user's decides there today
+		}
+		affected = append(affected, r.Dir)
+	}
+	return affected, true
+}
+
+// anyRemoteMatches reports whether one of a repository's remotes has the
+// host and owner of a hasconfig pattern (both may be globs).
+func (e Env) anyRemoteMatches(ctx context.Context, dir, host, owner string) bool {
+	norm, err := paths.Normalize(dir, e.Home)
+	if err != nil {
+		return false
+	}
+	out, _ := e.git(ctx, norm, "config", "--get-regexp", `^remote\..*\.url$`)
+	for _, line := range strings.Split(out, "\n") {
+		_, url, ok := strings.Cut(line, " ")
+		if !ok {
+			continue
+		}
+		h, o := discover.RemoteHostOwner(strings.TrimSpace(url))
+		if ok, err := path.Match(strings.ToLower(host), strings.ToLower(h)); err != nil || !ok {
+			continue
+		}
+		if owner == "*" || owner == "**" {
+			return true
+		}
+		if ok, err := path.Match(owner, o); err == nil && ok {
+			return true
+		}
+	}
+	return false
+}
+
+// ownerOf returns the owner whose most specific folder contains dir.
+func (e Env) ownerOf(owners []ruleOwner, dir string) (ruleOwner, bool) {
+	best, length := ruleOwner{}, -1
+	for _, o := range owners {
+		for _, d := range o.dirs {
+			if coversWith(e.comparisonKey, []string{d}, dir) && len(d) > length {
+				best, length = o, len(d)
+			}
+		}
+	}
+	return best, length >= 0
+}
+
+// repoAuthor returns the author Git uses in a repository today.
+func (e Env) repoAuthor(ctx context.Context, dir string) string {
+	norm, err := paths.Normalize(dir, e.Home)
+	if err != nil {
+		return ""
+	}
+	name, _ := e.git(ctx, norm, "config", "user.name")
+	email, _ := e.git(ctx, norm, "config", "user.email")
+	return author(name, email)
 }
 
 // refining reports whether a condition picks repositories by branch or by

@@ -81,6 +81,9 @@ type SetupProposal struct {
 	ScanIncomplete bool `json:"scan_incomplete"`
 	// ScanUnfinished are the scanned folders it did not finish, with ~.
 	ScanUnfinished []string `json:"scan_unfinished"`
+	// GhSwitchers are the user's own startup files that already switch gh
+	// accounts.
+	GhSwitchers []string `json:"gh_switchers,omitempty"`
 	// GitHubUnavailable says why no GitHub account is proposed (gh missing,
 	// or no account signed in), when other hosts' profiles are.
 	GitHubUnavailable string `json:"github_unavailable,omitempty"`
@@ -144,6 +147,8 @@ func ProposeSetup(ctx context.Context, e Env) (SetupProposal, error) {
 		return SetupProposal{}, ghErr
 	}
 	used := make([]bool, len(existing))
+	// Profiles take over only the folders where a rule applies today.
+	live := e.liveIdentities(ctx, existing)
 	global := e.globalIdentity(ctx)
 
 	proposal := SetupProposal{Profiles: []SetupProfile{}}
@@ -154,9 +159,9 @@ func ProposeSetup(ctx context.Context, e Env) (SetupProposal, error) {
 		p := SetupProfile{ID: profileID(a.Login), Account: a.Login, Dirs: []string{}, Source: "gh"}
 		gh := ghIdentity(ctx, source, a.Login)
 		p.Name, p.Email, p.EmailSource, p.NameSource = gh.name, gh.email, gh.emailSource, gh.nameSource
-		if i := matchIdentity(existing, used, a.Login, gh.publicEmail); i >= 0 {
+		if i := matchIdentity(live, used, a.Login, gh.publicEmail); i >= 0 {
 			used[i] = true
-			p = e.adopt(p, existing[i], global.Name)
+			p = e.adopt(p, live[i], global.Name)
 		}
 		if a.Active {
 			proposal.Default = p.ID
@@ -164,7 +169,7 @@ func ProposeSetup(ctx context.Context, e Env) (SetupProposal, error) {
 		proposal.Profiles = append(proposal.Profiles, p)
 	}
 	proposal.Global = global
-	proposal, err := e.organize(ctx, proposal, existing, used)
+	proposal, err := e.organize(ctx, proposal, existing, live, used)
 	if err != nil {
 		return SetupProposal{}, err
 	}
@@ -233,9 +238,15 @@ func ghIdentity(ctx context.Context, source provider.GitHub, login string) accou
 // matchIdentity finds the existing identity that belongs to login: by its
 // credential username, the account's public email, or its noreply email.
 func matchIdentity(identities []discover.Identity, used []bool, login, publicEmail string) int {
+	// Only an identity whose rule applies today somewhere: one that never
+	// applies stays the user's and is reported as left out.
+	return matchIdentityIf(identities, used, login, publicEmail, true)
+}
+
+func matchIdentityIf(identities []discover.Identity, used []bool, login, publicEmail string, withFolders bool) int {
 	noreply := "+" + strings.ToLower(login) + "@users.noreply.github.com"
 	for i, id := range identities {
-		if used[i] || forOtherHost(id) {
+		if used[i] || forOtherHost(id) || (withFolders && len(id.Dirs) == 0) {
 			continue
 		}
 		email := strings.ToLower(id.Email)

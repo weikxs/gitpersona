@@ -8,6 +8,7 @@ import (
 	"context"
 	"maps"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -224,6 +225,51 @@ func identityRules(ctx context.Context, home, gitconfig string, run provider.Run
 	return rules
 }
 
+// githubHelperKey is the credential helper setting for github.com.
+const githubHelperKey = "credential.https://github.com.helper"
+
+// ghTokenHelper matches, whole, a credential helper that gives
+// `gh auth git-credential` the token gh keeps for one account on
+// github.com, which is what a GitHub profile does:
+//
+//	!f() { GH_TOKEN="$(gh auth token -h github.com -u <account>)" gh auth git-credential "$@"; }; f
+//	!GH_TOKEN="$(gh auth token -u <account>)" gh auth git-credential
+//
+// gh may be given by its path, and -h github.com may come before or after
+// the account. Anything else (another host, more commands, a pipe) does not
+// match, so such a rule stays the user's.
+var ghTokenHelper = regexp.MustCompile(`^!\s*(?:f\s*\(\s*\)\s*\{\s*)?` +
+	`GH_TOKEN=(?:"\$\(|\$\()\s*(?:\S*/)?gh\s+auth\s+token` +
+	`(?:\s+(?:-h|--hostname)[ =]github\.com)?\s+(?:-u|--user)[ =]([A-Za-z0-9][A-Za-z0-9-]*)(?:\s+(?:-h|--hostname)[ =]github\.com)?` +
+	`\s*\)"?\s+(?:\S*/)?gh\s+auth\s+git-credential(?:\s+"\$@")?` +
+	`(?:\s*;\s*\}\s*;\s*f)?\s*$`)
+
+// ghHelpersFor reports whether the github.com helpers of a file, in order,
+// end with only helpers that hand over account's gh token after the last
+// reset (""), so a profile for account does what they do.
+func ghHelpersFor(helpers []string, account string) bool {
+	if account == "" {
+		return false
+	}
+	start := 0
+	for i, h := range helpers {
+		if h == "" {
+			start = i + 1
+		}
+	}
+	effective := helpers[start:]
+	if len(effective) == 0 {
+		return false
+	}
+	for _, h := range effective {
+		m := ghTokenHelper.FindStringSubmatch(strings.TrimSpace(h))
+		if m == nil || !strings.EqualFold(m[1], account) {
+			return false
+		}
+	}
+	return true
+}
+
 // replaceable are the settings a profile takes over; a file with anything
 // else keeps its includeIf rule.
 var replaceable = map[string]bool{
@@ -241,12 +287,20 @@ func readIdentity(ctx context.Context, file string, global globals, run provider
 		return Identity{}, ""
 	}
 	values, keep := map[string]string{}, ""
+	var githubHelpers []string
 	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
 		key, value, _ := strings.Cut(line, "=")
 		values[key] = strings.TrimSpace(value)
+		if key == githubHelperKey {
+			githubHelpers = append(githubHelpers, values[key])
+			continue // judged below, with the account
+		}
 		if _, isAccount := credentialHost(key); !replaceable[key] && !isAccount && keep == "" {
 			keep = "it also sets " + key
 		}
+	}
+	if len(githubHelpers) > 0 && !ghHelpersFor(githubHelpers, githubAccount(values)) && keep == "" {
+		keep = "it also sets " + githubHelperKey
 	}
 	id := Identity{
 		Name:         values["user.name"],

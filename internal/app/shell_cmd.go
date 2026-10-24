@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 
 	"github.com/weikxs/gitpersona/internal/block"
@@ -228,6 +229,15 @@ func (e Env) checkShellIntegration(ctx context.Context, cfg config.Config) []che
 				advice: "run `gitpersona install-shell`",
 				fix:    func(ctx context.Context, fixer Env) error { return InstallShell(ctx, fixer, nil, false) }, fixKey: "shell"})
 		}
+	}
+	installed := slices.ContainsFunc([]shell.Kind{shell.Fish, shell.Zsh, shell.Bash}, func(k shell.Kind) bool {
+		_, ok := e.integrated(k)
+		return ok
+	})
+	hasGitHub := slices.ContainsFunc(cfg.Profiles, func(p config.Profile) bool { return p.Provider == config.ProviderGitHub })
+	if files := e.ghSwitchers(); len(files) > 0 && installed && hasGitHub {
+		checks = append(checks, check{warn: true, label: ghSwitcherNote(files),
+			advice: "remove your own gh function if GitPersona's profiles cover the same directories"})
 	}
 	current := e.currentShell(ctx)
 	if current.Kind != shell.Unknown && current.Kind != login.Kind {

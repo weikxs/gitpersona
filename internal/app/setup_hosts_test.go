@@ -209,10 +209,11 @@ func appendRule(t *testing.T, w world, dir, content string) {
 		t.Fatal(err)
 	}
 	defer f.Close()
-	if _, err := f.WriteString("[includeIf \"gitdir:~/" + dir + "/\"]\n\tpath = ~/.gitconfig-" + dir + "\n"); err != nil {
+	file := ".gitconfig-" + strings.ReplaceAll(dir, "/", "-")
+	if _, err := f.WriteString("[includeIf \"gitdir:~/" + dir + "/\"]\n\tpath = ~/" + file + "\n"); err != nil {
 		t.Fatal(err)
 	}
-	mustWrite(t, filepath.Join(w.home, ".gitconfig-"+dir), content, 0o600)
+	mustWrite(t, filepath.Join(w.home, file), content, 0o600)
 }
 
 func TestOneEmailForGitHubAndGitLabKeepsEachFolderWithItsHost(t *testing.T) {

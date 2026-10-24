@@ -451,7 +451,7 @@ func TestSetupLeavesAnOuterRuleThatContainsAKeptRule(t *testing.T) {
 	}
 }
 
-func TestARuleThatNeverAppliedIsAnnouncedWhenSetupMakesItApply(t *testing.T) {
+func TestARuleThatNeverAppliesIsLeftAsItIs(t *testing.T) {
 	w := newWorld(t)
 	withoutConfig(t, w)
 	// The rule for ~/Projects/personal comes before a rule for ~/Projects, which wins there in Git.
@@ -465,8 +465,14 @@ func TestARuleThatNeverAppliedIsAnnouncedWhenSetupMakesItApply(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if len(got.Shadowed) != 1 || !strings.Contains(got.Shadowed[0], "your rule for ~/Projects/personal (Alex Personal <alex.personal@example.com>) never applied") {
-		t.Errorf("shadowed = %v", got.Shadowed)
+	// The rule never applies today, so setup leaves it as it is and says so;
+	// ~/Projects/personal keeps committing as it does now.
+	i := slices.IndexFunc(got.Unmatched, func(u LeftOut) bool { return u.Email == "alex.personal@example.com" })
+	if i < 0 || got.Unmatched[i].NeverApplied == "" {
+		t.Errorf("unmatched = %+v, want the never-applied rule left out", got.Unmatched)
+	}
+	if slices.Contains(got.OldRules, "~/Projects/personal") {
+		t.Error("a rule that never applies must not be taken over")
 	}
 }
 

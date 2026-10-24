@@ -317,3 +317,62 @@ func TestGitTrueReadsBooleansAsGitDoes(t *testing.T) {
 		}
 	}
 }
+
+func TestAHelperThatHandsOverTheAccountsGhTokenCanBeReplaced(t *testing.T) {
+	home := t.TempDir()
+	helper := func(account string) string {
+		return "[credential \"https://github.com\"]\n\thelper =\n\thelper = \"!f() { GH_TOKEN=\\\"$(gh auth token -h github.com -u " +
+			account + ")\\\" gh auth git-credential \\\"$@\\\"; }; f\"\n\tusername = demo-hub\n"
+	}
+	write(t, filepath.Join(home, ".gitconfig-same"), "[user]\n\temail = same@demo.example\n"+helper("Demo-Hub"))
+	write(t, filepath.Join(home, ".gitconfig-other"), "[user]\n\temail = other@demo.example\n"+helper("someone-else"))
+	write(t, filepath.Join(home, ".gitconfig-store"), "[user]\n\temail = store@demo.example\n"+
+		"[credential \"https://github.com\"]\n\thelper = store\n\tusername = demo-hub\n")
+	write(t, filepath.Join(home, ".gitconfig"), "[includeIf \"gitdir:~/same/\"]\n\tpath = ~/.gitconfig-same\n"+
+		"[includeIf \"gitdir:~/other/\"]\n\tpath = ~/.gitconfig-other\n"+
+		"[includeIf \"gitdir:~/store/\"]\n\tpath = ~/.gitconfig-store\n")
+
+	keep := map[string]string{}
+	for _, r := range IdentityRules(context.Background(), home, filepath.Join(home, ".gitconfig"), provider.ExecRunner) {
+		keep[r.Dir] = r.Keep
+	}
+
+	if keep["~/same"] != "" {
+		t.Errorf("a helper handing over demo-hub's gh token is what a profile does; got keep %q", keep["~/same"])
+	}
+	for _, dir := range []string{"~/other", "~/store"} {
+		if !strings.Contains(keep[dir], "credential.https://github.com.helper") {
+			t.Errorf("%s must stay: its helper does something else; got keep %q", dir, keep[dir])
+		}
+	}
+}
+
+func TestGhHelpersFor(t *testing.T) {
+	fn := func(inner string) string { return `!f() { ` + inner + ` "$@"; }; f` }
+	ok := fn(`GH_TOKEN="$(gh auth token -h github.com -u demo-hub)" gh auth git-credential`)
+	for _, tc := range []struct {
+		helpers []string
+		account string
+		want    bool
+	}{
+		{[]string{"", ok}, "demo-hub", true},
+		{[]string{ok}, "Demo-Hub", true}, // GitHub logins ignore case
+		{[]string{"", fn(`GH_TOKEN="$(/opt/demo/bin/gh auth token --user=demo-hub --hostname=github.com)" /opt/demo/bin/gh auth git-credential`)}, "demo-hub", true},
+		{[]string{`!GH_TOKEN=$(gh auth token -u demo-hub) gh auth git-credential`}, "demo-hub", true},
+		{[]string{"osxkeychain", "", ok}, "demo-hub", true}, // the reset drops the keychain
+		{[]string{ok, ""}, "demo-hub", false},               // reset last: no helper today
+		{[]string{""}, "demo-hub", false},
+		{[]string{"!gh auth git-credential"}, "demo-hub", false}, // the active gh account, whichever it is
+		{[]string{"!gh auth token -u demo-hub | xargs -I{} gh auth git-credential"}, "demo-hub", false},
+		{[]string{fn(`GH_TOKEN="$(gh auth token -h ghe.demo.example -u demo-hub)" gh auth git-credential`)}, "demo-hub", false},
+		{[]string{fn(`GH_TOKEN="$(gh auth token)" demo-tool -u demo-hub; gh auth git-credential`)}, "demo-hub", false},
+		{[]string{fn(`GH_TOKEN="$(gh auth token -u demo_hub)" gh auth git-credential`)}, "demo", false},
+		{[]string{fn(`GH_TOKEN="$(gh auth token -u demo-hub)" gh auth git-credential | tee /tmp/log`)}, "demo-hub", false},
+		{[]string{ok, "osxkeychain"}, "demo-hub", false},
+		{[]string{ok}, "", false},
+	} {
+		if got := ghHelpersFor(tc.helpers, tc.account); got != tc.want {
+			t.Errorf("ghHelpersFor(%q, %q) = %v, want %v", tc.helpers, tc.account, got, tc.want)
+		}
+	}
+}
