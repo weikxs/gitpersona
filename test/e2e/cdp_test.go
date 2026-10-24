@@ -77,6 +77,10 @@ type cdpMessage struct {
 
 var devtoolsURL = regexp.MustCompile(`DevTools listening on (ws://\S+)`)
 
+// chromeStartTimeout bounds Chrome's start, which can take far longer than a
+// page step on a busy CI machine.
+const chromeStartTimeout = 60 * time.Second
+
 // startBrowser launches Chrome and attaches to its page.
 func startBrowser(t *testing.T) *browser {
 	t.Helper()
@@ -100,10 +104,16 @@ func startBrowser(t *testing.T) *browser {
 	t.Cleanup(func() { _ = cmd.Process.Kill(); _ = cmd.Wait() })
 
 	wsURL := make(chan string, 1)
+	var mu sync.Mutex
+	var lastLines []string // Chrome's last output, to explain a failed start
 	go func() {
 		scanner := bufio.NewScanner(stderr)
 		for scanner.Scan() {
-			if m := devtoolsURL.FindStringSubmatch(scanner.Text()); m != nil {
+			line := scanner.Text()
+			mu.Lock()
+			lastLines = append(lastLines[max(len(lastLines)-9, 0):], line)
+			mu.Unlock()
+			if m := devtoolsURL.FindStringSubmatch(line); m != nil {
 				wsURL <- m[1]
 			}
 		}
@@ -111,8 +121,11 @@ func startBrowser(t *testing.T) *browser {
 	var browserURL string
 	select {
 	case browserURL = <-wsURL:
-	case <-time.After(waitTimeout):
-		t.Fatal("Chrome did not start its DevTools endpoint")
+	case <-time.After(chromeStartTimeout):
+		mu.Lock()
+		defer mu.Unlock()
+		t.Fatalf("Chrome did not start its DevTools endpoint within %s; its last output:\n%s",
+			chromeStartTimeout, strings.Join(lastLines, "\n"))
 	}
 	u, _ := url.Parse(browserURL)
 	conn, err := dialWebSocket(pageTarget(t, u.Host))
