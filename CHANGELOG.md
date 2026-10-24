@@ -14,6 +14,9 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ### Added
 
+- `doctor` shows the Git version and fails below Git 2.31, the oldest GitPersona supports. On Git before 2.36 it says
+  that an `includeIf "hasconfig:remote.*.url:…"` rule never applies (that Git ignores such rules), instead of where it
+  does not apply.
 - Linux packages for x86_64 and arm64: `.deb`, `.rpm`, `.apk` and Arch (`.pkg.tar.zst`), installing
   `/usr/bin/gitpersona`. CI now runs on Apple silicon and Intel Macs, Linux x86_64 and arm64, and in Debian, Alpine,
   Fedora and Ubuntu 22.04 containers.

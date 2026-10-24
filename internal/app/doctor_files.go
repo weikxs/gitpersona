@@ -141,7 +141,17 @@ func (e Env) checkOldRules(ctx context.Context, cfg config.Config) []check {
 	}
 	checks = append(checks, e.checkCoveredKeptRules(ctx, cfg)...)
 	var scanned *discover.Found // the profiles' folders, scanned once if needed
+	version, knownVersion := e.gitVersion(ctx)
 	for _, r := range e.otherIdentityRules(ctx) {
+		// Git before 2.36 skips "hasconfig:" conditions: such a rule never
+		// applies anywhere, which says more than any warning below.
+		if strings.HasPrefix(r.Condition, "hasconfig:") && knownVersion && !version.atLeast(remoteConditionsGit) {
+			checks = append(checks, check{warn: true,
+				label: fmt.Sprintf("your includeIf rule %q (%s) never applies: Git %s ignores hasconfig conditions, which need Git %s or newer",
+					r.Condition, author(r.Name, r.Email), version, remoteConditionsGit.short()),
+				advice: "update Git if you want the rule, or remove it"})
+			continue
+		}
 		// A rule whose identity a profile has is covered: pin a repository to
 		// that profile where the rule should decide (setup said so).
 		represented := slices.ContainsFunc(owners, func(o ruleOwner) bool {

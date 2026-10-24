@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -49,7 +50,10 @@ func TestDoctorJSON(t *testing.T) {
 	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
 		t.Fatalf("doctor --json is not JSON: %v\n%s", err, out.String())
 	}
-	if ok || got.OK || len(got.Checks) == 0 || got.Checks[1].Status != "fail" || got.Checks[1].Advice == "" {
+	outdated := slices.IndexFunc(got.Checks, func(c DoctorCheck) bool {
+		return strings.HasPrefix(c.Label, "generated Git configuration is out of date")
+	})
+	if ok || got.OK || outdated < 0 || got.Checks[outdated].Status != "fail" || got.Checks[outdated].Advice == "" {
 		t.Fatalf("doctor --json before apply = %+v", got)
 	}
 }

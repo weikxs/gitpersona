@@ -123,7 +123,7 @@ func (e Env) printDoctorJSON(checks []check) bool {
 }
 
 func (e Env) runChecks(ctx context.Context) []check {
-	var checks []check
+	checks := []check{e.checkGitVersion(ctx)}
 	cfg, cfgCheck := e.checkConfig()
 	checks = append(checks, cfgCheck)
 	if cfgCheck.ok {
