@@ -123,9 +123,15 @@ GitPersona is about identities, so this rule has no exceptions.
 - SemVer. Before 1.0, minor versions may contain breaking changes; they are called out in the changelog.
 - Every user-visible change adds a line under **Unreleased** in `CHANGELOG.md`
   (Added / Changed / Deprecated / Removed / Fixed / Security).
-- Release: move Unreleased entries to a new version section, tag `vX.Y.Z` on `main`, push the tag.
-  The release workflow runs the checks, then GoReleaser builds macOS and Linux binaries (amd64, arm64),
-  publishes checksums, and updates the Homebrew tap.
+- Release notes are product communication, one file per release in `.github/release-notes/vX.Y.Z.md`, written
+  from `.github/release-notes/TEMPLATE.md` (who it is for, what you can do now, what's new by theme, privacy and
+  security, install, compatibility). Draft one from the changelog with
+  `scripts/release-notes.sh vX.Y.Z > .github/release-notes/vX.Y.Z.md`, then rewrite the TODO parts.
+  `CHANGELOG.md` stays the complete engineering record.
+- Release: move Unreleased entries to a new version section, write the release notes, tag `vX.Y.Z` on `main`,
+  push the tag. The release workflow stops when the notes are missing or still have TODOs, runs the checks, then
+  GoReleaser builds macOS and Linux binaries (amd64, arm64) and packages, publishes them with checksums and the
+  notes, and updates the Homebrew tap.
 
 ## 9. Documentation
 

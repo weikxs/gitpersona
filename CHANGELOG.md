@@ -18,10 +18,11 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ### Changed
 
-- Release notes are built from the version's section of this file, in the order large projects use: what
-  GitPersona is, summary, upgrading steps, security, new features, changes, deprecations, removals and bug fixes
-  (empty ones are left out), then a table of downloads by platform and a link comparing with the previous version.
-  They no longer list commits with their hashes and author emails, and a release fails without a section here.
+- Each release has hand-written release notes in `.github/release-notes/vX.Y.Z.md`, following
+  `.github/release-notes/TEMPLATE.md`: who the release is for, what you can do now, what's new by theme, privacy and
+  security, install with a table of downloads by platform, compatibility. The release page shows that file instead
+  of a list of commits with their hashes and author emails; a release stops when it is missing or unfinished.
+  `scripts/release-notes.sh` drafts one from this changelog.
 
 ## [0.1.0] - 2026-10-24
 

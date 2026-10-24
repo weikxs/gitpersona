@@ -17,16 +17,25 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
+      # The release page is .github/release-notes/<tag>.md, written by a
+      # person from TEMPLATE.md; never commit messages, hashes or emails.
+      - name: Release notes are written
+        run: |
+          notes=".github/release-notes/$GITHUB_REF_NAME.md"
+          if [ ! -f "$notes" ]; then
+            echo "::error::$notes is missing; draft it with scripts/release-notes.sh $GITHUB_REF_NAME > $notes"
+            exit 1
+          fi
+          if grep -n "TODO" "$notes"; then
+            echo "::error::$notes still has TODO placeholders"
+            exit 1
+          fi
       - name: Test before releasing
         run: make check
-      # The notes come from this version's section of CHANGELOG.md, never
-      # from commit messages, hashes or author emails.
-      - name: Release notes
-        run: scripts/release-notes.sh "$GITHUB_REF_NAME" > "$RUNNER_TEMP/notes.md"
       - uses: goreleaser/goreleaser-action@v7
         with:
           version: "~> v2"
-          args: release --clean --release-notes ${{ runner.temp }}/notes.md
+          args: release --clean --release-notes .github/release-notes/${{ github.ref_name }}.md
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           HOMEBREW_TAP_SSH_KEY: ${{ secrets.HOMEBREW_TAP_SSH_KEY }}
