@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -121,6 +122,23 @@ func remoteRuleWorld(t *testing.T, aliasRepo bool, extra ...string) SetupProposa
 	return proposal
 }
 
+// gitHasRemoteConditions reports whether this Git applies includeIf
+// "hasconfig:remote.*.url:…" rules, which Git 2.36 added; older Git ignores
+// them, so they never decide an author there.
+func gitHasRemoteConditions(t *testing.T) bool {
+	t.Helper()
+	out := runGit(t, t.TempDir(), "version") // "git version 2.34.1" (vendors may add more)
+	fields := strings.Fields(out)
+	if len(fields) < 3 {
+		t.Fatalf("cannot read the Git version from %q", out)
+	}
+	var major, minor int
+	if _, err := fmt.Sscanf(fields[2], "%d.%d", &major, &minor); err != nil {
+		t.Fatalf("cannot read the Git version from %q: %v", out, err)
+	}
+	return major > 2 || (major == 2 && minor >= 36)
+}
+
 func TestARemoteRuleIsMentionedOnlyWhenRepositoriesMatchIt(t *testing.T) {
 	quiet := remoteRuleWorld(t, false)
 	for _, s := range quiet.Shadowed {
@@ -130,6 +148,12 @@ func TestARemoteRuleIsMentionedOnlyWhenRepositoriesMatchIt(t *testing.T) {
 	}
 
 	loud := remoteRuleWorld(t, true)
+	if !gitHasRemoteConditions(t) {
+		if len(loud.Shadowed) != 0 {
+			t.Errorf("this Git ignores remote rules, so none decides an author today: %q", loud.Shadowed)
+		}
+		return
+	}
 	if !slices.ContainsFunc(loud.Shadowed, func(s string) bool {
 		return strings.Contains(s, "github-side") && strings.Contains(s, "1 repository there matches it, ~/work/side")
 	}) {
@@ -307,7 +331,11 @@ func TestARemoteRuleMatchesAnyRemoteAndHostGlobs(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			if !slices.ContainsFunc(proposal.Shadowed, func(s string) bool { return strings.Contains(s, "~/work/fork") }) {
+			mentioned := slices.ContainsFunc(proposal.Shadowed, func(s string) bool { return strings.Contains(s, "~/work/fork") })
+			switch {
+			case !gitHasRemoteConditions(t) && mentioned:
+				t.Errorf("this Git ignores remote rules, so the rule decides nothing in ~/work/fork: %q", proposal.Shadowed)
+			case gitHasRemoteConditions(t) && !mentioned:
 				t.Errorf("the rule applies to ~/work/fork today through its upstream remote: %q", proposal.Shadowed)
 			}
 		})
