@@ -146,8 +146,12 @@ func TestDoctorWarnsThatTheDefaultProfileOverridesARuleItCannotReplace(t *testin
 
 	Doctor(context.Background(), env)
 
-	if !strings.Contains(out.String(), "the default profile acme overrides your includeIf rule") {
-		t.Errorf("doctor should say the default overrides the rule:\n%s", out.String())
+	want := "the default profile acme overrides your includeIf rule"
+	if !gitHasRemoteConditions(t) {
+		want = "never applies: Git" // older Git ignores the rule, which says more than an override
+	}
+	if !strings.Contains(out.String(), want) {
+		t.Errorf("doctor should say %q:\n%s", want, out.String())
 	}
 }
 

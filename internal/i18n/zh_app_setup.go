@@ -78,9 +78,11 @@ func init() {
 		"%s already exists; change it on the Profiles page":                                                           "%s 已存在；请在“配置文件”页修改",
 		"choose at least one profile":                           "请至少选择一个配置文件",
 		"the profiles cannot be written as a configuration: %w": "这些配置文件无法写成配置：%w",
-		"profile %s: %w":                                        "配置文件 %s：%w",
-		"1 identity":                                            "1 个身份",
-		"%d identities":                                         "%d 个身份",
+
+		// A group of its own: gofmt 1.26 and 1.27 align a long run of keys differently.
+		"profile %s: %w": "配置文件 %s：%w",
+		"1 identity":     "1 个身份",
+		"%d identities":  "%d 个身份",
 
 		// setup_auto.go
 		"the SSH key %s of your includeIf setup does not exist, so it is left out":          "你的 includeIf 设置中的 SSH 密钥 %s 不存在，因此未采用",

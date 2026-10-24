@@ -368,6 +368,13 @@ func TestDoctorMentionsARemoteRuleOnlyWhenRepositoriesMatchIt(t *testing.T) {
 		_ = Doctor(context.Background(), env)
 
 		mentioned := strings.Contains(out.String(), "git@github-side")
+		if !gitHasRemoteConditions(t) {
+			// Older Git ignores the rule everywhere: doctor says so either way.
+			if !strings.Contains(out.String(), "never applies: Git") {
+				t.Errorf("doctor should say this Git ignores the rule:\n%s", out.String())
+			}
+			continue
+		}
 		switch {
 		case !aliasRepo && mentioned:
 			t.Errorf("no repository in ~/work follows the rule, so doctor should not warn:\n%s", out.String())
