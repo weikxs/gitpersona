@@ -18,6 +18,10 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ### Changed
 
+- Release builds use the newest Go 1.26 patch release instead of Go 1.26.0, so Go's security fixes reach the
+  binaries; v0.1.0 was built with Go 1.26.0.
+- Every release file carries signed build provenance: `gh attestation verify <file> --repo weikxs/gitpersona` shows
+  it was built by this repository's release workflow from the tag.
 - Each release has hand-written release notes in `.github/release-notes/vX.Y.Z.md`, following
   `.github/release-notes/TEMPLATE.md`: who the release is for, what you can do now, what's new by theme, privacy and
   security, install with a table of downloads by platform, compatibility. The release page shows that file instead

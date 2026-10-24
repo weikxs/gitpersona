@@ -5,18 +5,21 @@ on:
     tags: ["v*.*.*"]
 
 permissions:
-  contents: write
+  contents: write     # create the release and upload its files
+  id-token: write     # sign the build provenance
+  attestations: write # store the build provenance
 
 jobs:
   release:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-      - uses: actions/setup-go@v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version-file: go.mod
+          go-version: "1.26.x"
+          check-latest: true
       # The release page is .github/release-notes/<tag>.md, written by a
       # person from TEMPLATE.md; never commit messages, hashes or emails.
       - name: Release notes are written
@@ -32,10 +35,17 @@ jobs:
           fi
       - name: Test before releasing
         run: make check
-      - uses: goreleaser/goreleaser-action@v7
+      - uses: goreleaser/goreleaser-action@a4f02ab5355a589de60d917a659ce617ed19b3de # v7.3.0
         with:
           version: "~> v2"
           args: release --clean --release-notes .github/release-notes/${{ github.ref_name }}.md
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           HOMEBREW_TAP_SSH_KEY: ${{ secrets.HOMEBREW_TAP_SSH_KEY }}
+      # Signed build provenance for every published file: anyone can check that
+      # a download was built here, from this tag, with
+      # `gh attestation verify <file> --repo weikxs/gitpersona`.
+      - name: Build provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-checksums: ./dist/checksums.txt

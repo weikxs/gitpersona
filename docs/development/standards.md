@@ -35,9 +35,9 @@ curl), structured bug reports (Go), and the [OpenSSF Scorecard](https://scorecar
   you did, what you expected, what happened, plus `gitpersona doctor --json` when relevant, with identities
   replaced by demo ones (§4).
 - **One pull request, one purpose.** Do not mix a fix, a refactor and a feature; split them.
-- **Review:** every pull request needs green CI and an approval from a code owner (`.github/CODEOWNERS`).
-  Maintainers follow the same rule; a maintainer may push a release-preparation or documentation-only commit to
-  `main` directly only after `make check` and `make lint` pass locally.
+- **Review:** every change reaches `main` through a pull request with green CI, maintainers' changes included
+  (the repository ruleset allows nothing else). Pull requests from contributors also need a code owner's approval
+  (`.github/CODEOWNERS`).
 - **Response times** are best effort; security reports follow [SECURITY.md](../../SECURITY.md).
 
 ## 3. AI-assisted contributions (MUST)
@@ -123,10 +123,11 @@ CI) and review.
 | `go.mod` / `go.sum` are tidy and committed | MUST | `make check`, release workflow |
 | Release archives are published with SHA-256 `checksums.txt`; the install script and Homebrew verify them | MUST | GoReleaser, `install.sh` |
 | Release binaries are built in CI only, never on a developer's machine | MUST | release workflow |
-| Third-party actions are pinned to a full commit SHA (with the version in a comment) | SHOULD | planned |
-| Known vulnerabilities in dependencies are checked (`govulncheck`) on every change | SHOULD | planned |
-| Releases carry build provenance (artifact attestations) | SHOULD | planned |
-| `main` is protected: no force-push or deletion, CI required before merging | MUST | repository ruleset (planned) |
+| Actions are pinned to a full commit SHA, with the version in a comment; Dependabot updates both | MUST | review, Dependabot |
+| CI and releases build with the newest Go patch release (`1.26.x`, `check-latest`), so Go's security fixes ship; `go.mod` keeps the oldest Go that builds GitPersona | MUST | workflows |
+| Known vulnerabilities reachable from the code, in Go or in a dependency, fail CI (`govulncheck`) | MUST | CI `govulncheck` |
+| Every release file carries signed build provenance; check one with `gh attestation verify <file> --repo weikxs/gitpersona` | MUST | release workflow |
+| `main` is protected: no force-push or deletion, changes only through pull requests with CI green | MUST | repository ruleset |
 
 ## 7. Code
 
