@@ -9,23 +9,25 @@
 **跟着目录自动切换的 Git 身份。**
 
 在 `~/Projects/acme` 里，你用公司账户提交、推送、开 PR；
-换到 `~/Projects/personal`，你又自动变回个人账户。不用执行任何命令，也不用记着切换。
+换到 `~/Projects/personal`，你又自动变回个人账户。不用执行任何命令，也不用记着切换，
+还能逐个仓库核对，确认没有一个仓库会用错账户提交或推送。
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/terminal-dark.png">
-  <img alt="在两个目录里运行 gitpersona whoami 显示两个账户；gitpersona verify 确认每个仓库都符合预期" src="docs/images/terminal-light.png" width="820">
+  <img alt="在两个目录里运行 gitpersona whoami 显示两个账户；gitpersona verify 确认每个仓库都符合预期" src="docs/images/terminal-light.png" width="880">
 </picture>
 
 > **状态：预发布。** 下面的功能都已可用，并在 macOS 和 Linux 上测试：GitHub、GitLab、Bitbucket 及其他主机的配置文件、
-> 命令行、配置 Web 页面、shell 集成和 `gh` / `glab` 切换。第一个正式版本和 Homebrew tap 即将发布；在此之前请从源码安装。
+> 命令行、中英双语的网页控制台、shell 集成和 `gh` / `glab` 切换。第一个正式版本和 Homebrew tap 即将发布；在此之前请从源码安装。
 
 ## 目录
 
 - [三步上手](#三步上手)
+- [网页控制台](#网页控制台)
 - [为什么需要](#为什么需要)
 - [功能](#功能)
 - [工作原理](#工作原理)
-- [系统要求](#系统要求)
+- [支持的系统](#支持的系统)
 - [安装](#安装)
 - [快速上手](#快速上手)
 - [配置参考](#配置参考)
@@ -51,24 +53,51 @@ gitpersona setup --web
 ```
 
 GitPersona 会找出你的账户、已有的 `includeIf` 身份、SSH 别名和仓库，给出一份完整的方案。
-点 **Apply** 之前不会写入任何文件，写入前所有文件都会先备份。
+点"应用"之前不会写入任何文件，写入前所有文件都会先备份。
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/images/setup-dark.png">
-  <img alt="配置页面为每个账户提出一个配置文件，并列出它接管的目录和 SSH 密钥" src="docs/images/setup-light.png" width="820">
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/setup-zh-dark.png">
+  <img alt="配置页面为每个账户提出一个配置文件，并列出它接管的目录和 SSH 密钥" src="docs/images/setup-zh-light.png" width="880">
 </picture>
 
-**3. 逐个核对仓库。** `gitpersona verify`（或 `gitpersona ui` 里的 **Repositories** 页面）列出每个仓库提交用的作者、
-每个远程推送用的账户，凡是会用错身份的都会标出来：
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/images/repositories-dark.png">
-  <img alt="Repositories 页面按配置文件分组，显示每个仓库由谁提交、由谁推送" src="docs/images/repositories-light.png" width="820">
-</picture>
+**3. 逐个核对仓库。** `gitpersona verify`（或 `gitpersona ui` 里的"仓库"页面）列出每个仓库提交用的作者、
+每个远程推送用的账户，凡是会用错身份的都会标出来。加上 `--ssh`，还会让每个 SSH 主机报出密钥实际登录的账户。
 
 **日常使用什么都不用做：** 进入项目目录，照常使用 `git`、`gh` 或 IDE。
 想确认当前身份就运行 `gitpersona whoami`；新目录用 `gitpersona use <profile>` 指定身份；
 放在别处的个别仓库用 `gitpersona pin <profile>`。
+
+## 网页控制台
+
+`gitpersona ui` 会在浏览器里打开一个本地控制台（只监听 127.0.0.1；链接只能用一次，15 分钟不用会自动停止）。
+命令行能做的事这里都能做，并且中英双语：默认跟随系统语言，其次是浏览器语言，都不是中英文时显示英文；
+侧栏底部的开关可以切换当前页面的语言。
+
+**总览：** 关键数字（账户、仓库、串号、需留意、体检），需要处理的事放在最前面，
+下面的表格列出每个账户、它的各个身份以及各自管的目录。
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/overview-zh-dark.png">
+  <img alt="总览：数字卡片、没有串号的绿色提示，以及按账户列出身份、目录和仓库核对结果的表格" src="docs/images/overview-zh-light.png" width="880">
+</picture>
+
+**账户：** 每个账户一张卡片。用不同作者名提交的账户，下面会有多个身份，各自列出目录和钉住的仓库；
+目录和钉住都可以直接在这里添加、删除。
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/accounts-zh-dark.png">
+  <img alt="账户页：一个账户下有两个身份，各自的目录以及编辑、删除按钮" src="docs/images/accounts-zh-light.png" width="880">
+</picture>
+
+**仓库：** 按账户分组，列出每个仓库由谁提交、由谁推送，可以筛选，每条说明或问题都写明原因。
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/repositories-zh-dark.png">
+  <img alt="仓库页：按结论统计、筛选，以及每个仓库的作者、远程和推送账户" src="docs/images/repositories-zh-light.png" width="880">
+</picture>
+
+**检查并应用** 先以差异形式列出每个要写入的文件；**Shell** 页面设置 shell 集成；**备份** 可以恢复到任意之前的状态。
+手机屏幕和系统深色模式都能正常显示。
 
 ## 为什么需要
 
@@ -80,50 +109,61 @@ Git、`gh`、`glab` 都假定只有一个全局的"当前账户"，于是很容�
 - **一个目录，一个身份。** 把目录绑定到一个配置文件（Profile），里面所有仓库都跟着用这个身份。
 - **一套规则管全部：** 提交作者和邮箱、HTTPS 凭据、SSH 密钥、提交签名，以及 `gh` / `glab` 账户。
 - **同一主机多个账户。** 两个 GitHub 账户、公司服务器上的三个 GitLab 账户：每个目录都用自己账户的令牌推送。
+- **有据可查，不靠猜。** `gitpersona verify` 逐个核对仓库的作者和推送账户是否与配置文件一致，
+  能发现写在远程地址里的令牌、不同密钥共用的 SSH 连接，还可以让每个 SSH 主机报出密钥实际登录的账户。
 - **到处都生效：** fish、zsh、bash，IDE 和图形化 Git 客户端，脚本和非交互式 shell。
   借助 Git 自带的 `includeIf`，而不是改写你的全局配置。
 - **从不保存令牌，从不读取密钥。** 凭据始终留在 `gh`、系统钥匙串（或 Git Credential Manager）和 ssh-agent 里。
   私钥文件只检查是否存在。
 - **一分钟完成配置。** `gitpersona setup` 会找到你已登录的账户、已有的 `includeIf` 身份、SSH 别名和仓库，
-  提出一份完整的配置，你只需确认一次。本地 Web 页面可以在浏览器里完成同样的事。
+  提出一份完整的配置，你只需确认一次。
+- **中英双语的网页控制台：** 总览、账户、仓库、检查并应用、Shell、备份，全都可以在浏览器里完成。
 - **仓库钉住（Repo Pin）：** 给放在常规目录之外的个别仓库单独指定身份。
 - **放心试用。** 每次改动都会备份；`rollback` 和 `uninstall` 能把你的文件原样恢复。
 
 ```text
 ~/Projects/personal/**       → octo-alex    （个人，GitHub）
-~/Projects/acme/**           → acme-alex    （公司，GitHub）
+~/Projects/acme/**           → acme-alex    （工作，GitHub）
 ~/Projects/clients/globex/** → globex-alex  （客户，自建 GitLab）
-其他所有位置                   → acme-alex    （默认）
+其他所有地方                  → acme-alex    （默认）
 ```
 
 ## 工作原理
 
 ```text
-~/.config/gitpersona/config.toml        你的配置文件、目录和钉住（你自己编辑，或交给 setup/ui）
+~/.config/gitpersona/config.toml        你的配置文件、目录和钉住（手动编辑，或由 setup / ui 生成）
             │  gitpersona apply
             ▼
-~/.gitconfig                            末尾一个带标记的区块，它包含 ↓
+~/.gitconfig                            末尾一个带标记的区块，引入 ↓
 ~/.config/gitpersona/rules.gitconfig    includeIf "gitdir:<目录>/" → profiles/<id>.gitconfig，越具体越靠后
 ~/.config/gitpersona/profiles/*.gitconfig
-                                        user.name / user.email、凭据用户名、core.sshCommand、签名
+                                        user.name / user.email、凭据账户、core.sshCommand、签名
 ```
 
-由 Git 自己根据仓库所在位置选择配置文件，所以任何调用 Git 的工具都会遵守。对 GitHub，Git 会向
-`gitpersona credential` 要令牌，它借用 `gh` 为该账户保存的令牌。对其他主机，配置文件只写明账户名，由你自己的凭据助手
-返回该账户的令牌。装上 shell 集成后，`gh` 和 `glab` 也遵守同样的规则。
+由 Git 自己根据仓库所在位置选择配置文件，所以凡是调用 Git 的工具都生效。对 GitHub，Git 向
+`gitpersona credential` 要令牌，它借用 `gh` 为该账户保存的令牌。对其他主机，配置文件只指明账户，
+由你自己的凭据助手返回该账户的令牌。启用 shell 集成后，`gh` 和 `glab` 也遵循同样的规则。
 
-## 系统要求
+## 支持的系统
 
-- **macOS 12 Monterey 或更新版本**，Apple 芯片（M1 及以后）和 Intel 芯片的 Mac 都支持
-- **Linux**：x86_64 和 arm64，任意发行版（glibc 或 musl，例如 Debian、Ubuntu、Fedora、Arch、Alpine）
-- Windows 已在计划中，暂不支持
-- Git 2.31 或更新版本
+| 系统 | 芯片 | 状态 |
+|---|---|---|
+| macOS 12 Monterey 或更新版本 | Apple 芯片（M1 及以后） | 支持，每次改动都测试 |
+| macOS 12 Monterey 或更新版本 | Intel | 支持，每次改动都测试 |
+| Linux：Debian、Ubuntu、Fedora、Arch、Alpine 等（glibc 或 musl） | x86_64、arm64 | 支持，每次改动都测试 |
+| Windows | — | 计划中 |
 
-每次改动都会在 Apple 芯片和 Intel 芯片的 Mac、Linux x86_64 和 arm64，以及 Debian、Alpine、Fedora、
-Ubuntu 22.04（支持的最旧 Git）上测试。
+测试在 Apple 芯片和 Intel 芯片的 Mac、Linux x86_64 和 arm64 上运行，并在 Debian、Alpine、Fedora、
+Ubuntu 22.04 容器中运行（Ubuntu 22.04 带的 Git 2.34 是测试用到的最旧版本）。
+
+**系统要求**
+
+- Git 2.31 或更新版本。如果你自己写了 `includeIf "hasconfig:remote.*.url:…"` 规则，需要 Git 2.36 或更新版本：
+  更旧的 Git 会忽略这类规则，`gitpersona doctor` 会提示。
 - GitHub 配置文件需要 [GitHub CLI](https://cli.github.com) 2.40 或更新版本，并登录每个账户
 - GitLab、Bitbucket 及其他主机需要一个按账户保存令牌的凭据助手，例如系统钥匙串（macOS 上的 `osxkeychain`、
-  Linux 上的 `libsecret`）或 [Git Credential Manager](https://github.com/git-ecosystem/git-credential-manager)
+  Linux 上的 `libsecret`）或 [Git Credential Manager](https://github.com/git-ecosystem/git-credential-manager)；
+  `gitpersona doctor` 会推荐一个已安装的
 - 可选：GitLab 用的 [`glab`](https://gitlab.com/gitlab-org/cli)；shell 集成需要 fish、zsh 或 bash
 
 ## 安装
@@ -258,7 +298,7 @@ profile = "globex"
 | 命令 | 作用 |
 |---|---|
 | `gitpersona setup [--yes] [--no-shell] [--keep-old-rules] [--default <profile> \| --no-default] [--print \| --web]` | 根据你已有的东西一步完成设置（账户、已有身份、仓库、SSH 别名、shell）；除非加 `--yes`，写入前会先询问；`--web` 在浏览器里展示，也可以逐步调整 |
-| `gitpersona ui [--no-open]` | 在浏览器里打开配置页面：配置文件、目录、钉住、应用前的差异预览、健康检查、shell 和备份。只监听 127.0.0.1，链接只能用一次，闲置 15 分钟后自动退出 |
+| `gitpersona ui [--no-open]` | 在浏览器里打开中英双语的网页控制台：总览、账户及其身份、目录和钉住、仓库核对、应用前的差异预览、体检、shell 和备份。只监听 127.0.0.1，链接只能用一次，闲置 15 分钟后自动退出 |
 | `gitpersona apply [--dry-run] [--yes]` | 生成 Git 配置；`--dry-run` 只预览，`--yes` 允许删除已删除配置文件对应的文件 |
 | `gitpersona whoami [--json] [--check]` | 显示此处 Git 使用哪个配置文件及原因；`--check` 在 Git 实际结果不一致时报错 |
 | `gitpersona verify [--all] [--ssh] [--json] [<目录>...]` | 逐个核对配置文件目录和钉住的仓库（以及你指定的目录）：提交用的作者、每个远程推送用的账户，是否与配置文件一致；标出用错身份、远程地址里写有令牌、不同密钥共用 SSH 连接等问题。只读取配置；`--ssh` 会像推送一样登录每个 SSH 主机一次，由主机报出账户 |

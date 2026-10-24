@@ -2,7 +2,7 @@
 // then review every file, apply and check. Nothing is written before the
 // last step.
 
-import { t, tn } from "../i18n.js";
+import { t, tn, lang } from "../i18n.js";
 import { api, normalizePath } from "../api.js";
 import { h, replace, badge, field, busy, status, clearStatus } from "../dom.js";
 import { doctorCard, configProblem } from "./overview.js";
@@ -37,7 +37,9 @@ function setWizard(next) {
 function loadWizard() {
   try {
     const stored = JSON.parse(sessionStorage.getItem(STORE_KEY) ?? "null");
-    return stored?.version === STORE_VERSION ? stored : null;
+    // The proposal's reasons are in the language it was made in: in
+    // another language, setup proposes again.
+    return stored?.version === STORE_VERSION && stored.lang === lang() ? stored : null;
   } catch {
     return null;
   }
@@ -58,6 +60,8 @@ window.addEventListener("popstate", (event) => {
 });
 
 export function renderSetup(section, { state, run }) {
+  // A plan made in another language is proposed again in this one.
+  if (wizard && wizard.lang !== lang()) setWizard(null);
   if (state.config_exists) {
     setWizard(null);
     section.append(finished(state, run));
@@ -87,6 +91,7 @@ function fromProposal(p) {
   };
   return {
     version: STORE_VERSION,
+    lang: lang(),
     step: QUICK,
     defaultKey: keyOf(p.default),
     unmatched: p.unmatched,
@@ -102,7 +107,7 @@ function fromProposal(p) {
     shells: p.shells.map((kind) => ({ kind, on: true })),
     oldRules: { dirs: p.old_rules, kept: p.kept_rules, on: true },
     unassigned: p.unassigned,
-    roots: p.roots.join(", "),
+    roots: p.roots.join(", "), // also the scan field's value, which the server splits on commas
     scanned: p.roots.length > 0,
     scanIncomplete: p.scan_incomplete,
     scanUnfinished: p.scan_unfinished ?? [],

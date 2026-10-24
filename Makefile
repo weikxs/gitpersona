@@ -55,7 +55,7 @@ vet: ## Run go vet
 .PHONY: screenshots
 screenshots: ## Draw the README pictures in docs/images from a demo home (needs Chrome)
 	@mkdir -p docs/images
-	GITPERSONA_E2E=1 GITPERSONA_SHOTS=$(CURDIR)/docs/images go test ./test/e2e -run TestREADMEScreenshots -count=1
+	GITPERSONA_E2E=1 GITPERSONA_SHOTS=$(CURDIR)/docs/images go test ./test/e2e -run TestREADMEScreenshots -count=1 -timeout 20m
 
 .PHONY: lint
 lint: ## Run golangci-lint (install: brew install golangci-lint)

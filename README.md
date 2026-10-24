@@ -9,24 +9,26 @@
 **Git profiles that follow your directories.**
 
 Work in `~/Projects/acme` and you commit, push and open pull requests as your work account.
-Switch to `~/Projects/personal` and you are your personal account again. No commands to run, nothing to remember.
+Switch to `~/Projects/personal` and you are your personal account again. No commands to run, nothing to remember,
+and a check that proves no repository commits or pushes as the wrong account.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/terminal-dark.png">
-  <img alt="gitpersona whoami in two folders shows two accounts; gitpersona verify finds every repository as expected" src="docs/images/terminal-light.png" width="820">
+  <img alt="gitpersona whoami in two folders shows two accounts; gitpersona verify finds every repository as expected" src="docs/images/terminal-light.png" width="880">
 </picture>
 
 > **Status: pre-release.** Everything below works and is tested on macOS and Linux: GitHub, GitLab, Bitbucket and
-> other-host profiles, the command line, the configuration web page, shell integration and `gh` / `glab` switching.
-> The first tagged release and the Homebrew tap are coming; until then, install from source.
+> other-host profiles, the command line, the web console in English and Chinese, shell integration and `gh` / `glab`
+> switching. The first tagged release and the Homebrew tap are coming; until then, install from source.
 
 ## Contents
 
 - [Get started in 3 steps](#get-started-in-3-steps)
+- [The web console](#the-web-console)
 - [Why](#why)
 - [Features](#features)
 - [How it works](#how-it-works)
-- [Requirements](#requirements)
+- [Supported systems](#supported-systems)
 - [Install](#install)
 - [Quick start](#quick-start)
 - [Configuration reference](#configuration-reference)
@@ -51,25 +53,54 @@ go install github.com/weikxs/gitpersona/cmd/gitpersona@latest   # today, with Go
 gitpersona setup --web
 ```
 
-GitPersona finds your accounts, your existing `includeIf` identities, SSH aliases and repositories, and shows
-one complete proposal. Nothing is written until you click **Apply**, and every file is backed up first.
+GitPersona finds your accounts, your existing `includeIf` identities, SSH aliases and repositories, and shows one
+complete proposal. Nothing is written until you click **Apply**, and every file is backed up first.
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/images/setup-dark.png">
-  <img alt="The setup page proposes one profile per account, with the folders and SSH key each one takes" src="docs/images/setup-light.png" width="820">
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/setup-en-dark.png">
+  <img alt="The setup page proposes one profile per account, with the folders and SSH key each one takes" src="docs/images/setup-en-light.png" width="880">
 </picture>
 
 **3. Check every repository.** `gitpersona verify` (or **Repositories** in `gitpersona ui`) lists, per repository,
-the author its commits use and the account each remote pushes as, and flags anything that would use another identity:
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/images/repositories-dark.png">
-  <img alt="The Repositories page groups repositories by profile and shows who commits and who pushes in each" src="docs/images/repositories-light.png" width="820">
-</picture>
+the author its commits use and the account each remote pushes as, and flags anything that would use another
+identity. Add `--ssh` and each SSH host names the account a key signs in as.
 
 **Day to day there is nothing to do:** `cd` into a project and use `git`, `gh` or your IDE as usual.
 `gitpersona whoami` tells you who you are in the current folder; `gitpersona use <profile>` gives a new folder to a
 profile; `gitpersona pin <profile>` handles the odd repository that lives elsewhere.
+
+## The web console
+
+`gitpersona ui` opens a local console in your browser (only on 127.0.0.1; the link works once, and it stops after
+15 minutes without use). Everything the command line does is there, in English and Chinese: the page starts in your
+system's language, else your browser's, else English, and the switch in the sidebar changes it for the tab.
+
+**Overview:** the numbers that matter (accounts, repositories, identity mix-ups, notes, health), what needs attention
+first, and every account with the folders each of its identities covers.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/overview-en-dark.png">
+  <img alt="The overview: numbers, a green all-clear, and a table of accounts with their identities, folders and repository checks" src="docs/images/overview-en-light.png" width="880">
+</picture>
+
+**Accounts:** one card per account. An account that commits under two author names has two identities under it,
+each with its own folders and pinned repositories; folders and pins are added and removed in place.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/accounts-en-dark.png">
+  <img alt="The accounts page: an account with two identities, each with its folders, edit and remove buttons" src="docs/images/accounts-en-light.png" width="880">
+</picture>
+
+**Repositories:** who commits and who pushes in every repository, grouped by account, with filters and the reason for
+every note or problem.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/repositories-en-dark.png">
+  <img alt="The repositories page: counts per verdict, filters, and each repository's author, remotes and push account" src="docs/images/repositories-en-light.png" width="880">
+</picture>
+
+**Review & apply** shows every file a change writes as a diff first; **Shells** sets up the shell integration;
+**Backups** restores any earlier state. A phone-sized screen and a dark system theme work too.
 
 ## Why
 
@@ -84,13 +115,16 @@ push with the wrong token, or open a pull request as the wrong user.
   and the `gh` / `glab` account.
 - **Several accounts per host.** Two GitHub accounts, three GitLab accounts on a company server: each directory
   pushes with its own account's token.
+- **Proof, not hope.** `gitpersona verify` checks every repository's author and push account against its profile,
+  catches tokens written in remote URLs and SSH connections shared between keys, and can ask each SSH host which
+  account a key really signs in as.
 - **Works everywhere:** fish, zsh and bash, IDEs and GUI Git clients, scripts and non-interactive shells.
   It uses Git's own `includeIf` instead of rewriting your global config.
 - **Never stores tokens, never reads keys.** Credentials stay in `gh`, the system keychain (or Git Credential
   Manager) and ssh-agent. Private key files are only checked to exist.
 - **Set up in a minute.** `gitpersona setup` finds the accounts you are signed in to, your existing `includeIf`
-  identities, SSH aliases and repositories, and proposes a complete configuration; you confirm once. A local web page
-  does the same in your browser.
+  identities, SSH aliases and repositories, and proposes a complete configuration; you confirm once.
+- **A web console in English and Chinese** for everything: overview, accounts, repositories, review, shells, backups.
 - **Repo pins** for the odd repository that lives outside its usual directory.
 - **Safe to try.** Every change is backed up; `rollback` and `uninstall` put your files back exactly.
 
@@ -118,18 +152,26 @@ Git asks `gitpersona credential` for a token, which borrows the one `gh` already
 hosts the profile only names the account, and your own credential helper answers with that account's token.
 With the shell integration, `gh` and `glab` follow the same rules.
 
-## Requirements
+## Supported systems
 
-- **macOS 12 Monterey or newer**, on Apple silicon (M1 and later) and on Intel Macs
-- **Linux** on x86_64 and arm64, any distribution (glibc or musl, such as Debian, Ubuntu, Fedora, Arch, Alpine)
-- Windows is planned, not supported yet
-- Git 2.31 or newer
+| System | CPU | Status |
+|---|---|---|
+| macOS 12 Monterey or newer | Apple silicon (M1 and later) | Supported, tested on every change |
+| macOS 12 Monterey or newer | Intel | Supported, tested on every change |
+| Linux: Debian, Ubuntu, Fedora, Arch, Alpine and others (glibc or musl) | x86_64, arm64 | Supported, tested on every change |
+| Windows | — | Planned |
 
-Every change is tested on Apple silicon and Intel Macs, on Linux x86_64 and arm64, and on Debian, Alpine, Fedora and
-Ubuntu 22.04 (the oldest supported Git).
+The tests run on Apple silicon and Intel Macs, on Linux x86_64 and arm64, and in Debian, Alpine, Fedora and
+Ubuntu 22.04 containers (Ubuntu 22.04 has the oldest Git the tests use, 2.34).
+
+**Requirements**
+
+- Git 2.31 or newer. Git 2.36 or newer if you have your own `includeIf "hasconfig:remote.*.url:…"` rules: older
+  Git ignores them, and `gitpersona doctor` says so.
 - For GitHub profiles: the [GitHub CLI](https://cli.github.com) 2.40 or newer, signed in to each account
 - For GitLab, Bitbucket and other hosts: a credential helper that keeps tokens per account, such as the system
-  keychain (`osxkeychain` on macOS, `libsecret` on Linux) or [Git Credential Manager](https://github.com/git-ecosystem/git-credential-manager)
+  keychain (`osxkeychain` on macOS, `libsecret` on Linux) or [Git Credential Manager](https://github.com/git-ecosystem/git-credential-manager);
+  `gitpersona doctor` names one that is installed
 - Optional: [`glab`](https://gitlab.com/gitlab-org/cli) for GitLab, fish, zsh or bash for the shell integration
 
 ## Install
@@ -266,7 +308,7 @@ Paths must be absolute or start with `~/`.
 | Command | What it does |
 |---|---|
 | `gitpersona setup [--yes] [--no-shell] [--keep-old-rules] [--default <profile> \| --no-default] [--print \| --web]` | Set GitPersona up from what you already have in one step (accounts, existing identities, repositories, SSH aliases, shell); asks before writing unless `--yes`; `--web` shows it in the browser, where you can also adjust it step by step |
-| `gitpersona ui [--no-open]` | Open the configuration page in your browser: profiles, directories, pins, a diff preview before applying, health checks, shells and backups. It listens only on 127.0.0.1, the link works once, and it stops after 15 minutes without use |
+| `gitpersona ui [--no-open]` | Open the web console in your browser, in English or Chinese: an overview, accounts with their identities, folders and pins, the repository check, a diff preview before applying, health checks, shells and backups. It listens only on 127.0.0.1, the link works once, and it stops after 15 minutes without use |
 | `gitpersona apply [--dry-run] [--yes]` | Generate the Git configuration; `--dry-run` previews, `--yes` allows removing files of deleted profiles |
 | `gitpersona whoami [--json] [--check]` | Show which profile Git uses here and why; `--check` fails when Git disagrees |
 | `gitpersona verify [--all] [--ssh] [--json] [<folder>...]` | Check every repository in your profiles' folders and pins (and the folders you name): the author its commits use and the account each remote pushes as, against its profile; flags another identity, tokens in remote URLs and SSH connections shared between keys. It reads only settings; `--ssh` signs in to each SSH host once, as a push would, so the host names the account |
