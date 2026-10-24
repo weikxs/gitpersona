@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -251,8 +252,15 @@ func TestBashLoginFileFollowsBashsOwnOrder(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(w.home, ".bash_profile")); !os.IsNotExist(err) {
 		t.Fatal("install-shell must not create ~/.bash_profile, which would hide ~/.profile")
 	}
-	if p, _ := os.ReadFile(profile); !strings.HasPrefix(string(p), "export FROM_PROFILE=1\n") || !strings.Contains(string(p), "BASH_VERSION") {
-		t.Fatalf("~/.profile should get a bash-only loader and keep its content:\n%s", p)
+	p, _ := os.ReadFile(profile)
+	switch {
+	case runtime.GOOS != "darwin":
+		// Terminals on Linux start non-login shells, which read ~/.bashrc.
+		if string(p) != "export FROM_PROFILE=1\n" {
+			t.Fatalf("~/.profile should stay as it is outside macOS:\n%s", p)
+		}
+	case !strings.HasPrefix(string(p), "export FROM_PROFILE=1\n") || !strings.Contains(string(p), "BASH_VERSION"):
+		t.Fatalf("on macOS ~/.profile should get a bash-only loader and keep its content:\n%s", p)
 	}
 	if b, _ := os.ReadFile(filepath.Join(w.home, ".bashrc")); !strings.Contains(string(b), "gitpersona init bash") {
 		t.Fatal("~/.bashrc should get the loader")

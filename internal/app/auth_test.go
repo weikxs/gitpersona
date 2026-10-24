@@ -2,12 +2,13 @@ package app
 
 import (
 	"context"
-	"github.com/weikxs/gitpersona/internal/discover"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/weikxs/gitpersona/internal/discover"
 )
 
 // fakeKeychain configures, in the test home, a credential helper that keeps
