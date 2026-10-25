@@ -82,7 +82,7 @@ homebrew_casks:
     homepage: https://github.com/weikxs/gitpersona
     description: Git profiles that follow your directories
     license: MIT
-    # The binary is not signed or notarized, so Gatekeeper would refuse it
+    # The binary is not signed or notarized (and will not be), so Gatekeeper would refuse it
     # ("is damaged and cannot be opened"); remove the quarantine bit that
     # Homebrew sets on download. See SECURITY.md.
     hooks:

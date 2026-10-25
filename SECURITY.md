@@ -47,7 +47,17 @@ We credit reporters in the release notes unless they prefer to stay anonymous.
 ## Release binaries and macOS
 
 Release binaries are built by GitHub Actions from the tagged source, with checksums in `checksums.txt`.
-They are not yet signed or notarized by Apple. The Homebrew cask therefore removes the quarantine attribute from
-the installed `gitpersona` binary after installing it (`xattr -dr com.apple.quarantine`), as GoReleaser documents
-for unsigned binaries; otherwise macOS would refuse to run it. If you prefer to keep Gatekeeper's check, download
-the archive from the releases page, verify it against `checksums.txt`, and install the binary yourself.
+They are not signed with an Apple Developer ID or notarized by Apple, and there are no plans to sign them. The
+Homebrew cask and the install script therefore remove the quarantine attribute from the installed `gitpersona`
+binary (`xattr -dr com.apple.quarantine`), as GoReleaser documents for unsigned binaries; otherwise macOS would
+refuse to run it.
+
+If you install the binary by hand:
+
+1. Check the archive: `shasum -a 256 <archive>` must match its line in `checksums.txt`.
+2. Run `gitpersona version`. When macOS says it cannot verify the binary, click **Done** (not **Move to Trash**).
+3. In System Settings → Privacy & Security, under Security, click **Open Anyway** next to "gitpersona was blocked",
+   then run `gitpersona version` again and choose **Open**.
+
+Instead of steps 2–3 you can run `xattr -d com.apple.quarantine "$(command -v gitpersona)"`. macOS remembers the
+choice until you replace the binary by hand.

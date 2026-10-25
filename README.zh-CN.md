@@ -315,7 +315,8 @@ make build
 brew install weikxs/tap/gitpersona
 ```
 
-程序暂未经过 Apple 签名，所以在 macOS 上 Cask 安装后会去掉系统给它加的隔离标记，详见 [SECURITY.md](SECURITY.md)。
+程序没有经过 Apple 签名和公证，今后也不打算签名，所以在 macOS 上 Cask 安装后会去掉系统给它加的隔离标记，详见
+[SECURITY.md](SECURITY.md#release-binaries-and-macos)。
 Homebrew 会自动选择适合你的 Mac 的版本（Apple 芯片或 Intel）。
 
 **Linux 安装包**可以从 [Release 页面](https://github.com/weikxs/gitpersona/releases)下载，
@@ -501,7 +502,7 @@ profile = "globex"
 | `doctor`：`includeIf "hasconfig:…"` 规则从不生效 | 你的 Git 低于 2.36，会忽略这类规则；请升级 Git |
 | 终端里的 `gh` 用错了账户 | 没有安装 shell 集成，或 `PATH` 中有别的目录排在它前面：运行 `gitpersona install-shell`，然后打开新终端 |
 | 在 GitLab 等主机上 Git 要求输入密码 | 该账户还没有令牌：`gitpersona auth login --profile <id>` |
-| macOS 提示无法验证该程序 | 程序暂未经过 Apple 签名；Homebrew 安装时会移除隔离标记。手动下载的压缩包可运行：`xattr -d com.apple.quarantine gitpersona` |
+| macOS 提示无法验证该程序，或"已损坏" | 程序没有 Apple 签名，今后也不会签名；Homebrew 和安装脚本会移除隔离标记。手动安装的程序可运行：`xattr -d com.apple.quarantine "$(command -v gitpersona)"`，或在"系统设置 → 隐私与安全性"里点"仍要打开"（[SECURITY.md](SECURITY.md#release-binaries-and-macos)） |
 
 `gitpersona doctor --json` 和 `gitpersona verify --json` 以 JSON 输出同样的结果，便于脚本处理。
 
