@@ -223,12 +223,12 @@ flowchart LR
 
 | 系统 | 芯片 | 状态 |
 |---|---|---|
-| macOS 12 Monterey 或更新版本 | Apple 芯片（M1 及以后） | 支持，每周测试 |
-| macOS 12 Monterey 或更新版本 | Intel | 支持，每周测试 |
+| macOS 12 Monterey 或更新版本 | Apple 芯片（M1 及以后） | 支持，每次发布前测试 |
+| macOS 12 Monterey 或更新版本 | Intel | 支持，每次发布前测试 |
 | Linux：Debian、Ubuntu、Fedora、Arch、Alpine 等（glibc 或 musl） | x86_64、arm64 | 支持，每次改动都测试 |
 | Windows | — | 计划中 |
 
-每个 PR 都会在 Linux x86_64 上运行测试；每周还会在 Apple 芯片和 Intel 芯片的 Mac 以及 Linux arm64 上各运行一次。
+每个 PR 都会在 Linux x86_64 上运行测试；每次发布前还会在 Apple 芯片和 Intel 芯片的 Mac 以及 Linux arm64 上运行。
 
 **系统要求**
 

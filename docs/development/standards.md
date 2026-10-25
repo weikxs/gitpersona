@@ -184,8 +184,8 @@ CI) and review.
   desktop, light and dark mode, and no script error or CSP violation.
 - **Golden files** for generated configuration live in `testdata/`; update them only on purpose.
 - **Platforms:** every pull request passes the `-race` tests, lint and the end-to-end tests on Linux x86_64 (CI
-  `check`); once a week, and on demand, CI runs the tests on Apple silicon and Intel Macs and Linux arm64 and the
-  install script on all four systems (`full.yml`).
+  `check`); before each release, the Full workflow (started by hand) runs the tests on Apple silicon and Intel Macs
+  and Linux arm64 and the install script on all four systems.
 
 ## 10. Git workflow
 

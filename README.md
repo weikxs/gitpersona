@@ -235,13 +235,13 @@ With the shell integration, `gh` and `glab` follow the same rules.
 
 | System | CPU | Status |
 |---|---|---|
-| macOS 12 Monterey or newer | Apple silicon (M1 and later) | Supported, tested weekly |
-| macOS 12 Monterey or newer | Intel | Supported, tested weekly |
+| macOS 12 Monterey or newer | Apple silicon (M1 and later) | Supported, tested before each release |
+| macOS 12 Monterey or newer | Intel | Supported, tested before each release |
 | Linux: Debian, Ubuntu, Fedora, Arch, Alpine and others (glibc or musl) | x86_64, arm64 | Supported, tested on every change |
 | Windows | — | Planned |
 
-Every pull request runs the tests on Linux x86_64; once a week they also run on Apple silicon and Intel Macs and on
-Linux arm64.
+Every pull request runs the tests on Linux x86_64; before each release they also run on Apple silicon and Intel Macs
+and on Linux arm64.
 
 **Requirements**
 

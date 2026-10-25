@@ -5,8 +5,8 @@ name: CI
 # the goreleaser config, one after another. A change to documentation alone
 # finishes in seconds without running them; a draft runs nothing. Merging to
 # main starts nothing, since the pull request was already tested.
-# The Mac, arm64, other-distribution and install.sh runs are in full.yml,
-# once a week. Branch rules require this job, `check`.
+# The Mac, arm64 and install.sh runs are in full.yml, started by hand
+# before a release. Branch rules require this job, `check`.
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
