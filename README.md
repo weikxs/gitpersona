@@ -329,8 +329,8 @@ make build
 brew install weikxs/tap/gitpersona
 ```
 
-The binary is not signed by Apple yet, so on macOS the cask removes the quarantine flag from it after installing;
-see [SECURITY.md](SECURITY.md). Homebrew picks the build for your Mac (Apple silicon or Intel) by itself.
+The binary is not signed or notarized by Apple, and there are no plans to sign it, so on macOS the cask removes the
+quarantine flag from it after installing; see [SECURITY.md](SECURITY.md#release-binaries-and-macos). Homebrew picks the build for your Mac (Apple silicon or Intel) by itself.
 
 **Linux packages** from the [releases page](https://github.com/weikxs/gitpersona/releases),
 for x86_64 (`amd64`) and arm64:
@@ -531,7 +531,7 @@ Prompt and plugin-manager setups (tide, Powerlevel10k, Starship, fisher, oh-my-z
 | `doctor`: an `includeIf "hasconfig:…"` rule never applies | Your Git is older than 2.36 and ignores such rules; update Git |
 | `gh` uses the wrong account in a terminal | The shell integration is missing or another directory comes before it on `PATH`: run `gitpersona install-shell`, then open a new terminal |
 | Git asks for a password on a GitLab or other host | No token for that account yet: `gitpersona auth login --profile <id>` |
-| macOS says the binary cannot be checked | It is not signed by Apple yet; Homebrew removes the quarantine flag. For a downloaded archive: `xattr -d com.apple.quarantine gitpersona` |
+| macOS says the binary cannot be checked, or that it is damaged | It is not signed by Apple, and will not be; Homebrew and the install script remove the quarantine flag. For a binary you installed by hand: `xattr -d com.apple.quarantine "$(command -v gitpersona)"`, or **Open Anyway** in System Settings → Privacy & Security ([SECURITY.md](SECURITY.md#release-binaries-and-macos)) |
 
 `gitpersona doctor --json` and `gitpersona verify --json` give the same results for scripts.
 

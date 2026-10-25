@@ -138,8 +138,9 @@ Then sign in to each GitHub account once with \`gh auth login\`, and run \`gitpe
 
 ## Notes
 
-- The macOS binary is not signed by Apple yet; Homebrew and the install script remove the quarantine flag. See
-  [SECURITY.md]($repo/blob/$tag/SECURITY.md).
+- The macOS binary is not signed or notarized by Apple; Homebrew and the install script remove the quarantine flag.
+  By hand: **Open Anyway** in System Settings → Privacy & Security. See
+  [SECURITY.md]($repo/blob/$tag/SECURITY.md#release-binaries-and-macos).
 EOF
 if [ -n "$previous" ]; then
 	printf -- '- **Full changelog:** [v%s...%s](%s/compare/v%s...%s) · [CHANGELOG.md](%s/blob/%s/CHANGELOG.md)\n' \

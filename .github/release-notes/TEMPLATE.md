@@ -126,8 +126,9 @@ Then sign in to each GitHub account once with `gh auth login`, and run `gitperso
 
 ## Notes
 
-- The macOS binary is not signed by Apple yet; Homebrew and the install script remove the quarantine flag. See
-  [SECURITY.md](https://github.com/weikxs/gitpersona/blob/vX.Y.Z/SECURITY.md).
+- The macOS binary is not signed or notarized by Apple; Homebrew and the install script remove the quarantine flag.
+  By hand: **Open Anyway** in System Settings → Privacy & Security. See
+  [SECURITY.md](https://github.com/weikxs/gitpersona/blob/vX.Y.Z/SECURITY.md#release-binaries-and-macos).
 - **Full changelog:** [vA.B.C...vX.Y.Z](https://github.com/weikxs/gitpersona/compare/vA.B.C...vX.Y.Z) ·
   [CHANGELOG.md](https://github.com/weikxs/gitpersona/blob/vX.Y.Z/CHANGELOG.md)
 - Documentation: [README](https://github.com/weikxs/gitpersona#readme) ·
