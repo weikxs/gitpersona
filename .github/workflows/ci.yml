@@ -1,9 +1,15 @@
 name: CI
 
+# One job per pull request, on Linux: format, vet, privacy, tests with
+# coverage, lint, govulncheck, the configuration page in headless Chrome and
+# the goreleaser config, one after another. A change to documentation alone
+# finishes in seconds without running them; a draft runs nothing. Merging to
+# main starts nothing, since the pull request was already tested.
+# The Mac, arm64, other-distribution and install.sh runs are in full.yml,
+# once a week. Branch rules require this job, `check`.
 on:
-  push:
-    branches: [main]
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
 
 permissions:
   contents: read
@@ -13,137 +19,53 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  test:
-    name: test (${{ matrix.os }})
-    strategy:
-      fail-fast: false
-      matrix:
-        # Both Mac families (Apple silicon and Intel) and Linux on both CPUs.
-        os: [macos-latest, macos-15-intel, ubuntu-latest, ubuntu-24.04-arm]
-    runs-on: ${{ matrix.os }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version: "1.26.x"
-          check-latest: true
-      - name: Format
-        run: make fmt-check
-      - name: Vet
-        run: make vet
-      - name: Privacy
-        run: make privacy
-      - name: Test with coverage
-        run: make cover
-
-  linux-distros:
-    # Other C libraries, Git versions and base systems than the runners':
-    # Debian, Alpine (musl, BusyBox), Fedora, and Ubuntu 22.04 for the oldest
-    # supported Git (2.31 or newer; 22.04 ships 2.34).
-    name: linux (${{ matrix.name }})
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: debian 12
-            image: golang:1.26-bookworm
-            setup: apt-get update && apt-get install -y --no-install-recommends make
-          - name: alpine
-            image: golang:1.26-alpine
-            setup: apk add --no-cache git openssh-client make bash
-          - name: fedora
-            image: fedora:latest
-            setup: dnf install -y git make tar openssh-clients
-            go: true
-          - name: ubuntu 22.04 (oldest git)
-            image: ubuntu:22.04
-            setup: apt-get update && apt-get install -y --no-install-recommends git make ca-certificates openssh-client
-            go: true
+  check:
+    if: ${{ !github.event.pull_request.draft }}
     runs-on: ubuntu-latest
-    container: ${{ matrix.image }}
+    timeout-minutes: 30
     steps:
-      - name: Install tools
-        run: ${{ matrix.setup }}
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - if: matrix.go
+        with:
+          fetch-depth: 0
+      - name: What changed
+        id: diff
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          files=$(git diff --name-only "$BASE"...HEAD)
+          printf '%s\n' "$files"
+          docs='\.md$|^docs/|^assets/|^LICENSE|^\.github/(ISSUE_TEMPLATE|release-notes)/|^\.github/(CODEOWNERS|pull_request_template\.md)$'
+          if printf '%s\n' "$files" | grep -Ev "$docs" | grep -q .; then code=true; else code=false; fi
+          if printf '%s\n' "$files" | grep -Eq '^install\.sh$|^scripts/|^test/install/'; then install=true; else install=false; fi
+          printf 'code=%s\ninstall=%s\n' "$code" "$install" >> "$GITHUB_OUTPUT"
+          if [ "$code" = false ]; then echo "documentation only: nothing to test"; fi
+      - if: steps.diff.outputs.code == 'true'
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: "1.26.x"
           check-latest: true
-      - name: Test
-        # A container runs as root; tests that rely on file permissions skip themselves.
-        run: |
-          git config --global --add safe.directory "$GITHUB_WORKSPACE"
-          git --version
-          mkdir -p /tmp/gitpersona-test && TMPDIR=/tmp/gitpersona-test go test ./...
-
-  e2e:
-    name: configuration page (headless Chrome)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version: "1.26.x"
-          check-latest: true
-      - name: End-to-end tests
-        run: make e2e
-
-  lint:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version: "1.26.x"
-          check-latest: true
-      - uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+      - name: Format, vet, privacy, tests with coverage
+        if: steps.diff.outputs.code == 'true'
+        run: make check
+      - name: Lint
+        if: steps.diff.outputs.code == 'true'
+        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
           version: latest
-
-  # Known vulnerabilities in the Go standard library and the modules
-  # GitPersona uses, reported only when the code can reach them.
-  vulnerabilities:
-    name: govulncheck
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version: "1.26.x"
-          check-latest: true
+      # Known vulnerabilities in the Go standard library and the modules
+      # GitPersona uses, reported only when the code can reach them.
       - name: govulncheck
+        if: steps.diff.outputs.code == 'true'
         run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
-
-  # install.sh against the latest release, on each system it supports: it
-  # must pick the right build, check it and install a binary that runs.
-  install-script:
-    name: install.sh (${{ matrix.os }})
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [macos-latest, macos-15-intel, ubuntu-latest, ubuntu-24.04-arm]
-    runs-on: ${{ matrix.os }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Shellcheck
-        if: matrix.os == 'ubuntu-latest'
-        run: shellcheck install.sh scripts/*.sh test/install/*.sh
-      - name: Install with the script
-        run: |
-          sh install.sh --dir "$RUNNER_TEMP/bin" --no-modify-path
-          "$RUNNER_TEMP/bin/gitpersona" version
-      - name: The build matches this CPU
-        run: |
-          case "$(uname -m)" in x86_64) want='x86-64|x86_64' ;; *) want='arm64|aarch64' ;; esac
-          file "$RUNNER_TEMP/bin/gitpersona" | grep -Eq "$want"
-
-  release-config:
-    name: goreleaser check
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: goreleaser/goreleaser-action@a4f02ab5355a589de60d917a659ce617ed19b3de # v7.3.0
+      - name: Configuration page (headless Chrome)
+        if: steps.diff.outputs.code == 'true'
+        run: make e2e
+      - name: goreleaser check
+        if: steps.diff.outputs.code == 'true'
+        uses: goreleaser/goreleaser-action@a4f02ab5355a589de60d917a659ce617ed19b3de # v7.3.0
         with:
           version: "~> v2"
           args: check
+      - name: Shellcheck the install script
+        if: steps.diff.outputs.install == 'true'
+        run: shellcheck install.sh scripts/*.sh test/install/*.sh

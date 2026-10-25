@@ -1,0 +1,95 @@
+name: Full
+
+# The runs a pull request leaves out, once a week and on demand (Actions >
+# Full > Run workflow): the tests on both Mac families and Linux arm64, other
+# Linux distributions, and install.sh against the latest release on every
+# system it supports. Nothing requires these jobs to merge.
+on:
+  schedule:
+    - cron: "23 4 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        # Both Mac families (Apple silicon and Intel) and Linux on both CPUs.
+        os: [macos-latest, macos-15-intel, ubuntu-latest, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.26.x"
+          check-latest: true
+      - name: Format, vet, privacy, tests with coverage
+        run: make check
+
+  linux-distros:
+    # Other C libraries, Git versions and base systems than the runners':
+    # Debian, Alpine (musl, BusyBox), Fedora, and Ubuntu 22.04 for the oldest
+    # supported Git (2.31 or newer; 22.04 ships 2.34).
+    name: linux (${{ matrix.name }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: debian 12
+            image: golang:1.26-bookworm
+            setup: apt-get update && apt-get install -y --no-install-recommends make
+          - name: alpine
+            image: golang:1.26-alpine
+            setup: apk add --no-cache git openssh-client make bash
+          - name: fedora
+            image: fedora:latest
+            setup: dnf install -y git make tar openssh-clients
+            go: true
+          - name: ubuntu 22.04 (oldest git)
+            image: ubuntu:22.04
+            setup: apt-get update && apt-get install -y --no-install-recommends git make ca-certificates openssh-client
+            go: true
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    container: ${{ matrix.image }}
+    steps:
+      - name: Install tools
+        run: ${{ matrix.setup }}
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - if: matrix.go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.26.x"
+          check-latest: true
+      - name: Test
+        # A container runs as root; tests that rely on file permissions skip themselves.
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git --version
+          mkdir -p /tmp/gitpersona-test && TMPDIR=/tmp/gitpersona-test go test ./...
+
+  # install.sh against the latest release, on each system it supports: it
+  # must pick the right build, check it and install a binary that runs.
+  install-script:
+    name: install.sh (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, macos-15-intel, ubuntu-latest, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install with the script
+        run: |
+          sh install.sh --dir "$RUNNER_TEMP/bin" --no-modify-path
+          "$RUNNER_TEMP/bin/gitpersona" version
+      - name: The build matches this CPU
+        run: |
+          case "$(uname -m)" in x86_64) want='x86-64|x86_64' ;; *) want='arm64|aarch64' ;; esac
+          file "$RUNNER_TEMP/bin/gitpersona" | grep -Eq "$want"
