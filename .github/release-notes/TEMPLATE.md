@@ -105,9 +105,7 @@ Released on `YYYY-MM-DD`.
 | `gitpersona_X.Y.Z_darwin_amd64.tar.gz` | macOS, Intel |
 | `gitpersona_X.Y.Z_linux_amd64.deb` / `_arm64.deb` | Debian, Ubuntu (x86_64 / arm64) |
 | `gitpersona_X.Y.Z_linux_amd64.rpm` / `_arm64.rpm` | Fedora, RHEL (x86_64 / arm64) |
-| `gitpersona_X.Y.Z_linux_amd64.apk` / `_arm64.apk` | Alpine (x86_64 / arm64) |
-| `gitpersona_X.Y.Z_linux_amd64.pkg.tar.zst` / `_arm64.pkg.tar.zst` | Arch (x86_64 / arm64) |
-| `gitpersona_X.Y.Z_linux_amd64.tar.gz` / `_arm64.tar.gz` | Any Linux (x86_64 / arm64) |
+| `gitpersona_X.Y.Z_linux_amd64.tar.gz` / `_arm64.tar.gz` | Any Linux, Alpine and Arch too (x86_64 / arm64) |
 
 Then sign in to each GitHub account once with `gh auth login`, and run `gitpersona setup --web`.
 

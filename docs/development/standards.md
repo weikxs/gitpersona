@@ -39,9 +39,8 @@ curl), structured bug reports (Go), and the [OpenSSF Scorecard](https://scorecar
   (the repository ruleset allows nothing else). Pull requests from contributors also need a code owner's approval
   (`.github/CODEOWNERS`).
 - **Changes that cannot affect the program** — only documentation, release notes or `CHANGELOG.md`, no Go, script,
-  workflow, web or build file — may be merged by a repository admin without CI (`gh pr merge --squash --admin`, with
-  `[skip ci]` in the merge commit). The admin bypass works only for merging pull requests; direct pushes,
-  force-pushes and deleting `main` stay blocked for everyone. Anything else waits for green CI.
+  workflow, web or build file — still go through a pull request, but CI's `check` job sees that nothing testable
+  changed and passes in seconds. Nobody bypasses the checks, admins included.
 - **Response times** are best effort; security reports follow [SECURITY.md](../../SECURITY.md).
 
 ## 3. AI-assisted contributions (MUST)
@@ -131,7 +130,7 @@ CI) and review.
 | CI and releases build with the newest Go patch release (`1.26.x`, `check-latest`), so Go's security fixes ship; `go.mod` keeps the oldest Go that builds GitPersona | MUST | workflows |
 | Known vulnerabilities reachable from the code, in Go or in a dependency, fail CI (`govulncheck`) | MUST | CI `govulncheck` |
 | Every release file carries signed build provenance; check one with `gh attestation verify <file> --repo weikxs/gitpersona` | MUST | release workflow |
-| `main` is protected: no force-push or deletion, changes only through pull requests with CI green (admins may merge documentation-only pull requests without CI, §2) | MUST | repository ruleset |
+| `main` is protected: no force-push or deletion, changes only through pull requests with the `check` job green; nobody bypasses it (§2) | MUST | repository ruleset |
 
 ## 7. Code
 
@@ -177,16 +176,16 @@ CI) and review.
 - **Isolation:** no network, no real `$HOME`, no real accounts. Use `t.TempDir()`, `t.Setenv("HOME", …)`, and fake
   `gh` / `glab` / `ssh` executables placed first on `PATH`.
 - **Never install anything on the developer's machine.** Tests that need other systems, Git versions or tools run
-  in containers (`test/install/docker-test.sh`, CI's Linux matrix) or in CI; at most one container at a time and with
+  in containers (`test/install/docker-test.sh`) or in CI; at most one container at a time and with
   a CPU limit, so the machine stays usable.
 - **Integration tests** run the real `git` binary against temporary repositories.
 - **End-to-end tests** (`test/e2e`, `make e2e`, `GITPERSONA_E2E=1`) drive the web console in headless Chrome
   against a built `gitpersona` and a demo home: user flows, both languages, no sideways scrolling at 375px or on a
   desktop, light and dark mode, and no script error or CSP violation.
 - **Golden files** for generated configuration live in `testdata/`; update them only on purpose.
-- **Platforms:** every change passes `-race` tests on Apple silicon and Intel Macs and on Linux x86_64 and arm64,
-  plus Debian, Alpine, Fedora and Ubuntu 22.04 (the oldest supported Git) containers, and the install script on all
-  four systems (CI).
+- **Platforms:** every pull request passes the `-race` tests, lint and the end-to-end tests on Linux x86_64 (CI
+  `check`); once a week, and on demand, CI runs the tests on Apple silicon and Intel Macs and Linux arm64 and the
+  install script on all four systems (`full.yml`).
 
 ## 10. Git workflow
 

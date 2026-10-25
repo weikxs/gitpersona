@@ -235,13 +235,13 @@ With the shell integration, `gh` and `glab` follow the same rules.
 
 | System | CPU | Status |
 |---|---|---|
-| macOS 12 Monterey or newer | Apple silicon (M1 and later) | Supported, tested on every change |
-| macOS 12 Monterey or newer | Intel | Supported, tested on every change |
+| macOS 12 Monterey or newer | Apple silicon (M1 and later) | Supported, tested weekly |
+| macOS 12 Monterey or newer | Intel | Supported, tested weekly |
 | Linux: Debian, Ubuntu, Fedora, Arch, Alpine and others (glibc or musl) | x86_64, arm64 | Supported, tested on every change |
 | Windows | — | Planned |
 
-The tests run on Apple silicon and Intel Macs, on Linux x86_64 and arm64, and in Debian, Alpine, Fedora and
-Ubuntu 22.04 containers (Ubuntu 22.04 has the oldest Git the tests use, 2.34).
+Every pull request runs the tests on Linux x86_64; once a week they also run on Apple silicon and Intel Macs and on
+Linux arm64.
 
 **Requirements**
 
@@ -336,13 +336,12 @@ quarantine flag from it after installing; see [SECURITY.md](SECURITY.md#release-
 for x86_64 (`amd64`) and arm64:
 
 ```sh
-sudo apt install ./gitpersona_<version>_linux_amd64.deb        # Debian, Ubuntu
-sudo dnf install ./gitpersona_<version>_linux_amd64.rpm        # Fedora, RHEL
-sudo apk add --allow-untrusted ./gitpersona_<version>_linux_amd64.apk   # Alpine
-sudo pacman -U ./gitpersona_<version>_linux_amd64.pkg.tar.zst  # Arch
+sudo apt install ./gitpersona_<version>_linux_amd64.deb   # Debian, Ubuntu
+sudo dnf install ./gitpersona_<version>_linux_amd64.rpm   # Fedora, RHEL
 ```
 
-Archives (`.tar.gz`) for every system are there too, with `checksums.txt` to check them.
+Archives (`.tar.gz`) for every system are there too, with `checksums.txt` to check them. On Alpine, Arch and other
+systems, use the install script above or an archive: the binary has no dependencies besides Git.
 
 ## Quick start
 

@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ## [Unreleased]
 
+### Changed
+
+- Linux packages are `.deb` and `.rpm` only, as for OTPKeep; Alpine, Arch and other systems use `install.sh` or the
+  `.tar.gz` archive, which work everywhere since the binary needs nothing but Git. CI tests every pull request on
+  Linux x86_64 and runs the Mac and Linux arm64 tests weekly; the Debian, Alpine, Fedora and Ubuntu 22.04 container
+  runs are gone.
+
 ### Security
 
 - Built with Go 1.26.10, which fixes 46 vulnerabilities in the Go standard library that v0.1.0 (built with Go 1.26.0)

@@ -223,13 +223,12 @@ flowchart LR
 
 | 系统 | 芯片 | 状态 |
 |---|---|---|
-| macOS 12 Monterey 或更新版本 | Apple 芯片（M1 及以后） | 支持，每次改动都测试 |
-| macOS 12 Monterey 或更新版本 | Intel | 支持，每次改动都测试 |
+| macOS 12 Monterey 或更新版本 | Apple 芯片（M1 及以后） | 支持，每周测试 |
+| macOS 12 Monterey 或更新版本 | Intel | 支持，每周测试 |
 | Linux：Debian、Ubuntu、Fedora、Arch、Alpine 等（glibc 或 musl） | x86_64、arm64 | 支持，每次改动都测试 |
 | Windows | — | 计划中 |
 
-测试在 Apple 芯片和 Intel 芯片的 Mac、Linux x86_64 和 arm64 上运行，并在 Debian、Alpine、Fedora、
-Ubuntu 22.04 容器中运行（Ubuntu 22.04 带的 Git 2.34 是测试用到的最旧版本）。
+每个 PR 都会在 Linux x86_64 上运行测试；每周还会在 Apple 芯片和 Intel 芯片的 Mac 以及 Linux arm64 上各运行一次。
 
 **系统要求**
 
@@ -323,13 +322,12 @@ Homebrew 会自动选择适合你的 Mac 的版本（Apple 芯片或 Intel）。
 提供 x86_64（`amd64`）和 arm64 两种：
 
 ```sh
-sudo apt install ./gitpersona_<版本>_linux_amd64.deb        # Debian、Ubuntu
-sudo dnf install ./gitpersona_<版本>_linux_amd64.rpm        # Fedora、RHEL
-sudo apk add --allow-untrusted ./gitpersona_<版本>_linux_amd64.apk   # Alpine
-sudo pacman -U ./gitpersona_<版本>_linux_amd64.pkg.tar.zst  # Arch
+sudo apt install ./gitpersona_<版本>_linux_amd64.deb   # Debian、Ubuntu
+sudo dnf install ./gitpersona_<版本>_linux_amd64.rpm   # Fedora、RHEL
 ```
 
-各平台的压缩包（`.tar.gz`）也在那里，并附有用于校验的 `checksums.txt`。
+各平台的压缩包（`.tar.gz`）也在那里，并附有用于校验的 `checksums.txt`。Alpine、Arch 等其他系统请用上面的安装脚本或压缩包：
+程序除了 Git 没有其他依赖。
 
 ## 快速上手
 
