@@ -11,6 +11,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"time"
 
 	"github.com/weikxs/gitpersona/internal/fsutil"
@@ -192,10 +193,17 @@ func List(root string) ([]Info, error) {
 
 // Restore puts every file of the snapshot back: files that existed get their
 // content and mode back, and files that did not exist are removed.
-func Restore(dir string) error {
+func Restore(dir string) error { return RestorePaths(dir, nil) }
+
+// RestorePaths is Restore for the files of the snapshot whose paths are in
+// only; nil means every file.
+func RestorePaths(dir string, only []string) error {
 	m, err := ReadManifest(dir)
 	if err != nil {
 		return err
+	}
+	if only != nil {
+		m.Entries = slices.DeleteFunc(slices.Clone(m.Entries), func(e Entry) bool { return !slices.Contains(only, e.Path) })
 	}
 	// Read every stored copy first, so a damaged backup changes nothing.
 	contents := make([][]byte, len(m.Entries))

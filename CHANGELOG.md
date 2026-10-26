@@ -63,6 +63,9 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
   The gh shim waits at most 15 seconds for `gh auth token`.
 - The prompt, the gh and glab entries and the credential helper start faster: they no longer look for the
   gitpersona binary on PATH, which only `apply` and setup need.
+- A change that fails halfway (a file that cannot be written) no longer leaves some files changed and others not:
+  every file already written is put back from the backup. Ctrl-C while files are being written waits until they
+  are all written; files are flushed to disk before they replace the old ones.
 
 ## [0.1.0] - 2026-10-24
 

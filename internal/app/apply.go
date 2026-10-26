@@ -129,31 +129,64 @@ func (e Env) applyChanges(changes []change, opts ApplyOptions) error {
 		}
 	}
 
-	targets := make([]string, len(changes))
-	for i, c := range changes {
-		targets[i] = c.path
-	}
-	removed := e.removedSections(changes)
-	snapshot, err := backup.SnapshotFor(e.backupDir(), e.Now(), cmp.Or(opts.Command, "apply"), targets)
+	defer e.Writes.Writing()()
+	snapshot, err := e.writeChanges(changes, cmp.Or(opts.Command, "apply"))
 	if err != nil {
 		return err
-	}
-	if removed != "" {
-		if err := os.WriteFile(filepath.Join(snapshot, removedRulesFile), []byte(removed), fsutil.FilePerm); err != nil {
-			return e.trErr("record the removed rules in the backup: %w", err)
-		}
-	}
-	for _, c := range changes {
-		if err := c.write(); err != nil {
-			return e.trErr("%w (previous files are saved in %s)", err, snapshot)
-		}
-		fmt.Fprintln(e.Stdout, e.changeLine(c, false))
 	}
 	fmt.Fprintln(e.Stdout, e.tr("Backup saved in %s", e.display(snapshot)))
 	if opts.NoPrune {
 		return nil
 	}
 	return backup.Prune(e.backupDir(), backupsToKeep)
+}
+
+// writeChanges backs up every target in one snapshot and writes the
+// changes. When a write fails, every file goes back to its state in the
+// snapshot, so a failure never leaves the configuration half changed.
+func (e Env) writeChanges(changes []change, command string) (string, error) {
+	targets := make([]string, len(changes))
+	for i, c := range changes {
+		targets[i] = c.path
+	}
+	removed := e.removedSections(changes)
+	snapshot, err := backup.SnapshotFor(e.backupDir(), e.Now(), command, targets)
+	if err != nil {
+		return "", err
+	}
+	if removed != "" {
+		if err := os.WriteFile(filepath.Join(snapshot, removedRulesFile), []byte(removed), fsutil.FilePerm); err != nil {
+			return "", e.trErr("record the removed rules in the backup: %w", err)
+		}
+	}
+	write := e.write
+	if write == nil {
+		write = change.write
+	}
+	for i, c := range changes {
+		if err := write(c); err != nil {
+			return "", e.putBack(snapshot, changes[:i], c, err)
+		}
+		fmt.Fprintln(e.Stdout, e.changeLine(c, false))
+	}
+	return snapshot, nil
+}
+
+// putBack restores the files written before failed, and failed itself when
+// it is a link (replaced in two steps; a failed file write changes nothing).
+func (e Env) putBack(snapshot string, written []change, failed change, err error) error {
+	touched := []string{}
+	for _, c := range written {
+		touched = append(touched, c.path)
+	}
+	if failed.linkTo != "" {
+		touched = append(touched, failed.path)
+	}
+	if rerr := backup.RestorePaths(snapshot, touched); rerr != nil {
+		return e.trErr("%w; putting the previous files back also failed (%v): they are saved in %s",
+			err, rerr, e.display(snapshot))
+	}
+	return e.trErr("%w; nothing was changed: every file was put back as it was (backup in %s)", err, e.display(snapshot))
 }
 
 // changeLine says what apply does (or, for a dry run, would do) to one file.

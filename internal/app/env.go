@@ -63,6 +63,12 @@ type Env struct {
 	// the next one asks the host again (nil: nothing is remembered).
 	ForgetQueries func()
 
+	// Writes keeps an interruption (Ctrl-C) from stopping gitpersona while
+	// it writes files; nil means no guard (tests).
+	Writes *WriteGuard
+	// write writes one change (nil: change.write); tests inject failures.
+	write func(change) error
+
 	// probes holds answers about the system kept for the whole process
 	// (nil: ask each time).
 	probes *probes
@@ -98,6 +104,7 @@ func FromOS(stdin io.Reader, stdout, stderr io.Writer) (Env, error) {
 		Run:             queries.Run,
 		ForgetQueries:   queries.Forget,
 		Exec:            syscall.Exec,
+		Writes:          &WriteGuard{},
 	}
 	return env.withProbes(systemFacts{
 		goos: runtime.GOOS,
@@ -115,6 +122,24 @@ func FromOS(stdin io.Reader, stdout, stderr io.Writer) (Env, error) {
 		pid: os.Getpid(),
 	}), nil
 }
+
+// WriteGuard lets files be written to the end before an interrupted
+// gitpersona exits: writing holds it shared, and Hold waits for every write
+// in progress and keeps new ones from starting.
+type WriteGuard struct{ mu sync.RWMutex }
+
+// Writing marks a write phase; call the returned function when it ends.
+func (g *WriteGuard) Writing() func() {
+	if g == nil {
+		return func() {}
+	}
+	g.mu.RLock()
+	return g.mu.RUnlock
+}
+
+// Hold waits until no files are being written and keeps them from being
+// written from then on; call it before exiting on a signal.
+func (g *WriteGuard) Hold() { g.mu.Lock() }
 
 // findExecutable returns the path of the running gitpersona as Git should
 // run it.
