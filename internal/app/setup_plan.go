@@ -195,7 +195,7 @@ func (e Env) globalIdentity(ctx context.Context) GlobalIdentity {
 }
 
 func (e Env) signedInAccounts(ctx context.Context) (provider.GitHub, []provider.Account, error) {
-	gh, err := e.LookPath("gh")
+	gh, err := e.GHPath()
 	if err != nil {
 		return provider.GitHub{}, nil, e.trErr("setup needs the GitHub CLI: install it from https://cli.github.com and run `gh auth login` for each account")
 	}

@@ -16,7 +16,7 @@ func Credential(ctx context.Context, e Env, op string, target credential.Target)
 	ctx, cancel := context.WithTimeout(ctx, credentialTimeout)
 	defer cancel()
 
-	gh, err := e.LookPath("gh")
+	gh, err := e.GHPath()
 	if err != nil {
 		gh = "" // no token source; Serve still validates op and stays silent
 	}

@@ -58,6 +58,11 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
   the current shell runs `ps` once per parent process instead of twice.
 - `install-shell` and the shell checks follow `$ZDOTDIR`: zsh's `.zshrc` (and `.zshenv`, unless `~/.zshenv` is the
   file that sets `ZDOTDIR`) are written and looked for there, as `install.sh` already did, instead of in `~`.
+- GitPersona's own gh queries (the page's accounts, `doctor`, `verify`, setup, the credential helper) use the real gh
+  instead of GitPersona's gh entry when the shell integration puts it first on PATH, and `doctor` names the real gh.
+  The gh shim waits at most 15 seconds for `gh auth token`.
+- The prompt, the gh and glab entries and the credential helper start faster: they no longer look for the
+  gitpersona binary on PATH, which only `apply` and setup need.
 
 ## [0.1.0] - 2026-10-24
 

@@ -22,15 +22,15 @@ func (e Env) ghEntry() string { return filepath.Join(e.shimDir(), ghCommand) }
 
 // ghEntryChange returns the change that makes the gh entry point at
 // gitpersona, when some profile is on GitHub and the entry is not current.
-func (e Env) ghEntryChange(cfg config.Config) (change, bool) {
+func (e Env) ghEntryChange(cfg config.Config, exe string) (change, bool) {
 	if !slices.ContainsFunc(cfg.Profiles, func(p config.Profile) bool { return p.Provider == config.ProviderGitHub }) {
 		return change{}, false
 	}
-	if target, err := os.Readlink(e.ghEntry()); err == nil && target == e.Executable {
+	if target, err := os.Readlink(e.ghEntry()); err == nil && target == exe {
 		return change{}, false
 	}
 	_, err := os.Lstat(e.ghEntry())
-	return change{path: e.ghEntry(), linkTo: e.Executable, create: os.IsNotExist(err)}, true
+	return change{path: e.ghEntry(), linkTo: exe, create: os.IsNotExist(err)}, true
 }
 
 // GHShim runs the real gh as the account of the current directory's profile.
@@ -46,17 +46,14 @@ func GHShim(ctx context.Context, e Env, args []string) int {
 	environ := withoutEmptyTokens(os.Environ())
 	// gh auth manages accounts itself (and refuses to while GH_TOKEN is set).
 	isAuth := len(args) > 0 && args[0] == "auth"
-	if account, host, ok := e.ghTarget(); ok && !isAuth {
-		token, err := provider.GitHub{GH: realGH, Run: e.Run}.Token(ctx, host, account)
-		token = strings.TrimSpace(token)
-		if err != nil || token == "" {
-			// Never fall back to gh's active account here: acting as another
-			// account is exactly what GitPersona exists to prevent.
-			fmt.Fprintln(e.Stderr, "gitpersona: "+e.tr("%s is not signed in to gh on %s, and this directory uses it.\n"+
-				"Sign in with `gh auth login --hostname %s`, or set GH_TOKEN to choose an account yourself.", account, host, host))
+	if !isAuth {
+		token, ok := e.shimToken(ctx, realGH)
+		if !ok {
 			return exitCodeFailure
 		}
-		environ = append(environ, "GH_TOKEN="+token)
+		if token != "" {
+			environ = append(environ, "GH_TOKEN="+token)
+		}
 	}
 	if err := e.Exec(realGH, append([]string{ghCommand}, args...), environ); err != nil {
 		fmt.Fprintln(e.Stderr, "gitpersona: "+e.tr("run %s: %v", realGH, err))
@@ -66,6 +63,28 @@ func GHShim(ctx context.Context, e Env, args []string) int {
 }
 
 const exitCodeFailure = 1
+
+// shimToken returns the token of the directory's GitHub account, "" when
+// GitPersona does not choose here, or false (after saying why) when the
+// account is not signed in.
+func (e Env) shimToken(ctx context.Context, realGH string) (string, bool) {
+	account, host, ok := e.ghTarget()
+	if !ok {
+		return "", true
+	}
+	ctx, cancel := context.WithTimeout(ctx, credentialTimeout)
+	defer cancel()
+	token, err := provider.GitHub{GH: realGH, Run: e.Run}.Token(ctx, host, account)
+	token = strings.TrimSpace(token)
+	if err != nil || token == "" {
+		// Never fall back to gh's active account here: acting as another
+		// account is exactly what GitPersona exists to prevent.
+		fmt.Fprintln(e.Stderr, "gitpersona: "+e.tr("%s is not signed in to gh on %s, and this directory uses it.\n"+
+			"Sign in with `gh auth login --hostname %s`, or set GH_TOKEN to choose an account yourself.", account, host, host))
+		return "", false
+	}
+	return token, true
+}
 
 // withoutEmptyTokens drops GH_TOKEN= and GITHUB_TOKEN= with empty values.
 // They choose nothing, but a process may read the first of two GH_TOKEN
@@ -102,9 +121,11 @@ func (e Env) shimProfile(provider string) (config.Profile, bool) {
 		return config.Profile{}, false
 	}
 	opts := resolve.Options{Home: e.Home, CaseInsensitive: e.CaseInsensitive, Canonicalize: paths.ResolveSymlinks}
-	r := resolve.Resolve(cfg, paths.ResolveSymlinks(e.WorkDir), opts)
+	var r resolve.Result
 	if gitDir, ok := findGitDir(e.WorkDir); ok {
 		r = resolve.GitDir(cfg, paths.ResolveSymlinks(gitDir), opts)
+	} else {
+		r = resolve.Resolve(cfg, paths.ResolveSymlinks(e.WorkDir), opts)
 	}
 	if !r.Found || r.Profile.Provider != provider {
 		return config.Profile{}, false
@@ -122,6 +143,10 @@ func (e Env) realGH() (string, error) {
 	return path, nil
 }
 
+// GHPath is the real gh, never GitPersona's own entry in the shim
+// directory: GitPersona's own queries must not go through its shim.
+func (e Env) GHPath() (string, error) { return e.realTool(ghCommand) }
+
 // realTool finds a program on PATH, skipping the shim directory and
 // anything that is gitpersona itself.
 func (e Env) realTool(name string) (string, error) {
@@ -129,20 +154,30 @@ func (e Env) realTool(name string) (string, error) {
 	// written; resolving each entry's symbolic links would cost one lstat
 	// per path component on every gh command.
 	shim, shimErr := os.Stat(e.shimDir())
-	self, selfErr := os.Stat(e.Executable)
+	self, selfErr := os.Stat(e.self())
+	isShimOrSelf := func(dir string, info os.FileInfo) bool {
+		if d, err := os.Stat(dir); err == nil && shimErr == nil && os.SameFile(d, shim) {
+			return true
+		}
+		return selfErr == nil && os.SameFile(info, self)
+	}
+	if e.LookPath != nil {
+		found, err := e.LookPath(name)
+		if err != nil {
+			return "", e.trErr("could not find the real %s on PATH (outside %s)", name, e.display(e.shimDir()))
+		}
+		// Usually the first one on PATH is the real one already.
+		if info, err := os.Stat(found); err != nil || !isShimOrSelf(filepath.Dir(found), info) {
+			return found, nil
+		}
+	}
 	for _, dir := range filepath.SplitList(os.Getenv("PATH")) {
 		if dir == "" {
 			continue
 		}
-		if info, err := os.Stat(dir); err != nil || (shimErr == nil && os.SameFile(info, shim)) {
-			continue
-		}
 		candidate := filepath.Join(dir, name)
 		info, err := os.Stat(candidate) //nolint:gosec // only stats the user's own PATH entries to find the real tool
-		if err != nil || info.IsDir() || info.Mode()&0o111 == 0 {
-			continue
-		}
-		if selfErr == nil && os.SameFile(info, self) {
+		if err != nil || info.IsDir() || info.Mode()&0o111 == 0 || isShimOrSelf(dir, info) {
 			continue
 		}
 		return candidate, nil

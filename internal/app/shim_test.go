@@ -8,7 +8,11 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
+
+	"github.com/weikxs/gitpersona/internal/credential"
+	"github.com/weikxs/gitpersona/internal/provider"
 )
 
 // execCall records what the gh shim would exec.
@@ -224,5 +228,81 @@ func TestGHShimIgnoresAnEmptyGHToken(t *testing.T) {
 	}
 	if code != 0 || !slices.Equal(tokens, []string{"token-for-octo-alex"}) {
 		t.Fatalf("code %d, GH_TOKEN entries %q; want one, the profile's token", code, tokens)
+	}
+}
+
+// ghRecorder records the program path of every gh call and runs it.
+type ghRecorder struct {
+	mu    sync.Mutex
+	paths []string
+}
+
+func (g *ghRecorder) run(ctx context.Context, name string, args ...string) ([]byte, error) {
+	if filepath.Base(name) == "gh" {
+		g.mu.Lock()
+		g.paths = append(g.paths, name)
+		g.mu.Unlock()
+	}
+	return provider.ExecRunner(ctx, name, args...)
+}
+
+func TestInternalGHQueriesUseTheRealGHNotTheShim(t *testing.T) {
+	w := newWorld(t)
+	env, _, _ := shimEnv(t, w, w.home) // PATH: the shim directory, then the fake gh
+	realGH, err := env.realGH()
+	if err != nil || strings.HasPrefix(realGH, env.shimDir()) {
+		t.Fatalf("realGH() = %q, %v", realGH, err)
+	}
+	rec := &ghRecorder{}
+	env.Run = rec.run
+
+	state := State(context.Background(), env)
+	_, _ = env.VerifyRepos(context.Background(), nil, false)
+	_ = Credential(context.Background(), env, "get", credential.Target{Provider: "github", Host: "github.com", Account: "octo-alex"})
+
+	if len(rec.paths) == 0 {
+		t.Fatal("no gh query ran")
+	}
+	for _, p := range rec.paths {
+		if p != realGH {
+			t.Errorf("gh query ran %s, want the real gh %s (never GitPersona's own entry)", p, realGH)
+		}
+	}
+	found := false
+	for _, c := range state.Doctor.Checks {
+		if strings.Contains(c.Label, "GitHub CLI found at") {
+			found = true
+			if strings.Contains(c.Label, "gitpersona/bin") {
+				t.Errorf("doctor names the shim: %q", c.Label)
+			}
+		}
+	}
+	if !found {
+		t.Error("doctor should say where the real gh is")
+	}
+}
+
+func TestOnlyApplyLooksForTheExecutable(t *testing.T) {
+	w := newWorld(t)
+	env, _, _ := shimEnv(t, w, w.repos["sdk"])
+	looked := 0
+	env.Executable = ""
+	env.FindExecutable = func() (string, error) {
+		looked++
+		return binary, nil
+	}
+
+	Prompt(env, "")
+	_ = GHShim(context.Background(), env, []string{"pr", "list"})
+	_ = Credential(context.Background(), env, "get", credential.Target{Provider: "github", Host: "github.com", Account: "octo-alex"})
+	if looked != 0 {
+		t.Fatalf("the prompt, the gh shim and the credential helper looked for the executable %d times, want 0", looked)
+	}
+
+	if err := Apply(context.Background(), env, ApplyOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	if looked == 0 {
+		t.Fatal("apply should find the executable to write it into the Git configuration")
 	}
 }

@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -25,10 +26,14 @@ import (
 
 // Env is the outside world as seen by the commands.
 type Env struct {
-	Home            string
-	ConfigDir       string
-	WorkDir         string
+	Home      string
+	ConfigDir string
+	WorkDir   string
+	// Executable is the path Git runs gitpersona by. Empty means
+	// FindExecutable finds it, on first use: only apply and setup need it,
+	// not the prompt, the shims or the credential helper.
 	Executable      string
+	FindExecutable  func() (string, error)
 	CaseInsensitive bool
 	// GlobalGitConfig is GIT_CONFIG_GLOBAL when set; empty means ~/.gitconfig.
 	GlobalGitConfig string
@@ -77,17 +82,12 @@ func FromOS(stdin io.Reader, stdout, stderr io.Writer) (Env, error) {
 	if err != nil {
 		return Env{}, i18n.Errorf("find current directory: %w", err)
 	}
-	exe, err := os.Executable()
-	if err != nil {
-		return Env{}, i18n.Errorf("find gitpersona executable: %w", err)
-	}
-	exe = stableExecutable(exe, exec.LookPath)
 	queries := &provider.CachingRunner{Next: provider.ExecRunner, TTL: accountQueryTTL, Now: time.Now}
 	env := Env{
 		Home:            home,
 		ConfigDir:       configDir(home),
 		WorkDir:         wd,
-		Executable:      exe,
+		FindExecutable:  sync.OnceValues(findExecutable),
 		CaseInsensitive: paths.CaseInsensitiveAt(home),
 		GlobalGitConfig: os.Getenv("GIT_CONFIG_GLOBAL"),
 		Stdin:           stdin,
@@ -114,6 +114,34 @@ func FromOS(stdin io.Reader, stdout, stderr io.Writer) (Env, error) {
 		},
 		pid: os.Getpid(),
 	}), nil
+}
+
+// findExecutable returns the path of the running gitpersona as Git should
+// run it.
+func findExecutable() (string, error) {
+	exe, err := os.Executable()
+	if err != nil {
+		return "", i18n.Errorf("find gitpersona executable: %w", err)
+	}
+	return stableExecutable(exe, exec.LookPath), nil
+}
+
+// executable is Executable, found on first use when it is not set.
+func (e Env) executable() (string, error) {
+	if e.Executable != "" || e.FindExecutable == nil {
+		return e.Executable, nil
+	}
+	return e.FindExecutable()
+}
+
+// self is the running program's own file, for telling it apart from the
+// real gh or glab; cheaper than executable, which also searches PATH.
+func (e Env) self() string {
+	if e.Executable != "" {
+		return e.Executable
+	}
+	exe, _ := os.Executable()
+	return exe
 }
 
 // stableExecutable returns the path Git should use to run gitpersona as a

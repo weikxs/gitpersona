@@ -200,7 +200,7 @@ func (a api) discover(c call) (any, error) {
 		}
 	}
 	var logins []string
-	if gh, err := c.env.LookPath("gh"); err == nil {
+	if gh, err := c.env.GHPath(); err == nil {
 		accounts, _ := provider.GitHub{GH: gh, Run: c.env.Run}.Accounts(c.ctx, config.DefaultGitHubHost)
 		for _, acc := range accounts {
 			logins = append(logins, acc.Login)

@@ -203,7 +203,11 @@ func (e Env) planWith(ctx context.Context, cfg config.Config, edit func(string) 
 	if err != nil {
 		return nil, err
 	}
-	opts, err := e.generateOptions(ctx)
+	exe, err := e.executable()
+	if err != nil {
+		return nil, err
+	}
+	opts, err := e.generateOptions(ctx, exe)
 	if err != nil {
 		return nil, err
 	}
@@ -220,10 +224,10 @@ func (e Env) planWith(ctx context.Context, cfg config.Config, edit func(string) 
 	desired = append(desired, gitconfig)
 
 	var changes []change
-	if link, ok := e.ghEntryChange(cfg); ok {
+	if link, ok := e.ghEntryChange(cfg, exe); ok {
 		changes = append(changes, link)
 	}
-	if link, ok := e.glabEntryChange(cfg); ok {
+	if link, ok := e.glabEntryChange(cfg, exe); ok {
 		changes = append(changes, link)
 	}
 	for _, c := range desired {
@@ -240,7 +244,7 @@ func (e Env) planWith(ctx context.Context, cfg config.Config, edit func(string) 
 	return append(changes, e.staleGenerated(desired)...), nil
 }
 
-func (e Env) generateOptions(ctx context.Context) (generate.Options, error) {
+func (e Env) generateOptions(ctx context.Context, exe string) (generate.Options, error) {
 	settings, err := e.globalSettings(ctx)
 	if err != nil {
 		return generate.Options{}, err
@@ -248,7 +252,7 @@ func (e Env) generateOptions(ctx context.Context) (generate.Options, error) {
 	return generate.Options{
 		Home:               e.Home,
 		ConfigDir:          e.ConfigDir,
-		Executable:         e.Executable,
+		Executable:         exe,
 		CaseInsensitive:    e.CaseInsensitive,
 		Canonicalize:       paths.ResolveSymlinks,
 		FallbackSSHCommand: lastSetting(settings, "core.sshCommand"),

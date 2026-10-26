@@ -240,7 +240,7 @@ func (c *RepoCheck) verdict(managed bool) string {
 // accounts it holds. A host gh cannot be asked about maps to nil.
 func (e Env) ghAccountsByHost(ctx context.Context, cfg config.Config) map[string][]string {
 	out := map[string][]string{}
-	gh, err := e.LookPath("gh")
+	gh, err := e.GHPath()
 	if err != nil {
 		return out
 	}

@@ -76,7 +76,7 @@ func State(ctx context.Context, e Env) StateReport {
 
 // stateAccounts lists the accounts gh holds on github.com, or why it cannot.
 func (e Env) stateAccounts(ctx context.Context) ([]provider.Account, string) {
-	gh, err := e.LookPath("gh")
+	gh, err := e.GHPath()
 	if err != nil {
 		return []provider.Account{}, e.tr("the GitHub CLI (gh) is not installed")
 	}

@@ -48,8 +48,11 @@ func TestFromOSDescribesTheRunningProcess(t *testing.T) {
 	if env.Home != home || env.ConfigDir != filepath.Join(home, ".config", "gitpersona") {
 		t.Errorf("FromOS() home/config = %s, %s", env.Home, env.ConfigDir)
 	}
-	if env.WorkDir == "" || !filepath.IsAbs(env.Executable) || env.Now == nil || env.Run == nil || env.LookPath == nil {
+	if env.WorkDir == "" || env.Now == nil || env.Run == nil || env.LookPath == nil {
 		t.Errorf("FromOS() left fields empty: %+v", env)
+	}
+	if exe, err := env.executable(); err != nil || !filepath.IsAbs(exe) {
+		t.Errorf("executable() = %q, %v; want an absolute path found on first use", exe, err)
 	}
 }
 
