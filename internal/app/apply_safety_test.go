@@ -108,3 +108,32 @@ func TestWritesWaitForTheGuard(t *testing.T) {
 		t.Fatalf("Apply() after the guard was released: %v", err)
 	}
 }
+
+func TestApplyRefusesAPlanThatIsNotTheOneReviewed(t *testing.T) {
+	w := newWorld(t)
+	env, _ := w.env(t, w.home)
+	ctx := context.Background()
+	reviewed, err := PreviewPlan(ctx, env)
+	if err != nil || reviewed.Hash == "" || len(reviewed.Changes) == 0 {
+		t.Fatalf("PreviewPlan() = %+v, %v", reviewed, err)
+	}
+	// The configuration changes after the preview (another tab, the command line).
+	cfgFile := filepath.Join(env.ConfigDir, "config.toml")
+	mustWrite(t, cfgFile, strings.Replace(readFile(t, cfgFile), `name    = "Alex Octo"`, `name    = "Alex Changed"`, 1), 0o600)
+
+	err = Apply(ctx, env, ApplyOptions{Plan: reviewed.Hash})
+
+	if !errors.Is(err, ErrPlanChanged) {
+		t.Fatalf("Apply() = %v, want ErrPlanChanged", err)
+	}
+	if _, err := os.Stat(filepath.Join(w.home, ".gitconfig")); err == nil {
+		t.Fatal("apply wrote files that were not reviewed")
+	}
+	again, err := PreviewPlan(ctx, env)
+	if err != nil || again.Hash == reviewed.Hash {
+		t.Fatalf("a new preview should have a new plan: %v", err)
+	}
+	if err := Apply(ctx, env, ApplyOptions{Plan: again.Hash}); err != nil {
+		t.Fatalf("Apply() of the reviewed plan = %v", err)
+	}
+}

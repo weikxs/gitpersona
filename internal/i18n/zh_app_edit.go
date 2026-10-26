@@ -25,6 +25,7 @@ func init() {
 		"%s is read-only, so the old includeIf rules cannot be removed; make it writable (chmod u+w) or keep them (setup --keep-old-rules)":                  "%s 是只读的，所以无法删除旧的 includeIf 规则；请让它可写（chmod u+w），或保留它们（setup --keep-old-rules）",
 		"%s is read-only; make it writable (chmod u+w), or add these lines at its end yourself (keep the marker lines so GitPersona recognizes them):\n\n%s": "%s 是只读的；请让它可写（chmod u+w），或自行把下面几行加到文件末尾（保留标记行，GitPersona 才能认出它们）：\n\n%s",
 		"link %s: %w": "链接 %s 失败：%w",
+		"the changes are no longer the ones you reviewed (a file changed since); nothing was written: review them again, then apply": "这些改动已不是你查看过的那些（之后有文件被改动）；没有写入任何内容：请重新查看，然后再应用",
 
 		// edit.go
 		"%s already uses profile %s through %s; nothing to change.": "%s 已在使用配置文件 %s（通过 %s），无需更改。",

@@ -218,3 +218,26 @@ func TestInputPatternsAreValidInVMode(t *testing.T) {
 		}
 	}
 }
+
+func TestApplySendsThePlanThePageShowed(t *testing.T) {
+	files := staticFiles(t)
+	if !strings.Contains(files["api.js"], `request("POST", "/api/apply", { yes, plan })`) {
+		t.Error("api.apply must send the plan's hash with the request")
+	}
+	if !strings.Contains(files["views/apply.js"], "api.apply(true, plan)") {
+		t.Error("the apply view must send the hash of the preview it shows")
+	}
+}
+
+func TestThePageRefreshesWhenItsTabIsShownAgain(t *testing.T) {
+	app := staticFiles(t)["app.js"]
+	if !strings.Contains(app, `document.addEventListener("visibilitychange", refreshWhenVisible)`) {
+		t.Fatal("app.js must refresh the state when the tab becomes visible")
+	}
+	body := app[strings.Index(app, "async function refreshWhenVisible"):]
+	body = body[:strings.Index(body, "\n}\n")]
+	// No fresh=true: showing the tab again must not query gh's accounts.
+	if !strings.Contains(body, "await loadState();") || strings.Contains(body, "loadState(true)") {
+		t.Errorf("refreshWhenVisible must reuse gh's recent answer:\n%s", body)
+	}
+}

@@ -113,11 +113,24 @@ type FileChange struct {
 
 // Preview returns the changes apply would make, without writing anything.
 func Preview(ctx context.Context, e Env) ([]FileChange, error) {
+	p, err := PreviewPlan(ctx, e)
+	return p.Changes, err
+}
+
+// Plan is a preview with the hash that ApplyOptions.Plan takes, so apply
+// writes exactly what was reviewed.
+type Plan struct {
+	Changes []FileChange `json:"changes"`
+	Hash    string       `json:"plan"`
+}
+
+// PreviewPlan is Preview with the plan's hash.
+func PreviewPlan(ctx context.Context, e Env) (Plan, error) {
 	changes, err := planApply(ctx, e)
 	if err != nil {
-		return nil, err
+		return Plan{}, err
 	}
-	return e.fileChanges(changes), nil
+	return Plan{Changes: e.fileChanges(changes), Hash: planHash(changes)}, nil
 }
 
 // fileChanges describes changes with their diffs.

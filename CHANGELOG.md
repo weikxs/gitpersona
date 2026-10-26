@@ -72,6 +72,9 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 - `gitpersona uninstall` puts back the `includeIf` rules setup took over also after more than 20 later changes: the
   backups that record them are never pruned. Pruning counts only real backups (folders with a manifest) and leaves
   anything else in the backup folder alone.
+- Apply on the configuration page writes exactly the changes it showed: when the files changed after the preview (in
+  another tab or on the command line), it refuses and shows the new changes to review. The page also reads the state
+  again when its tab is shown, without asking gh about the accounts again.
 
 ## [0.1.0] - 2026-10-24
 

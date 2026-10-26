@@ -3,6 +3,8 @@ package app
 import (
 	"cmp"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
@@ -42,6 +44,9 @@ type ApplyOptions struct {
 	NoPrune bool
 	// Command names the change in the backup, for `gitpersona rollback`.
 	Command string
+	// Plan, when set, is the PlanHash of the changes the user reviewed;
+	// Apply refuses (ErrPlanChanged) when the changes are now different.
+	Plan string
 }
 
 // removedRulesFile, kept in a backup, holds the includeIf sections the change
@@ -105,7 +110,25 @@ func Apply(ctx context.Context, e Env, opts ApplyOptions) error {
 	if err != nil {
 		return err
 	}
+	if opts.Plan != "" && planHash(changes) != opts.Plan {
+		return ErrPlanChanged
+	}
 	return e.applyChanges(changes, opts)
+}
+
+// ErrPlanChanged says the changes apply would make are not the ones the
+// user reviewed: something changed the files since the preview.
+var ErrPlanChanged = i18n.Errorf("the changes are no longer the ones you reviewed (a file changed since); " +
+	"nothing was written: review them again, then apply")
+
+// planHash identifies a set of changes: what each one does to which file.
+// It does not depend on the language of the page.
+func planHash(changes []change) string {
+	h := sha256.New()
+	for _, c := range changes {
+		fmt.Fprintf(h, "%s\x00%s\x00%t\x00%s\x00%d\x00%s\x00", c.path, c.verb(), c.remove, c.linkTo, len(c.content), c.content)
+	}
+	return hex.EncodeToString(h.Sum(nil))
 }
 
 // applyChanges backs up every target in one snapshot, so a later rollback

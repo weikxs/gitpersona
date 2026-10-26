@@ -51,7 +51,8 @@ export const api = {
   // fresh asks gh about the accounts again instead of reusing its last answer.
   state: (fresh = false) => request("GET", fresh ? "/api/state?fresh=1" : "/api/state"),
   preview: () => request("GET", "/api/preview"),
-  apply: (yes) => request("POST", "/api/apply", { yes }),
+  // plan is the hash of the preview the user saw; the server refuses another.
+  apply: (yes, plan) => request("POST", "/api/apply", { yes, plan }),
   proposeSetup: () => request("GET", "/api/setup"),
   setupPreview: (plan) => request("POST", "/api/setup/preview", plan),
   setupApply: (plan) => request("POST", "/api/setup", plan),

@@ -153,6 +153,21 @@ async function refreshAll() {
   }
 }
 
+// refreshWhenVisible reads the state again when the tab is shown, since
+// the command line or another tab may have changed things meanwhile. It
+// reuses gh's recent answer (no fresh query) and redraws only when
+// something changed, so nothing typed on the page is lost for nothing.
+async function refreshWhenVisible() {
+  if (closed || document.visibilityState !== "visible" || !state) return;
+  const before = JSON.stringify(state);
+  try {
+    await loadState();
+  } catch {
+    return; // the next action reports a stopped server
+  }
+  if (JSON.stringify(state) !== before) render();
+}
+
 async function closePage() {
   try {
     await api.close();
@@ -171,6 +186,7 @@ async function start() {
   applyDocumentLang();
   chrome(currentView());
   document.getElementById("close").addEventListener("click", closePage);
+  document.addEventListener("visibilitychange", refreshWhenVisible);
   window.addEventListener("hashchange", () => {
     if (closed) return;
     clearStatus();

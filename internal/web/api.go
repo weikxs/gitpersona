@@ -114,10 +114,19 @@ func (a api) handle(h handlerFunc) http.HandlerFunc {
 		w.Header().Set("Content-Type", "application/json")
 		if err != nil {
 			resp.Error = a.env.WithTilde(i18n.Text(env.Lang, err))
-			w.WriteHeader(http.StatusBadRequest)
+			w.WriteHeader(errorStatus(err))
 		}
 		_ = json.NewEncoder(w).Encode(resp)
 	}
+}
+
+// errorStatus is the HTTP status of a failed request: 409 when the files
+// changed since the page showed them, 400 otherwise.
+func errorStatus(err error) int {
+	if errors.Is(err, app.ErrPlanChanged) {
+		return http.StatusConflict
+	}
+	return http.StatusBadRequest
 }
 
 func (c call) decode(into any) error {
@@ -147,16 +156,20 @@ func (a api) state(c call) (any, error) {
 	}
 	return app.State(c.ctx, c.env), nil
 }
-func (a api) preview(c call) (any, error) { return app.Preview(c.ctx, c.env) }
+
+// preview returns the changes with the hash of the plan, which apply sends
+// back so the server writes only what the page showed.
+func (a api) preview(c call) (any, error) { return app.PreviewPlan(c.ctx, c.env) }
 
 func (a api) apply(c call) (any, error) {
 	var req struct {
-		Yes bool `json:"yes"`
+		Yes  bool   `json:"yes"`
+		Plan string `json:"plan"`
 	}
 	if err := c.decode(&req); err != nil {
 		return nil, err
 	}
-	return nil, app.Apply(c.ctx, c.env, app.ApplyOptions{Yes: req.Yes, Command: "apply (web)"})
+	return nil, app.Apply(c.ctx, c.env, app.ApplyOptions{Yes: req.Yes, Plan: req.Plan, Command: "apply (web)"})
 }
 
 func (a api) proposeSetup(c call) (any, error) { return app.ProposeSetup(c.ctx, c.env) }
