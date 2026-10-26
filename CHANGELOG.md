@@ -22,6 +22,9 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
   and doctor read each global Git config file once instead of five times; the configuration page gathers the shells,
   the doctor's checks and gh's accounts at the same time; the gh shim finds the real gh with one stat per PATH entry;
   starting the binary no longer compiles large bounded regular expressions.
+- The shell prompt starts no process while you stay in the same directory: `gitpersona_prompt`, the tide item
+  and the Powerlevel10k segment keep their last answer until the directory, the repository around it or a change
+  GitPersona saves (the new `~/.config/gitpersona/generation` file) says it can differ.
 
 ### Security
 

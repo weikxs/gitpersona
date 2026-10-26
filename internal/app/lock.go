@@ -4,10 +4,12 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strconv"
 	"syscall"
 	"time"
 
 	"github.com/weikxs/gitpersona/internal/fsutil"
+	"github.com/weikxs/gitpersona/internal/shell"
 )
 
 const (
@@ -60,6 +62,19 @@ func (e Env) lockConfig() (Env, func(), error) {
 	}
 	held := e
 	held.configLocked = true
-	// Closing the file releases the lock; so does the process ending.
-	return held, func() { _ = f.Close() }, nil
+	// Closing the file releases the lock; so does the process ending. Before
+	// that, the generation changes, so shell prompts ask again (see
+	// shell.GenerationFile).
+	return held, func() {
+		e.bumpGeneration()
+		_ = f.Close()
+	}, nil
+}
+
+// bumpGeneration writes a new value to the generation file, which the shell
+// prompt functions compare to decide whether their last answer still holds.
+// A failure only costs prompts their cache until the next change.
+func (e Env) bumpGeneration() {
+	value := strconv.FormatInt(time.Now().UnixNano(), 10) + "\n"
+	_ = fsutil.WriteAtomic(filepath.Join(e.ConfigDir, shell.GenerationFile), []byte(value), fsutil.FilePerm)
 }

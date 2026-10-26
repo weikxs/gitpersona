@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/weikxs/gitpersona/internal/shell"
 )
 
 // filesUnder maps every file and link under the roots to its content or
@@ -19,7 +21,7 @@ func filesUnder(t *testing.T, skip string, roots ...string) map[string]string {
 	out := map[string]string{}
 	for _, root := range roots {
 		_ = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
-			if err != nil || path == skip || filepath.Base(path) == lockFile {
+			if err != nil || path == skip || filepath.Base(path) == lockFile || filepath.Base(path) == shell.GenerationFile {
 				if d != nil && d.IsDir() {
 					return fs.SkipDir
 				}

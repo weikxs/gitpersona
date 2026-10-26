@@ -479,6 +479,9 @@ profile = "globex"
   从进程树中判断，已安装的 shell 从 `/etc/shells` 读取。fish 使用 `conf.d` 中单独的文件；zsh 使用 `$ZDOTDIR`（未设置时为 `~`）中的 `.zshenv` 和
   `.zshrc`；bash 使用 `~/.bashrc`。
   tide 中添加 `gitpersona` 项；Powerlevel10k 中添加 `gitpersona` 段；其他情况调用 `gitpersona_prompt`。
+  只要你还在同一个目录和仓库里，并且 GitPersona 没有保存新的改动，提示符函数就沿用上一次的结果，重画提示符不启动任何
+  进程（只用 shell 内置命令）。手动编辑 `config.toml` 后请运行 `gitpersona apply`，它也会刷新提示符。若写成
+  `$(gitpersona_prompt)`，它会在子 shell 中运行，每次都会调用 `gitpersona`。
 - **隐私：** GitPersona 从不打开、读取、列出或使用你的私钥，也从不打印或保存令牌。它只通过 `gh` 和 `ssh` 联网：`doctor`、`verify`、
   setup 和配置页面用 `gh auth status` 检查已登录的账户（十分钟内最多一次，所有命令共用）；setup 时查询账户公开的名字和
   邮箱；以及你运行 `check-ssh`、`verify --ssh` 时发起的 ssh 连接。除了这一结果，不加 `--ssh` 的 `verify` 只读取

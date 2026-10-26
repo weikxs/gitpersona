@@ -506,6 +506,10 @@ Prompt and plugin-manager setups (tide, Powerlevel10k, Starship, fisher, oh-my-z
   tools often change), the shell you use right now from the process tree, and installed shells from `/etc/shells`.
   fish gets its own file in `conf.d`; zsh uses `.zshenv` and `.zshrc` in `$ZDOTDIR` (or `~`); bash uses `~/.bashrc`.
   In tide add the `gitpersona` item; in Powerlevel10k add the `gitpersona` segment; elsewhere call `gitpersona_prompt`.
+  The prompt function keeps its last answer while you stay in the same directory and repository and GitPersona
+  saves no change, so drawing the prompt again starts no process (shell builtins only). After editing
+  `config.toml` by hand, run `gitpersona apply`, which also refreshes the prompt. Written as
+  `$(gitpersona_prompt)`, it runs in a subshell and asks `gitpersona` each time.
 - **Privacy:** GitPersona never opens, reads, lists or uses your private keys, and never prints or stores tokens.
   Its only network use is through `gh` and `ssh`: `gh auth status`, which checks your signed-in accounts for
   `doctor`, `verify`, setup and the configuration page (at most once in ten minutes, shared by all of them); your
