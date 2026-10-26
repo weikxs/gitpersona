@@ -143,7 +143,11 @@ func (e Env) applyChanges(changes []change, opts ApplyOptions) error {
 	if opts.NoPrune {
 		return nil
 	}
-	return backup.Prune(e.backupDir(), backupsToKeep)
+	// A record of removed rules is what uninstall puts back: it is never
+	// pruned, however many changes follow.
+	return backup.PruneKeeping(e.backupDir(), backupsToKeep, func(dir string) bool {
+		return fileExists(filepath.Join(dir, removedRulesFile))
+	})
 }
 
 // writeChanges backs up every target in one snapshot and writes the

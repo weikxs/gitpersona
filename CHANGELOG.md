@@ -69,6 +69,9 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 - Two changes at the same time (two clicks on the configuration page, or the page and a command) no longer overwrite
   each other: each change takes a lock on `~/.config/gitpersona/.lock` while it reads, plans and writes, and an edit
   stops without writing when `config.toml` was saved by hand while it was being prepared.
+- `gitpersona uninstall` puts back the `includeIf` rules setup took over also after more than 20 later changes: the
+  backups that record them are never pruned. Pruning counts only real backups (folders with a manifest) and leaves
+  anything else in the backup folder alone.
 
 ## [0.1.0] - 2026-10-24
 

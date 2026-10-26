@@ -505,7 +505,8 @@ Prompt and plugin-manager setups (tide, Powerlevel10k, Starship, fisher, oh-my-z
   settings. Paths are shown with `~`, and the web console listens only on 127.0.0.1 behind a one-time link.
 - **Your files:** it adds one marked block to your global Git configuration (following a symlinked
   `~/.gitconfig` and `GIT_CONFIG_GLOBAL`), backs up everything it changes, and keeps the newest 20 backups in
-  `~/.config/gitpersona/backups/`.
+  `~/.config/gitpersona/backups/`, plus the first one and every one that records `includeIf` rules it took over, so
+  `gitpersona uninstall` can always put those back.
 
 ## Undo and uninstall
 

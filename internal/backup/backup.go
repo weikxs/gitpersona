@@ -137,9 +137,13 @@ func ReadManifest(dir string) (Manifest, error) {
 
 // Prune removes old snapshots under root so that the keep newest remain, plus
 // the oldest one, which holds the state from before GitPersona changed
-// anything. Snapshot names sort chronologically; entries that are not
-// directories are left alone.
-func Prune(root string, keep int) error {
+// anything. Snapshot names sort chronologically. Only folders with a
+// manifest are snapshots: anything else is neither counted nor removed.
+func Prune(root string, keep int) error { return PruneKeeping(root, keep, nil) }
+
+// PruneKeeping is Prune that also keeps every snapshot for which always
+// returns true (such as one holding something nothing else records).
+func PruneKeeping(root string, keep int, always func(dir string) bool) error {
 	entries, err := os.ReadDir(root)
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil
@@ -149,15 +153,20 @@ func Prune(root string, keep int) error {
 	}
 	var snapshots []string
 	for _, e := range entries {
-		if e.IsDir() {
-			snapshots = append(snapshots, e.Name())
+		if _, err := os.Stat(filepath.Join(root, e.Name(), manifestFile)); e.IsDir() && err == nil {
+			snapshots = append(snapshots, filepath.Join(root, e.Name()))
 		}
 	}
-	for len(snapshots) > keep+1 {
-		if err := os.RemoveAll(filepath.Join(root, snapshots[1])); err != nil {
+	if len(snapshots) <= keep+1 {
+		return nil
+	}
+	for _, dir := range snapshots[1 : len(snapshots)-keep] {
+		if always != nil && always(dir) {
+			continue
+		}
+		if err := os.RemoveAll(dir); err != nil {
 			return i18n.Errorf("remove old backup: %w", err)
 		}
-		snapshots = append(snapshots[:1], snapshots[2:]...)
 	}
 	return nil
 }

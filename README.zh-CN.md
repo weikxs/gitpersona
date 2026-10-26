@@ -477,7 +477,8 @@ profile = "globex"
   查询账户公开的名字和邮箱，以及你运行 `check-ssh`、`verify --ssh` 时发起的 ssh 连接。不加 `--ssh` 的 `verify`
   只读取 Git 和 SSH 设置。路径都以 `~` 显示；网页控制台只监听 127.0.0.1，并通过一次性链接访问。
 - **你的文件：** 它只在全局 Git 配置中添加一个带标记的区块（会跟随符号链接的 `~/.gitconfig` 和 `GIT_CONFIG_GLOBAL`），
-  改动前备份所有被修改的文件，并在 `~/.config/gitpersona/backups/` 中保留最新的 20 份备份。
+  改动前备份所有被修改的文件，并在 `~/.config/gitpersona/backups/` 中保留最新的 20 份备份，另外始终保留第一份备份，
+  以及所有记录了被接管的 `includeIf` 规则的备份，这样 `gitpersona uninstall` 总能把这些规则放回去。
 
 ## 撤销与卸载
 
