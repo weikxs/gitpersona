@@ -194,7 +194,7 @@ func TestEditRefusesWhenTheResultWouldDiffer(t *testing.T) {
 	env, _ := w.env(t, w.home)
 	before := readConfig(t, w)
 
-	err := env.saveEdited(context.Background(), "test", before+"\n[[profile]]\nid = \"surprise\"\n", mustParse(t, before))
+	err := env.saveEdited(context.Background(), "test", before, before+"\n[[profile]]\nid = \"surprise\"\n", mustParse(t, before))
 
 	if err == nil || !strings.Contains(err.Error(), "edit it by hand") {
 		t.Fatalf("saveEdited() = %v, want a refusal", err)

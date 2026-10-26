@@ -272,6 +272,11 @@ func PreviewSetup(ctx context.Context, e Env, plan SetupPlan) ([]FileChange, err
 // ApplySetup writes the configuration of plan and the Git configuration
 // generated from it, in one backup.
 func ApplySetup(ctx context.Context, e Env, plan SetupPlan) error {
+	e, unlock, err := e.lockConfig()
+	if err != nil {
+		return err
+	}
+	defer unlock()
 	changes, err := e.setupChanges(ctx, plan)
 	if err != nil {
 		return err

@@ -66,6 +66,10 @@ type Env struct {
 	// Writes keeps an interruption (Ctrl-C) from stopping gitpersona while
 	// it writes files; nil means no guard (tests).
 	Writes *WriteGuard
+	// configLocked is set while this command holds the configuration lock.
+	configLocked bool
+	// lockWait is how long to wait for the lock (0: defaultLockWait).
+	lockWait time.Duration
 	// write writes one change (nil: change.write); tests inject failures.
 	write func(change) error
 

@@ -18,6 +18,11 @@ type ProfileChanges struct {
 
 // AddProfile adds a profile, keeping comments, and applies it.
 func AddProfile(ctx context.Context, e Env, p config.Profile) error {
+	e, unlock, err := e.lockConfig()
+	if err != nil {
+		return err
+	}
+	defer unlock()
 	text, cfg, err := e.readConfigText()
 	if err != nil {
 		return err
@@ -31,11 +36,16 @@ func AddProfile(ctx context.Context, e Env, p config.Profile) error {
 	}
 	want := cfg
 	want.Profiles = append(append([]config.Profile{}, cfg.Profiles...), withProfileDefaults(p))
-	return e.saveEdited(ctx, "add profile "+p.ID, edited, want)
+	return e.saveEdited(ctx, "add profile "+p.ID, text, edited, want)
 }
 
 // UpdateProfile changes fields of a profile and applies it.
 func UpdateProfile(ctx context.Context, e Env, id string, c ProfileChanges) error {
+	e, unlock, err := e.lockConfig()
+	if err != nil {
+		return err
+	}
+	defer unlock()
 	text, cfg, err := e.readConfigText()
 	if err != nil {
 		return err
@@ -66,12 +76,17 @@ func UpdateProfile(ctx context.Context, e Env, id string, c ProfileChanges) erro
 			}
 		}
 	}
-	return e.saveEdited(ctx, "update profile "+id, edited, want)
+	return e.saveEdited(ctx, "update profile "+id, text, edited, want)
 }
 
 // RemoveProfile deletes a profile together with its pins (and the default,
 // if it was the default), and applies the change.
 func RemoveProfile(ctx context.Context, e Env, id string) error {
+	e, unlock, err := e.lockConfig()
+	if err != nil {
+		return err
+	}
+	defer unlock()
 	text, cfg, err := e.readConfigText()
 	if err != nil {
 		return err
@@ -102,11 +117,16 @@ func RemoveProfile(ctx context.Context, e Env, id string) error {
 		}
 		want.Default = ""
 	}
-	return e.saveEdited(ctx, "remove profile "+id, edited, want)
+	return e.saveEdited(ctx, "remove profile "+id, text, edited, want)
 }
 
 // SetDefaultProfile sets (or with "" clears) the default profile.
 func SetDefaultProfile(ctx context.Context, e Env, id string) error {
+	e, unlock, err := e.lockConfig()
+	if err != nil {
+		return err
+	}
+	defer unlock()
 	text, cfg, err := e.readConfigText()
 	if err != nil {
 		return err
@@ -122,7 +142,7 @@ func SetDefaultProfile(ctx context.Context, e Env, id string) error {
 	}
 	want := cfg
 	want.Default = id
-	return e.saveEdited(ctx, "set default "+id, edited, want)
+	return e.saveEdited(ctx, "set default "+id, text, edited, want)
 }
 
 func withProfileDefaults(p config.Profile) config.Profile {

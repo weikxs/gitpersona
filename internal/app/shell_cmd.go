@@ -160,6 +160,11 @@ func (e Env) shellChanges(kinds []shell.Kind) ([]change, error) {
 // InstallShell adds the integration to the given shells, or to the login
 // shell when none are given.
 func InstallShell(ctx context.Context, e Env, kinds []shell.Kind, dryRun bool) error {
+	e, unlock, err := e.lockConfig()
+	if err != nil {
+		return err
+	}
+	defer unlock()
 	if len(kinds) == 0 {
 		login := e.loginShell(ctx)
 		if login.Kind == shell.Unknown {

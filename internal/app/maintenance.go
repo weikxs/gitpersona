@@ -19,6 +19,11 @@ import (
 // or a snapshot name). Restoring needs yes, and the current state is backed
 // up first so the rollback itself can be undone.
 func Rollback(ctx context.Context, e Env, which string, yes bool) error {
+	e, unlock, err := e.lockConfig()
+	if err != nil {
+		return err
+	}
+	defer unlock()
 	infos, err := backup.List(e.backupDir())
 	if err != nil {
 		return err
@@ -123,6 +128,11 @@ func (e Env) entryNames(m backup.Manifest) []string {
 // Uninstall removes the GitPersona block from the global Git configuration
 // and deletes the generated files. config.toml and the backups are kept.
 func Uninstall(_ context.Context, e Env, yes bool) error {
+	e, unlock, err := e.lockConfig()
+	if err != nil {
+		return err
+	}
+	defer unlock()
 	current, err := readOptional(e.resolvedUserGitConfig())
 	if err != nil {
 		return err

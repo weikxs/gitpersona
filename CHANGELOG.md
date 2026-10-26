@@ -66,6 +66,9 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 - A change that fails halfway (a file that cannot be written) no longer leaves some files changed and others not:
   every file already written is put back from the backup. Ctrl-C while files are being written waits until they
   are all written; files are flushed to disk before they replace the old ones.
+- Two changes at the same time (two clicks on the configuration page, or the page and a command) no longer overwrite
+  each other: each change takes a lock on `~/.config/gitpersona/.lock` while it reads, plans and writes, and an edit
+  stops without writing when `config.toml` was saved by hand while it was being prepared.
 
 ## [0.1.0] - 2026-10-24
 

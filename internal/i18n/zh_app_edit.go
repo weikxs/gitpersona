@@ -39,8 +39,15 @@ func init() {
 		"%s is not inside a Git repository": "%s 不在 Git 仓库里",
 		"%s is a worktree; worktrees follow their main repository (%s), so pin that instead": "%s 是工作树；工作树跟随它的主仓库（%s），请改为钉住主仓库",
 		"could not change %s safely; edit it by hand (nothing was written)":                  "无法安全地修改 %s；请手动编辑（没有写入任何内容）",
-		"choose a profile: gitpersona %s <%s>":                                               "请选择一个配置文件：gitpersona %s <%s>",
-		"unknown profile %q; choose one of: %s":                                              "未知的配置文件 %q；请从中选择：%s",
+		"%s changed while this change was being prepared; nothing was written, try again":    "准备这次修改时 %s 被改动了；没有写入任何内容，请重试",
+
+		// lock.go
+		"create %s: %w":        "无法创建 %s：%w",
+		"open the lock %s: %w": "无法打开锁文件 %s：%w",
+		"lock %s: %w":          "无法锁定 %s：%w",
+		"another gitpersona command (or the configuration page) is changing the configuration; try again when it has finished (lock: %s)": "另一个 gitpersona 命令（或配置页面）正在修改配置；请等它完成后重试（锁文件：%s）",
+		"choose a profile: gitpersona %s <%s>":  "请选择一个配置文件：gitpersona %s <%s>",
+		"unknown profile %q; choose one of: %s": "未知的配置文件 %q；请从中选择：%s",
 
 		// maintenance.go
 		"No backups yet.":      "还没有备份。",

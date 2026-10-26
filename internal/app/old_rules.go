@@ -20,6 +20,11 @@ const oldRulesCommand = "remove old includeIf rules"
 // after them and win, so this only tidies up; every other rule and setting
 // stays.
 func RemoveOldRules(ctx context.Context, e Env) error {
+	e, unlock, err := e.lockConfig()
+	if err != nil {
+		return err
+	}
+	defer unlock()
 	cfg, err := e.loadConfig()
 	if err != nil {
 		return err

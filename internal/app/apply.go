@@ -96,6 +96,11 @@ const nextRuleMarker = "# gitpersona-next-rule: "
 // content changes are backed up and written, so running it twice is a no-op.
 // Removing files needs explicit consent.
 func Apply(ctx context.Context, e Env, opts ApplyOptions) error {
+	e, unlock, err := e.lockConfig()
+	if err != nil {
+		return err
+	}
+	defer unlock()
 	changes, err := planApply(ctx, e)
 	if err != nil {
 		return err
