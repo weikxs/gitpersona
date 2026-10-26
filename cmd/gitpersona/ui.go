@@ -53,5 +53,21 @@ func open(url string) error {
 	if runtime.GOOS == "darwin" {
 		name = "open"
 	}
-	return exec.Command(name, url).Start()
+	_, err := startAndReap(exec.Command(name, url))
+	return err
+}
+
+// startAndReap starts cmd without waiting for it, and waits for it in the
+// background so it does not stay behind as a zombie process while the page
+// runs. The returned channel closes once it has been waited for.
+func startAndReap(cmd *exec.Cmd) (<-chan struct{}, error) {
+	if err := cmd.Start(); err != nil {
+		return nil, err
+	}
+	reaped := make(chan struct{})
+	go func() {
+		defer close(reaped)
+		_ = cmd.Wait() // the browser opener's exit status tells nothing useful
+	}()
+	return reaped, nil
 }

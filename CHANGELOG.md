@@ -81,6 +81,8 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
   `verify --json` reports `total` (repositories found) and `limited`.
 - `gitpersona ui` stops about ten seconds after its tab is closed instead of running on for 15 minutes; a reload
   keeps it running.
+- `gitpersona ui` waits for the program that opens the browser, so it no longer stays behind as a zombie process
+  while the page runs.
 
 ## [0.1.0] - 2026-10-24
 
