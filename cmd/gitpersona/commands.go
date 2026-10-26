@@ -40,7 +40,7 @@ func firstArg(args []string) string {
 var commands = map[string]command{
 	"ui": {
 		synopsis:    "ui [--no-open]",
-		description: "Open the configuration page in your browser. It runs only on this computer (127.0.0.1),\nthe link works once, and the page stops after 15 minutes without use.",
+		description: "Open the configuration page in your browser. It runs only on this computer (127.0.0.1),\nthe link works once, and the page stops soon after its tab is closed or after 15 minutes without use.",
 		bind: func(fs *flag.FlagSet) runFunc {
 			noOpen := fs.Bool("no-open", false, "print the link without opening a browser")
 			return func(ctx context.Context, env app.Env, _ []string) int {

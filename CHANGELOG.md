@@ -79,6 +79,8 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
   repository's `.git/config`, global Git file or GitPersona file has changed (for up to ten minutes, and never after a
   change made on the page). The overview checks at most 200 repositories by itself and offers a button to check all.
   `verify --json` reports `total` (repositories found) and `limited`.
+- `gitpersona ui` stops about ten seconds after its tab is closed instead of running on for 15 minutes; a reload
+  keeps it running.
 
 ## [0.1.0] - 2026-10-24
 

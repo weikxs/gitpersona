@@ -250,3 +250,13 @@ func TestTheOverviewAsksForTheCappedReusableCheck(t *testing.T) {
 		}
 	}
 }
+
+func TestThePageSaysGoodbyeWhenItIsClosed(t *testing.T) {
+	files := staticFiles(t)
+	if !strings.Contains(files["app.js"], `window.addEventListener("pagehide"`) {
+		t.Error("app.js must tell the server when the page goes away")
+	}
+	if !strings.Contains(files["api.js"], `fetch("/api/bye"`) || !strings.Contains(files["api.js"], "keepalive: true") {
+		t.Error("bye must be a keepalive request to /api/bye")
+	}
+}

@@ -77,6 +77,22 @@ export const api = {
   close: () => request("POST", "/api/close", {}),
 };
 
+// bye tells the server the page is going away (closed or reloaded). It
+// stops a few seconds later unless the page asks again, so a closed tab
+// does not leave it running for the idle timeout. keepalive lets the
+// request finish after the page is gone; unlike sendBeacon it can carry the
+// CSRF header.
+export function bye() {
+  try {
+    fetch("/api/bye", {
+      method: "POST", keepalive: true, credentials: "same-origin",
+      headers: { "X-GitPersona-CSRF": csrfToken },
+    }).catch(() => {});
+  } catch {
+    // The page is going away; there is nothing to report to.
+  }
+}
+
 // normalizePath writes a path the way the configuration stores it (home as
 // ~, no trailing slash), so what the user typed compares and shows like the
 // stored paths. On failure the path is kept; the change itself reports why.

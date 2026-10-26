@@ -1,7 +1,7 @@
 // GitPersona configuration page: loads the state, routes between sections by
 // the URL hash and re-renders after every change or language switch.
 
-import { api, ApiError } from "./api.js";
+import { api, ApiError, bye } from "./api.js";
 import { h, replace, status, clearStatus } from "./dom.js";
 import { t, lang, setLang, applyDocumentLang, LANGUAGES } from "./i18n.js";
 import { icon } from "./icons.js";
@@ -187,6 +187,9 @@ async function start() {
   chrome(currentView());
   document.getElementById("close").addEventListener("click", closePage);
   document.addEventListener("visibilitychange", refreshWhenVisible);
+  window.addEventListener("pagehide", () => {
+    if (!closed) bye();
+  });
   window.addEventListener("hashchange", () => {
     if (closed) return;
     clearStatus();

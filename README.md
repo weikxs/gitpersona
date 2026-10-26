@@ -77,8 +77,8 @@ profile; `gitpersona pin <profile>` handles the odd repository that lives elsewh
 
 ## The web console
 
-`gitpersona ui` opens a local console in your browser (only on 127.0.0.1; the link works once, and it stops after
-15 minutes without use). Everything the command line does is there, in English and Chinese: the page starts in your
+`gitpersona ui` opens a local console in your browser (only on 127.0.0.1; the link works once, and it stops
+about 10 seconds after you close the tab, or after 15 minutes without use). Everything the command line does is there, in English and Chinese: the page starts in your
 system's language, else your browser's, else English, and the switch in the sidebar changes it for the tab.
 
 **Overview:** the numbers that matter (accounts, repositories, identity mix-ups, notes, health), what needs attention
@@ -439,7 +439,7 @@ Paths must be absolute or start with `~/`.
 | Command | What it does |
 |---|---|
 | `gitpersona setup [--yes] [--no-shell] [--keep-old-rules] [--default <profile> \| --no-default] [--print \| --web]` | Set GitPersona up from what you already have in one step (accounts, existing identities, repositories, SSH aliases, shell); asks before writing unless `--yes`; `--web` shows it in the browser, where you can also adjust it step by step |
-| `gitpersona ui [--no-open]` | Open the web console in your browser, in English or Chinese: an overview, accounts with their identities, folders and pins, the repository check, a diff preview before applying, health checks, shells and backups. It listens only on 127.0.0.1, the link works once, and it stops after 15 minutes without use |
+| `gitpersona ui [--no-open]` | Open the web console in your browser, in English or Chinese: an overview, accounts with their identities, folders and pins, the repository check, a diff preview before applying, health checks, shells and backups. It listens only on 127.0.0.1, the link works once, and it stops soon after the tab is closed or after 15 minutes without use |
 | `gitpersona apply [--dry-run] [--yes]` | Generate the Git configuration; `--dry-run` previews, `--yes` allows removing files of deleted profiles |
 | `gitpersona whoami [--json] [--check]` | Show which profile Git uses here and why; `--check` fails when Git disagrees |
 | `gitpersona verify [--all] [--ssh] [--json] [<folder>...]` | Check every repository in your profiles' folders and pins (and the folders you name): the author its commits use and the account each remote pushes as, against its profile; flags another identity, tokens in remote URLs and SSH connections shared between keys. It reads only settings; `--ssh` signs in to each SSH host once, as a push would, so the host names the account |

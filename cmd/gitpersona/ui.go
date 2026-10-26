@@ -38,7 +38,8 @@ func runUI(ctx context.Context, env app.Env, openBrowser bool, section string) e
 		link += "#" + section
 	}
 	fmt.Fprintf(env.Stdout, "GitPersona configuration page (this link works once):\n  %s\n", link)
-	fmt.Fprintln(env.Stdout, "Press Ctrl-C or use Close on the page to stop. It stops by itself after 15 minutes without use.")
+	fmt.Fprintln(env.Stdout, "Press Ctrl-C or use Close on the page to stop. It stops by itself soon after the tab is closed, "+
+		"or after 15 minutes without use.")
 	if openBrowser {
 		if err := open(link); err != nil {
 			fmt.Fprintf(env.Stdout, "Could not open a browser (%v); open the link above yourself.\n", err)
