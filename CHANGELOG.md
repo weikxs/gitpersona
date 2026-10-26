@@ -15,7 +15,9 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
   Ubuntu 22.04 container runs are gone.
 - GitPersona asks GitHub about your accounts far less often. `gh auth status` checks every signed-in account against
   the API, and the configuration page used to run it up to three times after each change; the answer is now reused
-  for ten minutes and asked again when the page is opened or reloaded.
+  for ten minutes and asked again when the page is opened or reloaded. The answers are kept in
+  `~/.config/gitpersona/cache/` (owner-only, no tokens), so every `gitpersona` command shares them too; signing in,
+  out or switching accounts with gh makes the next check ask again.
 - Faster checks: `verify` starts about 4 git processes per repository instead of 8 plus 4 per remote; preview, apply
   and doctor read each global Git config file once instead of five times; the configuration page gathers the shells,
   the doctor's checks and gh's accounts at the same time; the gh shim finds the real gh with one stat per PATH entry;

@@ -231,6 +231,13 @@ Git asks `gitpersona credential` for a token, which borrows the one `gh` already
 hosts the profile only names the account, and your own credential helper answers with that account's token.
 With the shell integration, `gh` and `glab` follow the same rules.
 
+GitPersona asks GitHub as little as it can. Only `gh auth status` (which checks each signed-in account) and, during
+setup, a public profile lookup reach the host; their answers are kept for ten minutes in
+`~/.config/gitpersona/cache/` (owner-only; account names and states, never a token) and shared by every
+`gitpersona` command and the configuration page. `gh auth login`, `logout` or `switch` makes the next check ask
+again. GitPersona never switches gh's account, fetches or lists remotes; SSH connections to a host are made only
+when you ask for them (`gitpersona check-ssh`, or “Ask the hosts over SSH” on the page).
+
 ## Supported systems
 
 | System | CPU | Status |
@@ -500,9 +507,10 @@ Prompt and plugin-manager setups (tide, Powerlevel10k, Starship, fisher, oh-my-z
   fish gets its own file in `conf.d`; zsh uses `.zshenv` and `.zshrc` in `$ZDOTDIR` (or `~`); bash uses `~/.bashrc`.
   In tide add the `gitpersona` item; in Powerlevel10k add the `gitpersona` segment; elsewhere call `gitpersona_prompt`.
 - **Privacy:** GitPersona never opens, reads, lists or uses your private keys, and never prints or stores tokens.
-  Its only network use is asking `gh` for your accounts' public names and emails during setup, and the ssh
-  connections `check-ssh` and `verify --ssh` make when you run them. `verify` without `--ssh` reads only Git and SSH
-  settings. Paths are shown with `~`, and the web console listens only on 127.0.0.1 behind a one-time link.
+  Its only network use is through `gh` and `ssh`: `gh auth status`, which checks your signed-in accounts for
+  `doctor`, `verify`, setup and the configuration page (at most once in ten minutes, shared by all of them); your
+  accounts' public names and emails during setup; and the ssh connections `check-ssh` and `verify --ssh` make when
+  you run them. Besides that answer, `verify` without `--ssh` reads only Git and SSH settings. Paths are shown with `~`, and the web console listens only on 127.0.0.1 behind a one-time link.
 - **Your files:** it adds one marked block to your global Git configuration (following a symlinked
   `~/.gitconfig` and `GIT_CONFIG_GLOBAL`), backs up everything it changes, and keeps the newest 20 backups in
   `~/.config/gitpersona/backups/`, plus the first one and every one that records `includeIf` rules it took over, so

@@ -6,6 +6,7 @@ package app
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"io/fs"
 	"os"
@@ -78,6 +79,27 @@ type Env struct {
 	probes *probes
 }
 
+// ghAccountsStamp fingerprints gh's account file (hosts.yml) by its size and
+// modification time, which gh auth login, logout and switch change. Only the
+// file's metadata is read, never its content.
+func ghAccountsStamp(home string) string {
+	dir := os.Getenv("GH_CONFIG_DIR")
+	switch {
+	case dir != "":
+	case os.Getenv("XDG_CONFIG_HOME") != "":
+		dir = filepath.Join(os.Getenv("XDG_CONFIG_HOME"), "gh")
+	case runtime.GOOS == "windows" && os.Getenv("AppData") != "":
+		dir = filepath.Join(os.Getenv("AppData"), "GitHub CLI")
+	default:
+		dir = filepath.Join(home, ".config", "gh")
+	}
+	info, err := os.Stat(filepath.Join(dir, "hosts.yml"))
+	if err != nil {
+		return "none"
+	}
+	return fmt.Sprintf("%d:%d", info.Size(), info.ModTime().UnixNano())
+}
+
 // accountQueryTTL is how long the answers of gh's account queries, which
 // reach the host once per signed-in account, are reused (provider.CachingRunner).
 const accountQueryTTL = 10 * time.Minute
@@ -92,7 +114,8 @@ func FromOS(stdin io.Reader, stdout, stderr io.Writer) (Env, error) {
 	if err != nil {
 		return Env{}, i18n.Errorf("find current directory: %w", err)
 	}
-	queries := &provider.CachingRunner{Next: provider.ExecRunner, TTL: accountQueryTTL, Now: time.Now}
+	queries := &provider.CachingRunner{Next: provider.ExecRunner, TTL: accountQueryTTL, Now: time.Now,
+		Dir: filepath.Join(configDir(home), "cache"), Stamp: func() string { return ghAccountsStamp(home) }}
 	env := Env{
 		Home:            home,
 		ConfigDir:       configDir(home),

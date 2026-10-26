@@ -219,6 +219,12 @@ flowchart LR
 `gitpersona credential` 要令牌，它借用 `gh` 为该账户保存的令牌。对其他主机，配置文件只指明账户，
 由你自己的凭据助手返回该账户的令牌。启用 shell 集成后，`gh` 和 `glab` 也遵循同样的规则。
 
+GitPersona 尽量少地访问 GitHub。只有 `gh auth status`（会逐个检查已登录的账户）和 setup 时读取公开资料这两种请求会到达
+服务器；它们的结果在 `~/.config/gitpersona/cache/` 中保留十分钟（只有本人可读；只有账户名和状态，从不含令牌），
+所有 `gitpersona` 命令和配置页面共用。执行 `gh auth login`、`logout` 或 `switch` 后，下一次检查会重新询问。
+GitPersona 从不切换 gh 的账户，也不执行 fetch 或列出远端；只有你主动要求时（`gitpersona check-ssh`，或页面上的
+“通过 SSH 让主机报出账户”）才会连接主机的 SSH。
+
 ## 支持的系统
 
 | 系统 | 芯片 | 状态 |
@@ -473,9 +479,10 @@ profile = "globex"
   从进程树中判断，已安装的 shell 从 `/etc/shells` 读取。fish 使用 `conf.d` 中单独的文件；zsh 使用 `$ZDOTDIR`（未设置时为 `~`）中的 `.zshenv` 和
   `.zshrc`；bash 使用 `~/.bashrc`。
   tide 中添加 `gitpersona` 项；Powerlevel10k 中添加 `gitpersona` 段；其他情况调用 `gitpersona_prompt`。
-- **隐私：** GitPersona 从不打开、读取、列出或使用你的私钥，也从不打印或保存令牌。它唯一的联网行为是 setup 时向 `gh`
-  查询账户公开的名字和邮箱，以及你运行 `check-ssh`、`verify --ssh` 时发起的 ssh 连接。不加 `--ssh` 的 `verify`
-  只读取 Git 和 SSH 设置。路径都以 `~` 显示；网页控制台只监听 127.0.0.1，并通过一次性链接访问。
+- **隐私：** GitPersona 从不打开、读取、列出或使用你的私钥，也从不打印或保存令牌。它只通过 `gh` 和 `ssh` 联网：`doctor`、`verify`、
+  setup 和配置页面用 `gh auth status` 检查已登录的账户（十分钟内最多一次，所有命令共用）；setup 时查询账户公开的名字和
+  邮箱；以及你运行 `check-ssh`、`verify --ssh` 时发起的 ssh 连接。除了这一结果，不加 `--ssh` 的 `verify` 只读取
+  Git 和 SSH 设置。路径都以 `~` 显示；网页控制台只监听 127.0.0.1，并通过一次性链接访问。
 - **你的文件：** 它只在全局 Git 配置中添加一个带标记的区块（会跟随符号链接的 `~/.gitconfig` 和 `GIT_CONFIG_GLOBAL`），
   改动前备份所有被修改的文件，并在 `~/.config/gitpersona/backups/` 中保留最新的 20 份备份，另外始终保留第一份备份，
   以及所有记录了被接管的 `includeIf` 规则的备份，这样 `gitpersona uninstall` 总能把这些规则放回去。
