@@ -196,6 +196,8 @@ export const zh = {
   "nav.setup": "配置 GitPersona",
   "nav.shells": "Shell",
   "overview.accounts": "账户及其目录",
+  "overview.checkAll": "检查全部 {n} 个",
+  "overview.limited": "概览自动检查了你 {total} 个仓库中的 {checked} 个。",
   "overview.lead": "一眼看清每个目录由谁提交、由谁推送。",
   "overview.manageAccounts": "管理账户",
   "overview.tools": "查询与体检",

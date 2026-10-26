@@ -53,6 +53,12 @@ type apiWorld struct {
 
 func newAPIWorld(t *testing.T) *apiWorld {
 	t.Helper()
+	return newAPIWorldWith(t, nil)
+}
+
+// newAPIWorldWith is newAPIWorld with the Env changed by adjust first.
+func newAPIWorldWith(t *testing.T, adjust func(*app.Env)) *apiWorld {
+	t.Helper()
 	root := t.TempDir()
 	home := filepath.Join(root, "home")
 	bin := filepath.Join(root, "bin")
@@ -86,6 +92,9 @@ func newAPIWorld(t *testing.T) *apiWorld {
 		Executable: filepath.Join(bin, "gitpersona"), Stdin: strings.NewReader(""),
 		Stdout: &bytes.Buffer{}, Stderr: &bytes.Buffer{},
 		Now: time.Now, LookPath: exec.LookPath, Run: provider.ExecRunner,
+	}
+	if adjust != nil {
+		adjust(&env)
 	}
 	ts := httptest.NewUnstartedServer(nil)
 	srv, err := New(ts.Listener.Addr().String(), Handlers{})

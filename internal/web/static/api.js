@@ -58,7 +58,8 @@ export const api = {
   setupApply: (plan) => request("POST", "/api/setup", plan),
   discover: (roots) => request("GET", "/api/discover" + (roots ? "?roots=" + encodeURIComponent(roots) : "")),
   resolve: (dir) => request("GET", "/api/resolve?dir=" + encodeURIComponent(dir)),
-  verify: (dirs, ssh) => request("POST", "/api/verify", { dirs, ssh }),
+  // auto is the overview's own check: capped, and reused while nothing changed.
+  verify: (dirs, ssh, auto = false) => request("POST", "/api/verify", { dirs, ssh, auto }),
   normalizePaths: (paths) => request("POST", "/api/paths", { paths }),
   addProfile: (profile) => request("POST", "/api/profiles", profile),
   updateProfile: (id, changes) => request("PATCH", "/api/profiles/" + encodeURIComponent(id), changes),

@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 )
 
 // failingWriter is an output that refuses every write.
@@ -284,5 +285,21 @@ func TestVerifyAndWhoamiReportWhenTheirOutputCannotBeWritten(t *testing.T) {
 	}
 	if err := Shells(context.Background(), env, true); err == nil {
 		t.Error("Shells with unwritable output succeeded")
+	}
+}
+
+func TestTheAutomaticCheckStopsAtItsLimit(t *testing.T) {
+	w := newWorld(t)
+	env, _ := w.env(t, w.home)
+	cache := &VerifyCache{TTL: time.Minute, Now: time.Now}
+
+	report, err := cache.Verify(context.Background(), env, nil, 1)
+
+	if err != nil || len(report.Repositories) != 1 || report.Total < 2 || !report.Limited {
+		t.Fatalf("Verify(limit 1) = %d checked of %d (limited %v), %v", len(report.Repositories), report.Total, report.Limited, err)
+	}
+	all, err := env.VerifyRepos(context.Background(), nil, false)
+	if err != nil || all.Limited || len(all.Repositories) != report.Total {
+		t.Fatalf("VerifyRepos() = %d of %d (limited %v), %v", len(all.Repositories), all.Total, all.Limited, err)
 	}
 }

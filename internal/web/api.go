@@ -56,38 +56,54 @@ type BackupView struct {
 // API returns the page's API routes, running commands with env; stop ends
 // the server when the page closes.
 func API(env app.Env, stop func()) map[string]http.HandlerFunc {
-	a := api{env: env, stop: stop}
+	a := api{env: env, stop: stop, verified: &app.VerifyCache{TTL: verifyCacheTTL, Now: time.Now}}
 	return map[string]http.HandlerFunc{
 		"GET /api/state":            a.handle(a.state),
 		"GET /api/preview":          a.handle(a.preview),
-		"POST /api/apply":           a.handle(a.apply),
+		"POST /api/apply":           a.handle(a.changes(a.apply)),
 		"GET /api/setup":            a.handle(a.proposeSetup),
 		"POST /api/setup/preview":   a.handle(a.previewSetup),
-		"POST /api/setup":           a.handle(a.setup),
+		"POST /api/setup":           a.handle(a.changes(a.setup)),
 		"GET /api/discover":         a.handle(a.discover),
 		"GET /api/resolve":          a.handle(a.resolve),
 		"POST /api/verify":          a.handle(a.verify),
 		"POST /api/paths":           a.handle(a.normalizePaths),
-		"POST /api/profiles":        a.handle(a.addProfile),
-		"PATCH /api/profiles/{id}":  a.handle(a.updateProfile),
-		"DELETE /api/profiles/{id}": a.handle(a.removeProfile),
-		"POST /api/default":         a.handle(a.setDefault),
-		"POST /api/dirs":            a.handle(a.addDir),
-		"DELETE /api/dirs":          a.handle(a.removeDir),
-		"POST /api/pins":            a.handle(a.addPin),
-		"DELETE /api/pins":          a.handle(a.removePin),
+		"POST /api/profiles":        a.handle(a.changes(a.addProfile)),
+		"PATCH /api/profiles/{id}":  a.handle(a.changes(a.updateProfile)),
+		"DELETE /api/profiles/{id}": a.handle(a.changes(a.removeProfile)),
+		"POST /api/default":         a.handle(a.changes(a.setDefault)),
+		"POST /api/dirs":            a.handle(a.changes(a.addDir)),
+		"DELETE /api/dirs":          a.handle(a.changes(a.removeDir)),
+		"POST /api/pins":            a.handle(a.changes(a.addPin)),
+		"DELETE /api/pins":          a.handle(a.changes(a.removePin)),
 		"GET /api/backups":          a.handle(a.backups),
-		"POST /api/rollback":        a.handle(a.rollback),
-		"POST /api/shells":          a.handle(a.installShells),
+		"POST /api/rollback":        a.handle(a.changes(a.rollback)),
+		"POST /api/shells":          a.handle(a.changes(a.installShells)),
 		"POST /api/shells/preview":  a.handle(a.previewShells),
-		"POST /api/old-rules":       a.handle(a.removeOldRules),
+		"POST /api/old-rules":       a.handle(a.changes(a.removeOldRules)),
 		"POST /api/close":           a.handle(a.close),
 	}
 }
 
+// verifyCacheTTL bounds how long the overview reuses a repository check;
+// gh's accounts, which the check also reads, can change without a file
+// changing (as long as gitpersona reuses gh's answers).
+const verifyCacheTTL = 10 * time.Minute
+
 type api struct {
 	env  app.Env
 	stop func()
+	// verified keeps the overview's automatic repository checks.
+	verified *app.VerifyCache
+}
+
+// changes marks a request that may change files: the kept repository
+// checks are dropped, whether it succeeded or not.
+func (a api) changes(h handlerFunc) handlerFunc {
+	return func(c call) (any, error) {
+		defer a.verified.Forget()
+		return h(c)
+	}
 }
 
 // call is one API request with its own output buffer.
@@ -440,11 +456,18 @@ func (a api) close(_ call) (any, error) {
 // maxVerifyFolders bounds the extra folders one check may scan.
 const maxVerifyFolders = 32
 
+// maxAutoVerify bounds the repositories the overview checks by itself;
+// the page offers to check the rest.
+const maxAutoVerify = 200
+
 // verifyRequest asks to check the repositories; SSH connects to each SSH
 // host as a push would, so it is a POST the page sends only when asked.
+// Auto is the overview's own check: at most maxAutoVerify repositories,
+// and the last answer is reused while nothing it read has changed.
 type verifyRequest struct {
 	Dirs []string `json:"dirs"`
 	SSH  bool     `json:"ssh"`
+	Auto bool     `json:"auto"`
 }
 
 func (a api) verify(c call) (any, error) {
@@ -460,6 +483,9 @@ func (a api) verify(c call) (any, error) {
 		if d = strings.TrimSpace(d); d != "" {
 			dirs = append(dirs, d)
 		}
+	}
+	if req.Auto && !req.SSH {
+		return a.verified.Verify(c.ctx, c.env, dirs, maxAutoVerify)
 	}
 	return c.env.VerifyRepos(c.ctx, dirs, req.SSH)
 }

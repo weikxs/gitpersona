@@ -75,6 +75,10 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 - Apply on the configuration page writes exactly the changes it showed: when the files changed after the preview (in
   another tab or on the command line), it refuses and shows the new changes to review. The page also reads the state
   again when its tab is shown, without asking gh about the accounts again.
+- Opening the overview again no longer checks every repository again: the server reuses the last check while no
+  repository's `.git/config`, global Git file or GitPersona file has changed (for up to ten minutes, and never after a
+  change made on the page). The overview checks at most 200 repositories by itself and offers a button to check all.
+  `verify --json` reports `total` (repositories found) and `limited`.
 
 ## [0.1.0] - 2026-10-24
 

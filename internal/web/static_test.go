@@ -241,3 +241,12 @@ func TestThePageRefreshesWhenItsTabIsShownAgain(t *testing.T) {
 		t.Errorf("refreshWhenVisible must reuse gh's recent answer:\n%s", body)
 	}
 }
+
+func TestTheOverviewAsksForTheCappedReusableCheck(t *testing.T) {
+	overview := staticFiles(t)["views/overview.js"]
+	for _, want := range []string{"api.verify([], false, auto)", "if (!verified) check(true);", "check(false)"} {
+		if !strings.Contains(overview, want) {
+			t.Errorf("overview.js should contain %q", want)
+		}
+	}
+}
