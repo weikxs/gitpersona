@@ -470,7 +470,8 @@ profile = "globex"
   `gitpersona verify` 会给出警告。`gitpersona check-ssh` 和 `gitpersona verify --ssh` 只在你运行时用每把密钥连接一次，
   报告主机欢迎语里的账户；除此之外不会有任何操作启动 ssh。
 - **Shell：** 默认 shell 从系统用户记录中读取（而不是 `$SHELL`，终端、IDE 和各种工具经常会改它），当前正在用的 shell
-  从进程树中判断，已安装的 shell 从 `/etc/shells` 读取。fish 使用 `conf.d` 中单独的文件；zsh 使用 `~/.zshenv`；bash 使用 `~/.bashrc`。
+  从进程树中判断，已安装的 shell 从 `/etc/shells` 读取。fish 使用 `conf.d` 中单独的文件；zsh 使用 `$ZDOTDIR`（未设置时为 `~`）中的 `.zshenv` 和
+  `.zshrc`；bash 使用 `~/.bashrc`。
   tide 中添加 `gitpersona` 项；Powerlevel10k 中添加 `gitpersona` 段；其他情况调用 `gitpersona_prompt`。
 - **隐私：** GitPersona 从不打开、读取、列出或使用你的私钥，也从不打印或保存令牌。它唯一的联网行为是 setup 时向 `gh`
   查询账户公开的名字和邮箱，以及你运行 `check-ssh`、`verify --ssh` 时发起的 ssh 连接。不加 `--ssh` 的 `verify`

@@ -497,8 +497,8 @@ Prompt and plugin-manager setups (tide, Powerlevel10k, Starship, fisher, oh-my-z
   report which account the host greets; nothing else ever starts ssh.
 - **Shells:** your default shell is read from the system user record (not `$SHELL`, which terminals, IDEs and
   tools often change), the shell you use right now from the process tree, and installed shells from `/etc/shells`.
-  fish gets its own file in `conf.d`; zsh uses `~/.zshenv`; bash uses `~/.bashrc`. In tide add the
-  `gitpersona` item; in Powerlevel10k add the `gitpersona` segment; elsewhere call `gitpersona_prompt`.
+  fish gets its own file in `conf.d`; zsh uses `.zshenv` and `.zshrc` in `$ZDOTDIR` (or `~`); bash uses `~/.bashrc`.
+  In tide add the `gitpersona` item; in Powerlevel10k add the `gitpersona` segment; elsewhere call `gitpersona_prompt`.
 - **Privacy:** GitPersona never opens, reads, lists or uses your private keys, and never prints or stores tokens.
   Its only network use is asking `gh` for your accounts' public names and emails during setup, and the ssh
   connections `check-ssh` and `verify --ssh` make when you run them. `verify` without `--ssh` reads only Git and SSH

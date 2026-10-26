@@ -282,6 +282,51 @@ func TestZshGetsZshrcTooBecausePathHelperRunsAfterZshenv(t *testing.T) {
 	}
 }
 
+func TestZshFilesFollowZDOTDIR(t *testing.T) {
+	w := newWorld(t)
+	zdot := filepath.Join(w.home, ".config", "zsh")
+	t.Setenv("ZDOTDIR", zdot)
+	env, _ := w.env(t, w.home)
+
+	if err := InstallShell(context.Background(), env, []shell.Kind{shell.Zsh}, false); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, f := range []string{".zshenv", ".zshrc"} {
+		if b, _ := os.ReadFile(filepath.Join(zdot, f)); !strings.Contains(string(b), "gitpersona init zsh") {
+			t.Errorf("$ZDOTDIR/%s should load the integration", f)
+		}
+		if _, err := os.Stat(filepath.Join(w.home, f)); err == nil {
+			t.Errorf("~/%s should not be created when ZDOTDIR is set", f)
+		}
+	}
+	if path, ok := env.integrated(shell.Zsh); !ok || filepath.Dir(path) != zdot {
+		t.Errorf("integrated(zsh) = %q, %v; want the file in $ZDOTDIR", path, ok)
+	}
+}
+
+func TestZshenvThatSetsZDOTDIRStaysInHome(t *testing.T) {
+	w := newWorld(t)
+	zdot := filepath.Join(w.home, ".config", "zsh")
+	// The usual way to move zsh's files: ~/.zshenv exports ZDOTDIR.
+	mustWrite(t, filepath.Join(w.home, ".zshenv"), "export ZDOTDIR=\"$HOME/.config/zsh\"\n", 0o644)
+	t.Setenv("ZDOTDIR", zdot)
+	env, _ := w.env(t, w.home)
+
+	if err := InstallShell(context.Background(), env, []shell.Kind{shell.Zsh}, false); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, path := range []string{filepath.Join(w.home, ".zshenv"), filepath.Join(zdot, ".zshrc")} {
+		if b, _ := os.ReadFile(path); !strings.Contains(string(b), "gitpersona init zsh") {
+			t.Errorf("%s should load the integration", path)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(zdot, ".zshenv")); err == nil {
+		t.Error("$ZDOTDIR/.zshenv should not be created: zsh read ~/.zshenv to find ZDOTDIR")
+	}
+}
+
 func TestIntegrationInstalledOtherwiseIsRecognized(t *testing.T) {
 	w := newWorld(t)
 	// fisher copies the plugin's conf.d file; zsh users follow docs/integrations.md.

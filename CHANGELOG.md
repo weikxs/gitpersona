@@ -56,6 +56,8 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 - The configuration page asks about your login shell (`dscl` or `getent`), the shell you are in (`ps`), the installed
   shells (`/etc/shells`) and Git's version once while it runs, instead of several times on every refresh; finding
   the current shell runs `ps` once per parent process instead of twice.
+- `install-shell` and the shell checks follow `$ZDOTDIR`: zsh's `.zshrc` (and `.zshenv`, unless `~/.zshenv` is the
+  file that sets `ZDOTDIR`) are written and looked for there, as `install.sh` already did, instead of in `~`.
 
 ## [0.1.0] - 2026-10-24
 
