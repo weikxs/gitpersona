@@ -12,13 +12,14 @@ import (
 )
 
 // filesUnder maps every file and link under the roots to its content or
-// link target; missing roots are skipped. Backups are left out.
+// link target; missing roots are skipped. Backups and the configuration
+// lock are left out.
 func filesUnder(t *testing.T, skip string, roots ...string) map[string]string {
 	t.Helper()
 	out := map[string]string{}
 	for _, root := range roots {
 		_ = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
-			if err != nil || path == skip {
+			if err != nil || path == skip || filepath.Base(path) == lockFile {
 				if d != nil && d.IsDir() {
 					return fs.SkipDir
 				}
