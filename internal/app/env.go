@@ -54,7 +54,14 @@ type Env struct {
 	InstalledShells func() []shell.Installed
 	// Exec replaces the process with another program (the real gh).
 	Exec func(path string, argv, env []string) error
+	// ForgetQueries drops the remembered answers of gh's account queries, so
+	// the next one asks the host again (nil: nothing is remembered).
+	ForgetQueries func()
 }
+
+// accountQueryTTL is how long the answers of gh's account queries, which
+// reach the host once per signed-in account, are reused (provider.CachingRunner).
+const accountQueryTTL = 10 * time.Minute
 
 // FromOS builds the Env of the running process.
 func FromOS(stdin io.Reader, stdout, stderr io.Writer) (Env, error) {
@@ -71,6 +78,7 @@ func FromOS(stdin io.Reader, stdout, stderr io.Writer) (Env, error) {
 		return Env{}, i18n.Errorf("find gitpersona executable: %w", err)
 	}
 	exe = stableExecutable(exe, exec.LookPath)
+	queries := &provider.CachingRunner{Next: provider.ExecRunner, TTL: accountQueryTTL, Now: time.Now}
 	return Env{
 		Home:            home,
 		ConfigDir:       configDir(home),
@@ -83,7 +91,8 @@ func FromOS(stdin io.Reader, stdout, stderr io.Writer) (Env, error) {
 		Stderr:          stderr,
 		Now:             time.Now,
 		LookPath:        exec.LookPath,
-		Run:             provider.ExecRunner,
+		Run:             queries.Run,
+		ForgetQueries:   queries.Forget,
 		LoginShell: func(ctx context.Context) shell.Detected {
 			name := ""
 			if u, err := user.Current(); err == nil {

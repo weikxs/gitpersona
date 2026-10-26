@@ -37,8 +37,11 @@ function currentView() {
   return state && !state.config_exists ? "setup" : DEFAULT_VIEW;
 }
 
-async function loadState() {
-  const { data } = await api.state();
+// loadState reads the page's state. Opening or reloading the page asks gh
+// about the accounts again (fresh); after a change the server reuses its
+// recent answer, so a run of changes does not query the host each time.
+async function loadState(fresh = false) {
+  const { data } = await api.state(fresh);
   state = data;
 }
 
@@ -174,7 +177,7 @@ async function start() {
     render({ focus: true });
   });
   try {
-    await loadState();
+    await loadState(true);
     render();
   } catch (err) {
     replace(document.getElementById("view"), h("div", { class: "notice fail", role: "alert" }, err.message));

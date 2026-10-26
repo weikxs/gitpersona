@@ -139,7 +139,14 @@ func (c call) at(dir string) (app.Env, error) {
 	return env, nil
 }
 
-func (a api) state(c call) (any, error)   { return app.State(c.ctx, c.env), nil }
+// state answers from the remembered gh account queries; ?fresh=1, sent when
+// the page is opened or reloaded, asks the host again.
+func (a api) state(c call) (any, error) {
+	if c.r.URL.Query().Get("fresh") == "1" && c.env.ForgetQueries != nil {
+		c.env.ForgetQueries()
+	}
+	return app.State(c.ctx, c.env), nil
+}
 func (a api) preview(c call) (any, error) { return app.Preview(c.ctx, c.env) }
 
 func (a api) apply(c call) (any, error) {

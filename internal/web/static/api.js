@@ -48,7 +48,8 @@ export async function request(method, path, body) {
 }
 
 export const api = {
-  state: () => request("GET", "/api/state"),
+  // fresh asks gh about the accounts again instead of reusing its last answer.
+  state: (fresh = false) => request("GET", fresh ? "/api/state?fresh=1" : "/api/state"),
   preview: () => request("GET", "/api/preview"),
   apply: (yes) => request("POST", "/api/apply", { yes }),
   proposeSetup: () => request("GET", "/api/setup"),
