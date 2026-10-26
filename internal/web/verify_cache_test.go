@@ -2,8 +2,10 @@ package web
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -62,5 +64,23 @@ func TestTheOverviewReusesItsCheckWhileNothingChanged(t *testing.T) {
 	check()
 	if gits.Load() == before {
 		t.Error("after a change on the page the overview should check again")
+	}
+}
+
+func TestDiscoverSaysWhenGhCannotListTheAccounts(t *testing.T) {
+	w := newAPIWorldWith(t, func(e *app.Env) {
+		e.Run = func(ctx context.Context, name string, args ...string) ([]byte, error) {
+			if filepath.Base(name) == "gh" {
+				return nil, errors.New("exit status 1")
+			}
+			return provider.ExecRunner(ctx, name, args...)
+		}
+	})
+
+	var report DiscoverReport
+	decode(t, w.call(t, "GET", "/api/discover?roots=~/Projects", nil), &report)
+
+	if !strings.Contains(report.AccountsError, "gh auth status") {
+		t.Fatalf("accounts_error = %q, want why the accounts are missing", report.AccountsError)
 	}
 }

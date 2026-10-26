@@ -83,6 +83,10 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
   keeps it running.
 - `gitpersona ui` waits for the program that opens the browser, so it no longer stays behind as a zombie process
   while the page runs.
+- The glab entry waits at most 15 seconds for `git credential fill`. Setup's folder scan on the page says when gh
+  could not list the signed-in accounts instead of silently matching no folder to them. `whoami` (and `verify`) say
+  when Git could not read a repository's settings instead of showing no author. The README's steps to remove
+  everything name the PATH lines `install.sh` adds.
 
 ## [0.1.0] - 2026-10-24
 

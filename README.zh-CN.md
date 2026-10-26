@@ -486,8 +486,12 @@ profile = "globex"
   所以一次回滚会撤销整个操作。
 - `gitpersona uninstall` 从你的 Git 配置中移除 GitPersona 的区块，并把 setup 接管的 `includeIf` 规则原样放回。
   `config.toml` 会保留，运行 `gitpersona apply` 即可恢复一切。
-- 要彻底删除：运行 `gitpersona uninstall`，从 shell 启动文件（`~/.zshenv`、`~/.bashrc` 或
-  `~/.config/fish/conf.d/gitpersona.fish`）中删除 GitPersona 的那几行，然后删除 `~/.config/gitpersona` 和程序本身。
+- 要彻底删除：运行 `gitpersona uninstall`（它也会删掉 `install-shell` 加的 shell 设置），然后删掉 `install.sh`
+  为了把程序加入 PATH 而加的两行：`# Added by the GitPersona installer` 这一行和它后面的 `export PATH=…` 行，位于
+  `.zshrc`（在 `$ZDOTDIR` 或 `~` 中）、`~/.bashrc`（Linux）、`~/.bash_profile`（macOS）或 `~/.profile` 中；fish 则删除
+  `~/.config/fish/conf.d/gitpersona-path.fish`。如果你是手动或用 fisher 设置的 shell，也要删掉那些行或
+  `~/.config/fish/conf.d/gitpersona.fish`。最后删除 `~/.config/gitpersona` 和程序本身（用 `install.sh` 安装的在
+  `~/.local/bin/gitpersona`）。
 
 ## 故障排查
 

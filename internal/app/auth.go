@@ -129,6 +129,10 @@ func (e Env) checkAuthProfile(p config.Profile) error {
 // profileToken asks the user's credential store for a profile's token, the
 // way Git does, without any prompt. The token is for one process only.
 func (e Env) profileToken(ctx context.Context, p config.Profile) (string, error) {
+	// A credential helper that waits for something (a locked keychain, a
+	// prompt it should not show) must not hang glab forever.
+	ctx, cancel := context.WithTimeout(ctx, credentialTimeout)
+	defer cancel()
 	out, err := e.runInput()(ctx, credentialRequest(p, ""), noPrompt, "git", "-C", e.Home, "credential", "fill")
 	if err != nil {
 		return "", errors.New("no token") // never repeat the helper's output: it may hold a secret

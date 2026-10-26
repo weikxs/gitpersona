@@ -36,6 +36,9 @@ type WhoamiReport struct {
 	EnvOverride string `json:"env_override,omitempty"`
 	// LocalEmail is a repository-local user.email, which also overrides profiles.
 	LocalEmail string `json:"local_email,omitempty"`
+	// ConfigError says why Git's settings here could not be read (a broken
+	// .git/config, say); the author is then unknown.
+	ConfigError string `json:"config_error,omitempty"`
 	// NewRepositories, outside a repository, is the profile that repositories
 	// created or cloned here will use.
 	NewRepositories *NewRepositories `json:"new_repositories,omitempty"`
@@ -107,7 +110,11 @@ func (e Env) whoamiRepo(ctx context.Context, cfg config.Config) (WhoamiReport, r
 	var r resolve.Result
 	report := WhoamiReport{InRepository: inRepo}
 	if inRepo {
-		state.config, _ = e.readRepoConfig(ctx, root)
+		repoCfg, err := e.readRepoConfig(ctx, root)
+		state.config = repoCfg
+		if err != nil {
+			report.ConfigError = err.Error()
+		}
 		report.Path = paths.ResolveSymlinks(root)
 		r = resolve.GitDir(cfg, paths.ResolveSymlinks(gitDir), opts)
 		report.EffectiveEmail = state.config.get("user.email")
@@ -139,7 +146,8 @@ func (e Env) whoamiRepo(ctx context.Context, cfg config.Config) (WhoamiReport, r
 			break
 		}
 	}
-	report.Consistent = report.EnvOverride == "" && (!inRepo || !r.Found || report.EffectiveEmail == report.Email)
+	report.Consistent = report.EnvOverride == "" && report.ConfigError == "" &&
+		(!inRepo || !r.Found || report.EffectiveEmail == report.Email)
 	return report, state
 }
 
@@ -171,6 +179,8 @@ func (e Env) gitDirAndRoot(ctx context.Context, dir string) (gitDir, root string
 // mismatchAdvice explains why Git does not use the profile and how to fix it.
 func (e Env) mismatchAdvice(r WhoamiReport) string {
 	switch {
+	case r.ConfigError != "":
+		return e.tr("Git could not read its settings here (%s); run `git config --list` here to see why", r.ConfigError)
 	case r.EnvOverride != "":
 		return e.tr("the environment variable %s overrides the profile; unset it (for example in your direnv or shell setup)", r.EnvOverride)
 	case r.LocalEmail != "":
@@ -212,7 +222,11 @@ func printProfile(e Env, r WhoamiReport) {
 	if env := os.Getenv("GIT_AUTHOR_EMAIL"); env != "" {
 		email, source = env, e.tr(" (from GIT_AUTHOR_EMAIL)") // set for every commit, whatever the configuration says
 	}
-	fmt.Fprintln(e.Stdout, e.tr("  author  %s <%s>%s", name, email, source))
+	if r.ConfigError != "" {
+		fmt.Fprintln(e.Stdout, e.tr("  author  unknown: Git could not read its settings here"))
+	} else {
+		fmt.Fprintln(e.Stdout, e.tr("  author  %s <%s>%s", name, email, source))
+	}
 	fmt.Fprintln(e.Stdout, e.tr("  reason  %s", e.reasonWithMatch(r.Reason, r.Match)))
 	fmt.Fprintln(e.Stdout, e.tr("  path    %s", e.display(r.Path)))
 	if !r.Consistent {

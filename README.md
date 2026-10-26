@@ -514,9 +514,12 @@ Prompt and plugin-manager setups (tide, Powerlevel10k, Starship, fisher, oh-my-z
   changes are one backup, so a rollback undoes the whole operation.
 - `gitpersona uninstall` removes GitPersona's block from your Git configuration and puts back the `includeIf`
   rules setup took over, exactly as they were. `config.toml` stays, so `gitpersona apply` brings everything back.
-- To remove everything, run `gitpersona uninstall`, remove the GitPersona lines from your shell startup file
-  (`~/.zshenv`, `~/.bashrc`, or `~/.config/fish/conf.d/gitpersona.fish`), then delete `~/.config/gitpersona` and the
-  binary.
+- To remove everything, run `gitpersona uninstall` (it also takes out the shell lines `install-shell` added), then
+  remove the two lines `install.sh` added to put the binary on your PATH: the line `# Added by the GitPersona
+  installer` and the `export PATH=…` line after it, in `.zshrc` (in `$ZDOTDIR` or `~`), `~/.bashrc` (Linux),
+  `~/.bash_profile` (macOS) or `~/.profile`; for fish, delete `~/.config/fish/conf.d/gitpersona-path.fish`. If you set
+  up the shell by hand or with fisher, remove those lines or `~/.config/fish/conf.d/gitpersona.fish` too. Then delete
+  `~/.config/gitpersona` and the binary (`~/.local/bin/gitpersona` with `install.sh`).
 
 ## Troubleshooting
 

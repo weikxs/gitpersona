@@ -297,7 +297,8 @@ function scanCard(body, run) {
       const { data } = await api.discover(roots.value.trim());
       const { profiles, unassigned } = withSuggestions(data.suggestions);
       update({ roots: roots.value.trim(), scanned: true, profiles, unassigned }, body, run);
-      status(data.missing.length > 0 ? "warn" : "ok", scanSummary(data));
+      const summary = [scanSummary(data), data.accounts_error].filter(Boolean).join(" ");
+      status(data.missing.length > 0 || data.accounts_error ? "warn" : "ok", summary);
     } catch (err) {
       status("fail", err.message);
     }

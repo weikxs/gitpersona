@@ -43,6 +43,9 @@ type DiscoverReport struct {
 	Missing     []string              `json:"missing"` // chosen folders that do not exist
 	Existing    []discover.Identity   `json:"existing"`
 	Suggestions []discover.Suggestion `json:"suggestions"`
+	// AccountsError says why gh could not tell the signed-in accounts, so
+	// suggestions could not be matched to them.
+	AccountsError string `json:"accounts_error,omitempty"`
 }
 
 // BackupView is one backup on the page.
@@ -230,7 +233,11 @@ func (a api) discover(c call) (any, error) {
 	}
 	var logins []string
 	if gh, err := c.env.GHPath(); err == nil {
-		accounts, _ := provider.GitHub{GH: gh, Run: c.env.Run}.Accounts(c.ctx, config.DefaultGitHubHost)
+		accounts, err := provider.GitHub{GH: gh, Run: c.env.Run}.Accounts(c.ctx, config.DefaultGitHubHost)
+		if err != nil {
+			report.AccountsError = c.env.WithTilde(i18n.T(c.env.Lang,
+				"gh could not list the signed-in accounts (%v), so folders are not matched to them; run `gh auth status`", err))
+		}
 		for _, acc := range accounts {
 			logins = append(logins, acc.Login)
 		}
