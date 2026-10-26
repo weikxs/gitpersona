@@ -118,7 +118,7 @@ func TestCachingRunnerNeverRemembersTokensOrOtherCommands(t *testing.T) {
 	}
 }
 
-func TestCachingRunnerRemembersFailuresButNotCancellations(t *testing.T) {
+func TestCachingRunnerNeverRemembersFailuresOrCancellations(t *testing.T) {
 	next, now := &countingRunner{err: errors.New("exit status 1")}, &clock{now: time.Unix(0, 0)}
 	cache := newCache(next.run, now)
 
@@ -127,8 +127,10 @@ func TestCachingRunnerRemembersFailuresButNotCancellations(t *testing.T) {
 			t.Fatal("Run() succeeded, want the failure")
 		}
 	}
-	if got := next.count("/usr/bin/gh", statusArgs...); got != 1 {
-		t.Fatalf("a failing gh auth status ran %d times, want 1", got)
+	// A failure (gh signed out for a moment, no network) must not stick for
+	// the whole TTL: the next question asks again.
+	if got := next.count("/usr/bin/gh", statusArgs...); got != 3 {
+		t.Fatalf("a failing gh auth status ran %d times, want 3", got)
 	}
 
 	cancelled, cancel := context.WithCancel(context.Background())
@@ -138,6 +140,24 @@ func TestCachingRunnerRemembersFailuresButNotCancellations(t *testing.T) {
 	_, _ = cache.Run(context.Background(), "/usr/bin/gh", other...)
 	if got := next.count("/usr/bin/gh", other...); got != 2 {
 		t.Fatalf("after a cancelled call gh auth status ran %d times, want 2", got)
+	}
+}
+
+func TestCachingRunnerRemembersASuccessAfterAFailure(t *testing.T) {
+	next, now := &countingRunner{err: errors.New("exit status 1")}, &clock{now: time.Unix(0, 0)}
+	cache := newCache(next.run, now)
+	_, _ = cache.Run(context.Background(), "/usr/bin/gh", statusArgs...)
+
+	next.mu.Lock()
+	next.err = nil
+	next.mu.Unlock()
+	for range 2 {
+		if out, err := cache.Run(context.Background(), "/usr/bin/gh", statusArgs...); err != nil || string(out) != "answer" {
+			t.Fatalf("Run() = %q, %v", out, err)
+		}
+	}
+	if got := next.count("/usr/bin/gh", statusArgs...); got != 2 {
+		t.Fatalf("gh auth status ran %d times, want 2 (the failure, then one success)", got)
 	}
 }
 

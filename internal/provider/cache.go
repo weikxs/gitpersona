@@ -15,7 +15,7 @@ import (
 // doctor check and every repository would send a burst of requests from each
 // account in turn, which a host can read as automated activity. Every other
 // command runs each time; tokens (`gh auth token`, read from the local
-// keyring) are never kept.
+// keyring) are never kept, and neither are failures.
 type CachingRunner struct {
 	Next Runner
 	TTL  time.Duration
@@ -54,8 +54,10 @@ func (c *CachingRunner) Run(ctx context.Context, name string, args ...string) ([
 
 	e.out, e.err = c.Next(ctx, name, args...)
 	e.at = c.Now()
-	if ctx.Err() != nil {
-		// A cancelled or timed-out call says nothing about the account.
+	if e.err != nil || ctx.Err() != nil {
+		// A failure (gh signed out for a moment, no network) or a cancelled
+		// call says nothing lasting about the account: the next caller asks
+		// again. Callers already waiting share this answer.
 		c.mu.Lock()
 		if c.entries[key] == e {
 			delete(c.entries, key)

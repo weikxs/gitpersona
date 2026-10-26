@@ -49,6 +49,11 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
   of a list of commits with their hashes and author emails; a release stops when it is missing or unfinished.
   `scripts/release-notes.sh` drafts one from this changelog.
 
+### Fixed
+
+- A failed `gh auth status` (gh signed out for a moment, no network) is no longer remembered for ten minutes: the
+  next check asks gh again. Successful answers are still reused.
+
 ## [0.1.0] - 2026-10-24
 
 The first release: macOS (Apple silicon and Intel) and Linux (x86_64 and arm64).
