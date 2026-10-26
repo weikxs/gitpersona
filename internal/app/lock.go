@@ -47,7 +47,8 @@ func (e Env) lockConfig() (Env, func(), error) {
 		if err == nil {
 			break
 		}
-		if !errors.Is(err, syscall.EWOULDBLOCK) && !errors.Is(err, syscall.EINTR) || !time.Now().Before(deadline) {
+		retry := errors.Is(err, syscall.EWOULDBLOCK) || errors.Is(err, syscall.EINTR)
+		if !retry || !time.Now().Before(deadline) {
 			_ = f.Close()
 			if errors.Is(err, syscall.EWOULDBLOCK) {
 				return e, nil, e.trErr("another gitpersona command (or the configuration page) is changing the configuration; "+
