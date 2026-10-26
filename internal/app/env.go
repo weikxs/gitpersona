@@ -57,6 +57,10 @@ type Env struct {
 	// ForgetQueries drops the remembered answers of gh's account queries, so
 	// the next one asks the host again (nil: nothing is remembered).
 	ForgetQueries func()
+
+	// probes holds answers about the system kept for the whole process
+	// (nil: ask each time).
+	probes *probes
 }
 
 // accountQueryTTL is how long the answers of gh's account queries, which
@@ -79,7 +83,7 @@ func FromOS(stdin io.Reader, stdout, stderr io.Writer) (Env, error) {
 	}
 	exe = stableExecutable(exe, exec.LookPath)
 	queries := &provider.CachingRunner{Next: provider.ExecRunner, TTL: accountQueryTTL, Now: time.Now}
-	return Env{
+	env := Env{
 		Home:            home,
 		ConfigDir:       configDir(home),
 		WorkDir:         wd,
@@ -93,22 +97,23 @@ func FromOS(stdin io.Reader, stdout, stderr io.Writer) (Env, error) {
 		LookPath:        exec.LookPath,
 		Run:             queries.Run,
 		ForgetQueries:   queries.Forget,
-		LoginShell: func(ctx context.Context) shell.Detected {
-			name := ""
+		Exec:            syscall.Exec,
+	}
+	return env.withProbes(systemFacts{
+		goos: runtime.GOOS,
+		username: func() string {
 			if u, err := user.Current(); err == nil {
-				name = u.Username
+				return u.Username
 			}
-			return shell.LoginShell(ctx, runtime.GOOS, name, shell.Runner(provider.ExecRunner), os.Getenv)
+			return ""
 		},
-		CurrentShell: func(ctx context.Context) shell.Detected {
-			return shell.CurrentShell(ctx, os.Getpid(), shell.Runner(provider.ExecRunner))
-		},
-		Exec: syscall.Exec,
-		InstalledShells: func() []shell.Installed {
+		getenv: os.Getenv,
+		etcShells: func() string {
 			etc, _ := os.ReadFile("/etc/shells")
-			return shell.InstalledShells(string(etc), func(p string) bool { _, err := os.Stat(p); return err == nil })
+			return string(etc)
 		},
-	}, nil
+		pid: os.Getpid(),
+	}), nil
 }
 
 // stableExecutable returns the path Git should use to run gitpersona as a

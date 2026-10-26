@@ -53,6 +53,9 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 - A failed `gh auth status` (gh signed out for a moment, no network) is no longer remembered for ten minutes: the
   next check asks gh again. Successful answers are still reused.
+- The configuration page asks about your login shell (`dscl` or `getent`), the shell you are in (`ps`), the installed
+  shells (`/etc/shells`) and Git's version once while it runs, instead of several times on every refresh; finding
+  the current shell runs `ps` once per parent process instead of twice.
 
 ## [0.1.0] - 2026-10-24
 

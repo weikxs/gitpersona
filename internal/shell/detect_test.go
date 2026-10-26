@@ -97,6 +97,33 @@ func TestCurrentShellWalksUpTheProcessTree(t *testing.T) {
 	}
 }
 
+func TestCurrentShellAsksAboutEachProcessOnce(t *testing.T) {
+	// gitpersona (600) <- make (500) <- env (400) <- -zsh (300) <- launchd (1)
+	tree := map[string][2]string{
+		"600": {"500", "/usr/local/bin/gitpersona"},
+		"500": {"400", "/usr/bin/make"},
+		"400": {"300", "/usr/bin/env"},
+		"300": {"1", "-zsh"},
+	}
+	asked := map[string]int{}
+	ps := psRunner(tree)
+	counting := func(ctx context.Context, name string, args ...string) ([]byte, error) {
+		asked[args[len(args)-1]]++
+		return ps(ctx, name, args...)
+	}
+
+	got := CurrentShell(context.Background(), 600, counting)
+
+	if got.Kind != Zsh {
+		t.Fatalf("CurrentShell() = %+v, want zsh", got)
+	}
+	for pid, n := range asked {
+		if n != 1 {
+			t.Errorf("ps asked about process %s %d times, want once", pid, n)
+		}
+	}
+}
+
 func TestCurrentShellUnknownWhenNoShellAncestor(t *testing.T) {
 	tree := map[string][2]string{"400": {"1", "/usr/bin/make"}, "1": {"0", "/sbin/launchd"}}
 
