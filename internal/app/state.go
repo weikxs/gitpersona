@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/weikxs/gitpersona/internal/config"
 	"github.com/weikxs/gitpersona/internal/provider"
@@ -45,15 +46,19 @@ type ProfileView struct {
 	Dirs     []string       `json:"dirs"`
 }
 
-// State gathers the page's state.
+// State gathers the page's state. The shells, the doctor's checks and gh's
+// accounts are asked for at the same time: each starts its own processes.
 func State(ctx context.Context, e Env) StateReport {
 	report := StateReport{
 		ConfigPath: e.display(e.configFile()),
 		Config:     ConfigView{Profiles: []ProfileView{}, Pins: []ListedPin{}},
 		Accounts:   []provider.Account{},
-		Shells:     e.shellsReport(ctx),
-		Doctor:     e.tildeReport(doctorReport(e.runChecks(ctx))),
 	}
+	var wg sync.WaitGroup
+	wg.Go(func() { report.Shells = e.shellsReport(ctx) })
+	wg.Go(func() { report.Doctor = e.tildeReport(doctorReport(e.runChecks(ctx))) })
+	wg.Go(func() { report.Accounts, report.AccountsError = e.stateAccounts(ctx) })
+	wg.Wait()
 	cfg, err := config.Load(e.configFile())
 	switch {
 	case errors.Is(err, config.ErrNotFound):
@@ -66,17 +71,25 @@ func State(ctx context.Context, e Env) StateReport {
 			report.ConfigError = e.withTilde(verr.Error())
 		}
 	}
-	if gh, err := e.LookPath("gh"); err == nil {
-		accounts, err := provider.GitHub{GH: gh, Run: e.Run}.Accounts(ctx, config.DefaultGitHubHost)
-		if err != nil {
-			report.AccountsError = err.Error()
-		} else if accounts != nil {
-			report.Accounts = accounts
-		}
-	} else {
-		report.AccountsError = e.tr("the GitHub CLI (gh) is not installed")
-	}
 	return report
+}
+
+// stateAccounts lists the accounts gh holds on github.com, or why it cannot.
+func (e Env) stateAccounts(ctx context.Context) ([]provider.Account, string) {
+	gh, err := e.LookPath("gh")
+	if err != nil {
+		return []provider.Account{}, e.tr("the GitHub CLI (gh) is not installed")
+	}
+	ctx, cancel := context.WithTimeout(ctx, statusCheckTimeout)
+	defer cancel()
+	accounts, err := provider.GitHub{GH: gh, Run: e.Run}.Accounts(ctx, config.DefaultGitHubHost)
+	if err != nil {
+		return []provider.Account{}, err.Error()
+	}
+	if accounts == nil {
+		accounts = []provider.Account{}
+	}
+	return accounts, ""
 }
 
 func configView(cfg config.Config) ConfigView {

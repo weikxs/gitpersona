@@ -287,10 +287,10 @@ func TestGlobalSettingsAreReadThroughDotfileIncludesButNotGitPersonasOwn(t *test
 		t.Fatal(err)
 	}
 
-	got, err := env.gitConfigAll(context.Background(), "core.sshCommand")
+	settings, err := env.globalSettings(context.Background())
 
-	if err != nil || len(got) != 1 || got[0] != "ssh -o Demo=yes" {
-		t.Errorf("gitConfigAll() = %v, %v; want only the dotfile's value, none from GitPersona's profiles", got, err)
+	if got := settings[normalKey("core.sshCommand")]; err != nil || len(got) != 1 || got[0] != "ssh -o Demo=yes" {
+		t.Errorf("globalSettings() core.sshCommand = %v, %v; want only the dotfile's value, none from GitPersona's profiles", got, err)
 	}
 }
 

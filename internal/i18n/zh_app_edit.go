@@ -61,9 +61,9 @@ func init() {
 		"could not find the real %s on PATH (outside %s)": "在 PATH 中找不到真正的 %s（%s 之外）",
 
 		// env.go
-		"find current directory: %w":             "无法确定当前目录：%w",
-		"find gitpersona executable: %w":         "无法找到 gitpersona 可执行文件：%w",
-		"read global Git setting %s from %s: %w": "读取全局 Git 设置 %s（来自 %s）失败：%w",
-		"read Git settings %s (%s): %w":          "读取 Git 设置 %s（%s）失败：%w",
+		"find current directory: %w":           "无法确定当前目录：%w",
+		"find gitpersona executable: %w":       "无法找到 gitpersona 可执行文件：%w",
+		"read global Git settings from %s: %w": "读取全局 Git 设置（来自 %s）失败：%w",
+		"read Git settings %s (%s): %w":        "读取 Git 设置 %s（%s）失败：%w",
 	})
 }

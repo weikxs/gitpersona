@@ -180,7 +180,7 @@ func (e Env) checkRepo(ctx context.Context, vc verifyContext, dir string) RepoCh
 	}
 	here := e
 	here.WorkDir = norm
-	who := here.whoami(ctx, vc.cfg)
+	who, repo := here.whoamiRepo(ctx, vc.cfg)
 	check := RepoCheck{Path: e.display(norm), Profile: who.Profile, Account: who.Account, Reason: who.Reason,
 		Match: who.Match, Author: authorOrEmpty(who.EffectiveName, who.EffectiveEmail), AuthorSource: who.EmailSource,
 		Remotes: []RemoteCheck{}, Findings: []CheckFinding{}}
@@ -193,7 +193,7 @@ func (e Env) checkRepo(ctx context.Context, vc verifyContext, dir string) RepoCh
 		}
 	}
 	for _, remote := range e.remotesOf(ctx, norm) {
-		rc := e.checkRemote(ctx, vc, norm, remote)
+		rc := e.checkRemote(ctx, vc, norm, repo, remote)
 		check.Remotes = append(check.Remotes, rc)
 		if who.Found {
 			check.judgePush(e, vc, profile, rc)

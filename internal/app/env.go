@@ -162,28 +162,38 @@ func (e Env) git(ctx context.Context, dir string, args ...string) (string, error
 // gitConfigMissing is the exit status of `git config --get` for an absent key.
 const gitConfigMissing = 1
 
-// gitConfigAll returns every value of a global Git setting, or nil when the
-// setting is absent: the user's own, from the global files and the files
-// they include (such as dotfiles), never from GitPersona's. Any other
-// failure (for example a broken configuration file) is an error, so callers
-// never act on a silently empty answer.
-func (e Env) gitConfigAll(ctx context.Context, key string) ([]string, error) {
-	var values []string
+// globalSettings reads the user's own global Git settings: the global files
+// and the files they include (such as dotfiles), never GitPersona's, with
+// one git process per file. It maps each key (as normalKey writes it) to its
+// values in the order Git reads them. Any failure (for example a broken
+// configuration file) is an error, so callers never act on a silently
+// empty answer.
+func (e Env) globalSettings(ctx context.Context) (map[string][]string, error) {
+	settings := map[string][]string{}
 	for _, file := range e.globalFiles() {
 		if _, err := os.Stat(file); err != nil {
 			continue
 		}
-		out, err := e.git(ctx, e.Home, "config", "--file", file, "--get-all", key)
-		var exit *exec.ExitError
-		switch {
-		case errors.As(err, &exit) && exit.ExitCode() == gitConfigMissing:
-		case err != nil:
-			return nil, e.trErr("read global Git setting %s from %s: %w", key, e.display(file), err)
-		case out != "":
-			values = append(values, strings.Split(out, "\n")...)
+		out, err := e.Run(ctx, "git", "-C", e.Home, "config", "--file", file, "--list", "-z")
+		if err != nil {
+			return nil, e.trErr("read global Git settings from %s: %w", e.display(file), err)
+		}
+		for _, entry := range strings.Split(string(out), "\x00") {
+			if key, value, _ := strings.Cut(entry, "\n"); key != "" {
+				settings[normalKey(key)] = append(settings[normalKey(key)], value)
+			}
 		}
 	}
-	return values, nil
+	return settings, nil
+}
+
+// lastSetting returns the value Git uses for key among settings, or "".
+func lastSetting(settings map[string][]string, key string) string {
+	values := settings[normalKey(key)]
+	if len(values) == 0 {
+		return ""
+	}
+	return values[len(values)-1]
 }
 
 // gitConfigRegexp returns the global settings whose names match pattern,

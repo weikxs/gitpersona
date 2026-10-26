@@ -84,24 +84,37 @@ func WhoamiWith(ctx context.Context, e Env, opts WhoamiOptions) error {
 }
 
 func (e Env) whoami(ctx context.Context, cfg config.Config) WhoamiReport {
+	report, _ := e.whoamiRepo(ctx, cfg)
+	return report
+}
+
+// repoState is what one rev-parse and one config dump tell about the
+// directory whoami ran in; verify reuses it for the remotes.
+type repoState struct {
+	root, gitDir string
+	config       repoConfig
+}
+
+// whoamiRepo builds the whoami report with two git processes: rev-parse for
+// the Git directory and the work tree, and one dump of every setting.
+func (e Env) whoamiRepo(ctx context.Context, cfg config.Config) (WhoamiReport, repoState) {
 	opts := resolve.Options{Home: e.Home, CaseInsensitive: e.CaseInsensitive, Canonicalize: paths.ResolveSymlinks}
 	// Bare repositories and the inside of .git have a Git directory but no
 	// work tree, so the Git directory decides whether we are in a repository.
-	gitDir, err := e.git(ctx, e.WorkDir, "rev-parse", "--absolute-git-dir")
-	inRepo := err == nil && gitDir != ""
-	root, hasWorkTree := e.repoRoot(ctx, e.WorkDir)
-	if !hasWorkTree {
-		root = gitDir
-	}
+	gitDir, root, inRepo := e.gitDirAndRoot(ctx, e.WorkDir)
+	state := repoState{root: root, gitDir: gitDir}
 
 	var r resolve.Result
 	report := WhoamiReport{InRepository: inRepo}
 	if inRepo {
+		state.config, _ = e.readRepoConfig(ctx, root)
 		report.Path = paths.ResolveSymlinks(root)
 		r = resolve.GitDir(cfg, paths.ResolveSymlinks(gitDir), opts)
-		report.EffectiveEmail, _ = e.git(ctx, root, "config", "user.email")
-		report.EffectiveName, _ = e.git(ctx, root, "config", "user.name")
-		report.EmailSource = e.emailSource(ctx, root)
+		report.EffectiveEmail = state.config.get("user.email")
+		report.EffectiveName = state.config.get("user.name")
+		if file := state.config.originFile("user.email", root); file != "" {
+			report.EmailSource = e.display(file)
+		}
 	} else {
 		report.Path = paths.ResolveSymlinks(e.WorkDir)
 		r = resolve.OutsideRepository(cfg)
@@ -118,7 +131,7 @@ func (e Env) whoami(ctx context.Context, cfg config.Config) WhoamiReport {
 		report.Name, report.Email = p.Name, p.Email
 	}
 	if inRepo {
-		report.LocalEmail, _ = e.git(ctx, root, "config", "--local", "user.email")
+		report.LocalEmail = state.config.getLocal("user.email", root, gitDir)
 	}
 	for _, name := range []string{"GIT_AUTHOR_EMAIL", "GIT_COMMITTER_EMAIL"} {
 		if v := os.Getenv(name); v != "" && v != report.Email {
@@ -127,30 +140,32 @@ func (e Env) whoami(ctx context.Context, cfg config.Config) WhoamiReport {
 		}
 	}
 	report.Consistent = report.EnvOverride == "" && (!inRepo || !r.Found || report.EffectiveEmail == report.Email)
-	return report
+	return report, state
 }
 
-// emailOrigin returns the absolute path of the file Git reads user.email
-// from in the repository at root, or "".
-func (e Env) emailOrigin(ctx context.Context, root string) string {
-	out, err := e.git(ctx, root, "config", "--show-origin", "--get", "user.email")
-	origin, _, ok := strings.Cut(out, "\t")
-	file, isFile := strings.CutPrefix(origin, "file:")
-	if err != nil || !ok || !isFile {
-		return ""
+// gitDirAndRoot asks Git once for dir's Git directory and work tree. root is
+// the top of the work tree, or the Git directory itself in a bare repository
+// or inside .git; inRepo is false outside any repository.
+func (e Env) gitDirAndRoot(ctx context.Context, dir string) (gitDir, root string, inRepo bool) {
+	out, err := e.Run(ctx, "git", "-C", dir, "rev-parse", "--absolute-git-dir", "--is-inside-work-tree", "--show-cdup")
+	if err != nil {
+		return "", "", false
 	}
-	if !filepath.IsAbs(file) {
-		file = filepath.Join(root, file)
+	lines := strings.Split(strings.TrimRight(string(out), "\n"), "\n")
+	gitDir = strings.TrimSpace(lines[0])
+	if gitDir == "" {
+		return "", "", false
 	}
-	return file
-}
-
-// emailSource is emailOrigin written with ~.
-func (e Env) emailSource(ctx context.Context, root string) string {
-	if file := e.emailOrigin(ctx, root); file != "" {
-		return e.display(file)
+	if len(lines) < 2 || strings.TrimSpace(lines[1]) != "true" {
+		return gitDir, gitDir, true
 	}
-	return ""
+	cdup := ""
+	if len(lines) > 2 {
+		cdup = strings.TrimSpace(lines[2])
+	}
+	// Git counts the way up from the real directory, so the symbolic links
+	// in dir are resolved before walking up.
+	return gitDir, filepath.Clean(filepath.Join(paths.ResolveSymlinks(dir), cdup)), true
 }
 
 // mismatchAdvice explains why Git does not use the profile and how to fix it.

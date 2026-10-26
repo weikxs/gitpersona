@@ -125,10 +125,16 @@ func (e Env) realGH() (string, error) {
 // realTool finds a program on PATH, skipping the shim directory and
 // anything that is gitpersona itself.
 func (e Env) realTool(name string) (string, error) {
-	shim := paths.ResolveSymlinks(e.shimDir())
+	// One stat per PATH entry finds the shim directory, however it is
+	// written; resolving each entry's symbolic links would cost one lstat
+	// per path component on every gh command.
+	shim, shimErr := os.Stat(e.shimDir())
 	self, selfErr := os.Stat(e.Executable)
 	for _, dir := range filepath.SplitList(os.Getenv("PATH")) {
-		if dir == "" || paths.ResolveSymlinks(dir) == shim {
+		if dir == "" {
+			continue
+		}
+		if info, err := os.Stat(dir); err != nil || (shimErr == nil && os.SameFile(info, shim)) {
 			continue
 		}
 		candidate := filepath.Join(dir, name)

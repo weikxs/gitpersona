@@ -241,35 +241,24 @@ func (e Env) planWith(ctx context.Context, cfg config.Config, edit func(string) 
 }
 
 func (e Env) generateOptions(ctx context.Context) (generate.Options, error) {
-	sshCommand, err := e.gitConfigAll(ctx, "core.sshCommand")
+	settings, err := e.globalSettings(ctx)
 	if err != nil {
 		return generate.Options{}, err
 	}
-	opts := generate.Options{
-		Home:            e.Home,
-		ConfigDir:       e.ConfigDir,
-		Executable:      e.Executable,
-		CaseInsensitive: e.CaseInsensitive,
-		Canonicalize:    paths.ResolveSymlinks,
-	}
-	if len(sshCommand) > 0 {
-		opts.FallbackSSHCommand = sshCommand[len(sshCommand)-1]
-	}
-	for key, field := range map[string]*string{
-		"commit.gpgsign":  &opts.FallbackSigning.GPGSign,
-		"user.signingkey": &opts.FallbackSigning.SigningKey,
-		"gpg.format":      &opts.FallbackSigning.Format,
-		"tag.gpgsign":     &opts.FallbackSigning.TagSign,
-	} {
-		values, err := e.gitConfigAll(ctx, key)
-		if err != nil {
-			return generate.Options{}, err
-		}
-		if len(values) > 0 {
-			*field = values[len(values)-1]
-		}
-	}
-	return opts, nil
+	return generate.Options{
+		Home:               e.Home,
+		ConfigDir:          e.ConfigDir,
+		Executable:         e.Executable,
+		CaseInsensitive:    e.CaseInsensitive,
+		Canonicalize:       paths.ResolveSymlinks,
+		FallbackSSHCommand: lastSetting(settings, "core.sshCommand"),
+		FallbackSigning: generate.Signing{
+			GPGSign:    lastSetting(settings, "commit.gpgsign"),
+			SigningKey: lastSetting(settings, "user.signingkey"),
+			Format:     lastSetting(settings, "gpg.format"),
+			TagSign:    lastSetting(settings, "tag.gpgsign"),
+		},
+	}, nil
 }
 
 // loadConfig reads the configuration and, when it is missing, says how to

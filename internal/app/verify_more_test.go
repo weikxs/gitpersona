@@ -187,7 +187,7 @@ func TestVerifyLeavesRemotesThatAreNotNetworkAddressesAlone(t *testing.T) {
 
 func TestVerifySkipsRemotesGitCannotDescribe(t *testing.T) {
 	w, env, _ := verifyWorld(t)
-	env = failGit(env, "remote", "get-url")
+	env = failGit(env, "remote", "-v")
 
 	c := repoCheck(t, verify(t, env), "~/Projects/personal/blog")
 

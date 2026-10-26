@@ -11,8 +11,15 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 - Linux packages are `.deb` and `.rpm` only, as for OTPKeep; Alpine, Arch and other systems use `install.sh` or the
   `.tar.gz` archive, which work everywhere since the binary needs nothing but Git. CI tests every pull request on
-  Linux x86_64 and runs the Mac and Linux arm64 tests on demand, before each release; the Debian, Alpine, Fedora and Ubuntu 22.04 container
-  runs are gone.
+  Linux x86_64 and runs the Mac and Linux arm64 tests on demand, before each release; the Debian, Alpine, Fedora and
+  Ubuntu 22.04 container runs are gone.
+- GitPersona asks GitHub about your accounts far less often. `gh auth status` checks every signed-in account against
+  the API, and the configuration page used to run it up to three times after each change; the answer is now reused
+  for ten minutes and asked again when the page is opened or reloaded.
+- Faster checks: `verify` starts about 4 git processes per repository instead of 8 plus 4 per remote; preview, apply
+  and doctor read each global Git config file once instead of five times; the configuration page gathers the shells,
+  the doctor's checks and gh's accounts at the same time; the gh shim finds the real gh with one stat per PATH entry;
+  starting the binary no longer compiles large bounded regular expressions.
 
 ### Security
 
