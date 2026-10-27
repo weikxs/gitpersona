@@ -176,7 +176,7 @@ func (e Env) realTool(name string) (string, error) {
 			continue
 		}
 		candidate := filepath.Join(dir, name)
-		info, err := os.Stat(candidate) //nolint:gosec // only stats the user's own PATH entries to find the real tool
+		info, err := os.Stat(candidate)
 		if err != nil || info.IsDir() || info.Mode()&0o111 == 0 || isShimOrSelf(dir, info) {
 			continue
 		}

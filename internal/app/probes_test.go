@@ -83,7 +83,7 @@ func TestStateAsksAboutTheSystemOncePerProcess(t *testing.T) {
 
 func TestProbesAskAgainAfterACancelledCall(t *testing.T) {
 	asked := 0
-	probe := memoize(func(ctx context.Context) int {
+	probe := memoize(func(_ context.Context) int {
 		asked++
 		return asked
 	})

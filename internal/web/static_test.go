@@ -234,8 +234,11 @@ func TestThePageRefreshesWhenItsTabIsShownAgain(t *testing.T) {
 	if !strings.Contains(app, `document.addEventListener("visibilitychange", refreshWhenVisible)`) {
 		t.Fatal("app.js must refresh the state when the tab becomes visible")
 	}
-	body := app[strings.Index(app, "async function refreshWhenVisible"):]
-	body = body[:strings.Index(body, "\n}\n")]
+	_, body, found := strings.Cut(app, "async function refreshWhenVisible")
+	if !found {
+		t.Fatal("app.js has no refreshWhenVisible function")
+	}
+	body, _, _ = strings.Cut(body, "\n}\n")
 	// No fresh=true: showing the tab again must not query gh's accounts.
 	if !strings.Contains(body, "await loadState();") || strings.Contains(body, "loadState(true)") {
 		t.Errorf("refreshWhenVisible must reuse gh's recent answer:\n%s", body)

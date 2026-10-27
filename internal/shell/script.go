@@ -6,8 +6,8 @@ import (
 	"strings"
 )
 
-// GenerationFile, in GitPersona's configuration folder next to binDir, holds
-// a value GitPersona changes each time it saves a change. The prompt
+// GenerationFile names the file, in GitPersona's configuration folder next to
+// binDir, that holds a value GitPersona changes each time it saves a change. The prompt
 // functions keep their last answer while the directory, the repository it is
 // in and this value stay the same, so a prompt drawn again in the same place
 // starts no process.
