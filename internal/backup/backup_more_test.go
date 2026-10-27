@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 // lockedDir returns an existing directory that cannot be written to, and
@@ -135,8 +136,8 @@ func TestPruneFailsWhenAnOldSnapshotCannotBeRemoved(t *testing.T) {
 	if err := os.Chmod(root, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"a", "b", "c"} {
-		if err := os.Mkdir(filepath.Join(root, name), 0o700); err != nil {
+	for i := range 3 {
+		if _, err := Snapshot(root, fixedTime.Add(time.Duration(i)*time.Second), nil); err != nil {
 			t.Fatal(err)
 		}
 	}

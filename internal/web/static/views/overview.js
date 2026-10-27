@@ -33,19 +33,31 @@ export function renderOverview(section, { state, run }) {
     h("div", { class: "grid" }, resolveCard(), doctorCard(state.doctor, run)));
   const draw = () => {
     replace(stats, statTiles(state, verified));
-    replace(alerts, attention(state, verified));
+    replace(alerts, limitNote(verified, check), attention(state, verified));
     replace(accounts, accountsTable(state, verified));
   };
-  draw();
-  if (!verified) {
-    verifying ??= api.verify([], false).then(({ data }) => data).finally(() => { verifying = null; });
-    verifying.then((data) => {
+  // check asks the server; auto is the capped check the server may reuse.
+  const check = (auto) => {
+    verifying ??= api.verify([], false, auto).then(({ data }) => data).finally(() => { verifying = null; });
+    return verifying.then((data) => {
       verified = data;
       if (stats.isConnected) draw();
     }).catch(() => {
       if (stats.isConnected) replace(alerts, h("p", { class: "notice warn" }, t("overview.verifyFailed")), attention(state, null));
     });
-  }
+  };
+  draw();
+  if (!verified) check(true);
+}
+
+// limitNote says when the overview checked only some of the repositories,
+// with a button to check them all.
+function limitNote(report, check) {
+  if (!report?.limited) return null;
+  const button = h("button", { type: "button", class: "small" }, t("overview.checkAll", { n: report.total }));
+  button.addEventListener("click", () => busy(button, () => check(false)));
+  return h("p", { class: "notice info" },
+    t("overview.limited", { checked: report.repositories.length, total: report.total }), " ", button);
 }
 
 // forgetVerification makes the dashboard check the repositories again.

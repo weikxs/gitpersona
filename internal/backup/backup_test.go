@@ -238,3 +238,34 @@ func TestSnapshotRecordsWhichCommandMadeIt(t *testing.T) {
 		t.Fatalf("manifest command = %q", m.Command)
 	}
 }
+
+func TestPruneKeepingKeepsTheChosenSnapshotsAndIgnoresOtherFolders(t *testing.T) {
+	root := t.TempDir()
+	var dirs []string
+	for i := range 6 {
+		dir, err := Snapshot(root, fixedTime.Add(time.Duration(i)*time.Second), nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		dirs = append(dirs, dir)
+	}
+	notes := filepath.Join(root, "0-notes")
+	if err := os.Mkdir(notes, 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	err := PruneKeeping(root, 2, func(dir string) bool { return dir == dirs[2] })
+
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, dir := range dirs {
+		_, statErr := os.Stat(dir)
+		if kept := statErr == nil; kept != (i == 0 || i == 2 || i >= 4) {
+			t.Errorf("snapshot %d kept = %v", i, kept)
+		}
+	}
+	if _, err := os.Stat(notes); err != nil {
+		t.Errorf("a folder without a manifest was removed: %v", err)
+	}
+}

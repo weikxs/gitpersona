@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/weikxs/gitpersona/internal/config"
+	"github.com/weikxs/gitpersona/internal/discover"
 	"github.com/weikxs/gitpersona/internal/paths"
 	"github.com/weikxs/gitpersona/internal/provider"
 )
@@ -36,6 +37,10 @@ type VerifyReport struct {
 	// Complete is false when the scan stopped before it looked everywhere.
 	Complete bool         `json:"complete"`
 	Counts   VerifyCounts `json:"counts"`
+	// Total is the number of repositories found; Limited is set when only
+	// some of them were checked (the page's automatic check).
+	Total   int  `json:"total"`
+	Limited bool `json:"limited,omitempty"`
 }
 
 // VerifyCounts counts repositories per verdict.
@@ -119,9 +124,25 @@ type verifyContext struct {
 // push would, and reads which account the host greets: ssh uses the key,
 // GitPersona never reads it.
 func (e Env) VerifyRepos(ctx context.Context, extra []string, askHosts bool) (VerifyReport, error) {
-	cfg, err := e.loadConfig()
+	t, err := e.verifyTargets(ctx, extra)
 	if err != nil {
 		return VerifyReport{}, err
+	}
+	return e.checkTargets(ctx, t, askHosts, 0), nil
+}
+
+// verifyTargets is what a check looks at: the configuration, the folders
+// and the repositories found in them (a walk of the file system only).
+type verifyTargets struct {
+	cfg   config.Config
+	roots ScanRoots
+	found discover.Found
+}
+
+func (e Env) verifyTargets(ctx context.Context, extra []string) (verifyTargets, error) {
+	cfg, err := e.loadConfig()
+	if err != nil {
+		return verifyTargets{}, err
 	}
 	folders := slices.Clone(extra)
 	for _, p := range cfg.Profiles {
@@ -132,17 +153,27 @@ func (e Env) VerifyRepos(ctx context.Context, extra []string, askHosts bool) (Ve
 	}
 	roots, err := e.ResolveScanRoots(folders)
 	if err != nil {
-		return VerifyReport{}, err
+		return verifyTargets{}, err
 	}
 	found := e.scannedRepos(ctx, roots)
-	vc := verifyContext{cfg: cfg, signedIn: e.ghAccountsByHost(ctx, cfg), keys: e.profileKeys(cfg), ssh: newSSHResolver(e)}
+	slices.SortFunc(found.Repos, func(a, b discover.Repo) int { return cmp.Compare(a.Dir, b.Dir) })
+	return verifyTargets{cfg: cfg, roots: roots, found: found}, nil
+}
+
+// checkTargets checks the repositories of t, at most limit of them (0: all).
+func (e Env) checkTargets(ctx context.Context, t verifyTargets, askHosts bool, limit int) VerifyReport {
+	repos := t.found.Repos
+	if limit > 0 && len(repos) > limit {
+		repos = repos[:limit]
+	}
+	vc := verifyContext{cfg: t.cfg, signedIn: e.ghAccountsByHost(ctx, t.cfg), keys: e.profileKeys(t.cfg), ssh: newSSHResolver(e)}
 	if askHosts {
 		vc.greet = newGreeter(e)
 	}
-	checks := make([]RepoCheck, len(found.Repos))
+	checks := make([]RepoCheck, len(repos))
 	var wg sync.WaitGroup
 	sem := make(chan struct{}, verifyWorkers)
-	for i, r := range found.Repos {
+	for i, r := range repos {
 		wg.Add(1)
 		sem <- struct{}{}
 		go func() {
@@ -153,8 +184,8 @@ func (e Env) VerifyRepos(ctx context.Context, extra []string, askHosts bool) (Ve
 	wg.Wait()
 	e.flagSharedConnections(checks)
 	slices.SortFunc(checks, func(a, b RepoCheck) int { return cmp.Compare(a.Path, b.Path) })
-	report := VerifyReport{Repositories: checks, Scanned: roots.Shown, Missing: roots.Missing,
-		Complete: found.Complete && !found.TooDeep}
+	report := VerifyReport{Repositories: checks, Scanned: t.roots.Shown, Missing: t.roots.Missing,
+		Complete: t.found.Complete && !t.found.TooDeep, Total: len(t.found.Repos), Limited: len(repos) < len(t.found.Repos)}
 	for _, c := range checks {
 		switch c.Verdict {
 		case VerdictOK:
@@ -169,7 +200,7 @@ func (e Env) VerifyRepos(ctx context.Context, extra []string, askHosts bool) (Ve
 			report.Counts.Unmanaged++
 		}
 	}
-	return report, nil
+	return report
 }
 
 // checkRepo compares what Git uses in one repository with its profile.
@@ -180,7 +211,7 @@ func (e Env) checkRepo(ctx context.Context, vc verifyContext, dir string) RepoCh
 	}
 	here := e
 	here.WorkDir = norm
-	who := here.whoami(ctx, vc.cfg)
+	who, repo := here.whoamiRepo(ctx, vc.cfg)
 	check := RepoCheck{Path: e.display(norm), Profile: who.Profile, Account: who.Account, Reason: who.Reason,
 		Match: who.Match, Author: authorOrEmpty(who.EffectiveName, who.EffectiveEmail), AuthorSource: who.EmailSource,
 		Remotes: []RemoteCheck{}, Findings: []CheckFinding{}}
@@ -193,7 +224,7 @@ func (e Env) checkRepo(ctx context.Context, vc verifyContext, dir string) RepoCh
 		}
 	}
 	for _, remote := range e.remotesOf(ctx, norm) {
-		rc := e.checkRemote(ctx, vc, norm, remote)
+		rc := e.checkRemote(ctx, vc, norm, repo, remote)
 		check.Remotes = append(check.Remotes, rc)
 		if who.Found {
 			check.judgePush(e, vc, profile, rc)
@@ -240,7 +271,7 @@ func (c *RepoCheck) verdict(managed bool) string {
 // accounts it holds. A host gh cannot be asked about maps to nil.
 func (e Env) ghAccountsByHost(ctx context.Context, cfg config.Config) map[string][]string {
 	out := map[string][]string{}
-	gh, err := e.LookPath("gh")
+	gh, err := e.GHPath()
 	if err != nil {
 		return out
 	}

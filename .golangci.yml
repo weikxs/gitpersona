@@ -25,10 +25,12 @@ linters:
     rules:
       # GitPersona reads files at paths the user configures (config.toml,
       # ~/.gitconfig, ~/.ssh/config, backups) and runs git, gh and the
-      # browser opener: that is its job, so these two rules only add noise.
+      # browser opener: that is its job, so these rules only add noise. G703
+      # flags the same reads when the path comes from the environment (PATH,
+      # GH_CONFIG_DIR), which the user sets just as deliberately.
       - linters:
           - gosec
-        text: "G304|G204"
+        text: "G304|G204|G703"
       - path: _test\.go
         linters:
           - gosec

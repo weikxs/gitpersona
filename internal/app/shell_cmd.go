@@ -36,8 +36,9 @@ var loader = map[shell.Kind]string{
 
 // shellFiles returns the startup files install-shell writes for a shell.
 //   - fish: a file of its own in conf.d.
-//   - zsh: ~/.zshenv (non-interactive shells read it too) and ~/.zshrc, which
-//     runs after macOS path_helper (in /etc/zprofile) reorders PATH.
+//   - zsh: .zshenv (non-interactive shells read it too) and .zshrc, which
+//     runs after macOS path_helper (in /etc/zprofile) reorders PATH, in
+//     $ZDOTDIR when it is set (see zshFile).
 //   - bash: ~/.bashrc, and on macOS, where terminals start login shells, the
 //     first login file bash would read; ~/.bash_profile is created only when
 //     none exists, because it would hide ~/.bash_login and ~/.profile.
@@ -46,7 +47,7 @@ func (e Env) shellFiles(k shell.Kind) []string {
 	case shell.Fish:
 		return []string{filepath.Join(e.fishConfigDir(), "conf.d", "gitpersona.fish")}
 	case shell.Zsh:
-		return []string{filepath.Join(e.Home, ".zshenv"), filepath.Join(e.Home, ".zshrc")}
+		return []string{e.zshFile(".zshenv"), e.zshFile(".zshrc")}
 	default:
 		files := []string{filepath.Join(e.Home, ".bashrc")}
 		if runtime.GOOS == "darwin" {
@@ -54,6 +55,26 @@ func (e Env) shellFiles(k shell.Kind) []string {
 		}
 		return files
 	}
+}
+
+// zshDir is where zsh reads its startup files: $ZDOTDIR, else the home
+// directory (as install.sh does).
+func (e Env) zshDir() string {
+	if dir := os.Getenv("ZDOTDIR"); filepath.IsAbs(dir) {
+		return dir
+	}
+	return e.Home
+}
+
+// zshFile is the startup file name that zsh reads. ZDOTDIR is usually
+// exported from ~/.zshenv, which zsh reads before it knows ZDOTDIR; that file
+// stays where it is, and the others are in ZDOTDIR.
+func (e Env) zshFile(name string) string {
+	inDir := filepath.Join(e.zshDir(), name)
+	if name == ".zshenv" && !fileExists(inDir) && fileExists(filepath.Join(e.Home, name)) {
+		return filepath.Join(e.Home, name)
+	}
+	return inDir
 }
 
 func (e Env) fishConfigDir() string { return filepath.Join(filepath.Dir(e.ConfigDir), "fish") }
@@ -80,7 +101,10 @@ func (e Env) startupFiles(k shell.Kind) []string {
 	case shell.Zsh:
 		files := []string{}
 		for _, name := range []string{".zshenv", ".zshrc", ".zprofile", ".zlogin"} {
-			files = append(files, filepath.Join(e.Home, name))
+			files = append(files, filepath.Join(e.zshDir(), name))
+		}
+		if e.zshDir() != e.Home {
+			files = append(files, filepath.Join(e.Home, ".zshenv")) // where ZDOTDIR is often set
 		}
 		return files
 	default:
@@ -136,6 +160,11 @@ func (e Env) shellChanges(kinds []shell.Kind) ([]change, error) {
 // InstallShell adds the integration to the given shells, or to the login
 // shell when none are given.
 func InstallShell(ctx context.Context, e Env, kinds []shell.Kind, dryRun bool) error {
+	e, unlock, err := e.lockConfig()
+	if err != nil {
+		return err
+	}
+	defer unlock()
 	if len(kinds) == 0 {
 		login := e.loginShell(ctx)
 		if login.Kind == shell.Unknown {

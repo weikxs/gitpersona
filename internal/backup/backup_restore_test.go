@@ -233,3 +233,33 @@ func TestPruneLeavesStrayFilesAlone(t *testing.T) {
 		t.Errorf("stray file was removed: %v", err)
 	}
 }
+
+func TestRestorePathsPutsBackOnlyTheNamedFiles(t *testing.T) {
+	dir := t.TempDir()
+	a, b := filepath.Join(dir, "a"), filepath.Join(dir, "b")
+	for _, p := range []string{a, b} {
+		if err := os.WriteFile(p, []byte("old"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	snap, err := Snapshot(filepath.Join(dir, "backups"), time.Unix(0, 0), []string{a, b})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range []string{a, b} {
+		if err := os.WriteFile(p, []byte("new"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if err := RestorePaths(snap, []string{a}); err != nil {
+		t.Fatal(err)
+	}
+
+	if got, _ := os.ReadFile(a); string(got) != "old" {
+		t.Errorf("a = %q, want it restored", got)
+	}
+	if got, _ := os.ReadFile(b); string(got) != "new" {
+		t.Errorf("b = %q, want it left alone", got)
+	}
+}

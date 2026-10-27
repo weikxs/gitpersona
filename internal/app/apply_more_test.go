@@ -41,8 +41,8 @@ func TestApplyReportsAShimFolderItCannotWriteTo(t *testing.T) {
 
 	err := Apply(context.Background(), env, ApplyOptions{})
 
-	if err == nil || !strings.Contains(err.Error(), "link ") || !strings.Contains(err.Error(), "previous files are saved in") {
-		t.Errorf("Apply = %v, want the failed link and where the backup is", err)
+	if err == nil || !strings.Contains(err.Error(), "link ") || !strings.Contains(err.Error(), "put back as it was (backup in ~/") {
+		t.Errorf("Apply = %v, want the failed link, that the files were put back and where the backup is", err)
 	}
 }
 
@@ -64,8 +64,11 @@ func TestApplyReportsAGeneratedFileItCannotWrite(t *testing.T) {
 
 	err := Apply(ctx, env, ApplyOptions{})
 
-	if err == nil || !strings.Contains(err.Error(), "previous files are saved in") {
+	if err == nil || !strings.Contains(err.Error(), "put back as it was (backup in ~/") {
 		t.Errorf("Apply = %v", err)
+	}
+	if got := readFile(t, filepath.Join(w.home, ".config", "gitpersona", "profiles", "personal.gitconfig")); strings.Contains(got, "Alex Changed") {
+		t.Error("the profile file changed although apply failed")
 	}
 }
 

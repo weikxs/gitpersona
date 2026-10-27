@@ -18,14 +18,17 @@ export function renderApply(section, { run }) {
 async function load(body, run) {
   try {
     const { data } = await api.preview();
-    replace(body, preview(data, run));
+    replace(body, preview(data, body, run));
   } catch (err) {
     replace(body, h("div", { class: "notice fail", role: "alert" }, err.message));
   }
   body.removeAttribute("aria-busy");
 }
 
-function preview(changes, run) {
+// preview shows the changes. Apply sends the plan's hash, so the server
+// writes exactly what is shown; when the files changed since, it refuses
+// and the page shows the new changes to review.
+function preview({ changes, plan }, body, run) {
   if (changes.length === 0) {
     return h("div", { class: "notice ok" }, badge("ok", t("apply.upToDate")), " ", t("apply.matches"));
   }
@@ -36,7 +39,7 @@ function preview(changes, run) {
       t("apply.removeText", { files: removals.map((c) => c.path).join(", ") }), t("apply.apply")))) {
       return;
     }
-    await run(() => api.apply(true), t("apply.done"));
+    if (!(await run(() => api.apply(true, plan), t("apply.done"))) && body.isConnected) load(body, run);
   }));
   return h("div", {},
     changes.map((c, i) => change(c, i === 0)),

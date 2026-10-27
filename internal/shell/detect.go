@@ -88,15 +88,17 @@ const maxAncestors = 16
 // ancestor of process pid that is a supported shell. It can differ from the
 // login shell, for example when zsh is started from fish.
 func CurrentShell(ctx context.Context, pid int, run Runner) Detected {
+	ppid, _, ok := processInfo(ctx, pid, run)
 	for range maxAncestors {
-		ppid, _, ok := processInfo(ctx, pid, run)
 		if !ok || ppid <= 1 {
 			return Detected{}
 		}
-		if _, comm, ok := processInfo(ctx, ppid, run); ok && KindOf(comm) != Unknown {
+		// One ps per process: the parent's answer also names its parent.
+		grandparent, comm, found := processInfo(ctx, ppid, run)
+		if found && KindOf(comm) != Unknown {
 			return Detected{Path: comm, Kind: KindOf(comm), Source: "process " + strconv.Itoa(ppid)}
 		}
-		pid = ppid
+		ppid, ok = grandparent, found
 	}
 	return Detected{}
 }

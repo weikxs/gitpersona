@@ -49,6 +49,9 @@ func parseGitVersion(out string) (gitVersion, bool) {
 
 // gitVersion asks Git for its version; false when it cannot be told.
 func (e Env) gitVersion(ctx context.Context) (gitVersion, bool) {
+	if e.probes != nil {
+		return e.probes.gitVersion(ctx)
+	}
 	out, err := e.Run(ctx, "git", "version")
 	if err != nil {
 		return gitVersion{}, false

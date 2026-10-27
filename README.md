@@ -77,8 +77,8 @@ profile; `gitpersona pin <profile>` handles the odd repository that lives elsewh
 
 ## The web console
 
-`gitpersona ui` opens a local console in your browser (only on 127.0.0.1; the link works once, and it stops after
-15 minutes without use). Everything the command line does is there, in English and Chinese: the page starts in your
+`gitpersona ui` opens a local console in your browser (only on 127.0.0.1; the link works once, and it stops
+about 10 seconds after you close the tab, or after 15 minutes without use). Everything the command line does is there, in English and Chinese: the page starts in your
 system's language, else your browser's, else English, and the switch in the sidebar changes it for the tab.
 
 **Overview:** the numbers that matter (accounts, repositories, identity mix-ups, notes, health), what needs attention
@@ -231,17 +231,24 @@ Git asks `gitpersona credential` for a token, which borrows the one `gh` already
 hosts the profile only names the account, and your own credential helper answers with that account's token.
 With the shell integration, `gh` and `glab` follow the same rules.
 
+GitPersona asks GitHub as little as it can. Only `gh auth status` (which checks each signed-in account) and, during
+setup, a public profile lookup reach the host; their answers are kept for ten minutes in
+`~/.config/gitpersona/cache/` (owner-only; account names and states, never a token) and shared by every
+`gitpersona` command and the configuration page. `gh auth login`, `logout` or `switch` makes the next check ask
+again. GitPersona never switches gh's account, fetches or lists remotes; SSH connections to a host are made only
+when you ask for them (`gitpersona check-ssh`, or “Ask the hosts over SSH” on the page).
+
 ## Supported systems
 
 | System | CPU | Status |
 |---|---|---|
-| macOS 12 Monterey or newer | Apple silicon (M1 and later) | Supported, tested on every change |
-| macOS 12 Monterey or newer | Intel | Supported, tested on every change |
+| macOS 12 Monterey or newer | Apple silicon (M1 and later) | Supported, tested before each release |
+| macOS 12 Monterey or newer | Intel | Supported, tested before each release |
 | Linux: Debian, Ubuntu, Fedora, Arch, Alpine and others (glibc or musl) | x86_64, arm64 | Supported, tested on every change |
 | Windows | — | Planned |
 
-The tests run on Apple silicon and Intel Macs, on Linux x86_64 and arm64, and in Debian, Alpine, Fedora and
-Ubuntu 22.04 containers (Ubuntu 22.04 has the oldest Git the tests use, 2.34).
+Every pull request runs the tests on Linux x86_64; before each release they also run on Apple silicon and Intel Macs
+and on Linux arm64.
 
 **Requirements**
 
@@ -336,13 +343,12 @@ quarantine flag from it after installing; see [SECURITY.md](SECURITY.md#release-
 for x86_64 (`amd64`) and arm64:
 
 ```sh
-sudo apt install ./gitpersona_<version>_linux_amd64.deb        # Debian, Ubuntu
-sudo dnf install ./gitpersona_<version>_linux_amd64.rpm        # Fedora, RHEL
-sudo apk add --allow-untrusted ./gitpersona_<version>_linux_amd64.apk   # Alpine
-sudo pacman -U ./gitpersona_<version>_linux_amd64.pkg.tar.zst  # Arch
+sudo apt install ./gitpersona_<version>_linux_amd64.deb   # Debian, Ubuntu
+sudo dnf install ./gitpersona_<version>_linux_amd64.rpm   # Fedora, RHEL
 ```
 
-Archives (`.tar.gz`) for every system are there too, with `checksums.txt` to check them.
+Archives (`.tar.gz`) for every system are there too, with `checksums.txt` to check them. On Alpine, Arch and other
+systems, use the install script above or an archive: the binary has no dependencies besides Git.
 
 ## Quick start
 
@@ -440,7 +446,7 @@ Paths must be absolute or start with `~/`.
 | Command | What it does |
 |---|---|
 | `gitpersona setup [--yes] [--no-shell] [--keep-old-rules] [--default <profile> \| --no-default] [--print \| --web]` | Set GitPersona up from what you already have in one step (accounts, existing identities, repositories, SSH aliases, shell); asks before writing unless `--yes`; `--web` shows it in the browser, where you can also adjust it step by step |
-| `gitpersona ui [--no-open]` | Open the web console in your browser, in English or Chinese: an overview, accounts with their identities, folders and pins, the repository check, a diff preview before applying, health checks, shells and backups. It listens only on 127.0.0.1, the link works once, and it stops after 15 minutes without use |
+| `gitpersona ui [--no-open]` | Open the web console in your browser, in English or Chinese: an overview, accounts with their identities, folders and pins, the repository check, a diff preview before applying, health checks, shells and backups. It listens only on 127.0.0.1, the link works once, and it stops soon after the tab is closed or after 15 minutes without use |
 | `gitpersona apply [--dry-run] [--yes]` | Generate the Git configuration; `--dry-run` previews, `--yes` allows removing files of deleted profiles |
 | `gitpersona whoami [--json] [--check]` | Show which profile Git uses here and why; `--check` fails when Git disagrees |
 | `gitpersona verify [--all] [--ssh] [--json] [<folder>...]` | Check every repository in your profiles' folders and pins (and the folders you name): the author its commits use and the account each remote pushes as, against its profile; flags another identity, tokens in remote URLs and SSH connections shared between keys. It reads only settings; `--ssh` signs in to each SSH host once, as a push would, so the host names the account |
@@ -498,15 +504,21 @@ Prompt and plugin-manager setups (tide, Powerlevel10k, Starship, fisher, oh-my-z
   report which account the host greets; nothing else ever starts ssh.
 - **Shells:** your default shell is read from the system user record (not `$SHELL`, which terminals, IDEs and
   tools often change), the shell you use right now from the process tree, and installed shells from `/etc/shells`.
-  fish gets its own file in `conf.d`; zsh uses `~/.zshenv`; bash uses `~/.bashrc`. In tide add the
-  `gitpersona` item; in Powerlevel10k add the `gitpersona` segment; elsewhere call `gitpersona_prompt`.
+  fish gets its own file in `conf.d`; zsh uses `.zshenv` and `.zshrc` in `$ZDOTDIR` (or `~`); bash uses `~/.bashrc`.
+  In tide add the `gitpersona` item; in Powerlevel10k add the `gitpersona` segment; elsewhere call `gitpersona_prompt`.
+  The prompt function keeps its last answer while you stay in the same directory and repository and GitPersona
+  saves no change, so drawing the prompt again starts no process (shell builtins only). After editing
+  `config.toml` by hand, run `gitpersona apply`, which also refreshes the prompt. Written as
+  `$(gitpersona_prompt)`, it runs in a subshell and asks `gitpersona` each time.
 - **Privacy:** GitPersona never opens, reads, lists or uses your private keys, and never prints or stores tokens.
-  Its only network use is asking `gh` for your accounts' public names and emails during setup, and the ssh
-  connections `check-ssh` and `verify --ssh` make when you run them. `verify` without `--ssh` reads only Git and SSH
-  settings. Paths are shown with `~`, and the web console listens only on 127.0.0.1 behind a one-time link.
+  Its only network use is through `gh` and `ssh`: `gh auth status`, which checks your signed-in accounts for
+  `doctor`, `verify`, setup and the configuration page (at most once in ten minutes, shared by all of them); your
+  accounts' public names and emails during setup; and the ssh connections `check-ssh` and `verify --ssh` make when
+  you run them. Besides that answer, `verify` without `--ssh` reads only Git and SSH settings. Paths are shown with `~`, and the web console listens only on 127.0.0.1 behind a one-time link.
 - **Your files:** it adds one marked block to your global Git configuration (following a symlinked
   `~/.gitconfig` and `GIT_CONFIG_GLOBAL`), backs up everything it changes, and keeps the newest 20 backups in
-  `~/.config/gitpersona/backups/`.
+  `~/.config/gitpersona/backups/`, plus the first one and every one that records `includeIf` rules it took over, so
+  `gitpersona uninstall` can always put those back.
 
 ## Undo and uninstall
 
@@ -514,9 +526,12 @@ Prompt and plugin-manager setups (tide, Powerlevel10k, Starship, fisher, oh-my-z
   changes are one backup, so a rollback undoes the whole operation.
 - `gitpersona uninstall` removes GitPersona's block from your Git configuration and puts back the `includeIf`
   rules setup took over, exactly as they were. `config.toml` stays, so `gitpersona apply` brings everything back.
-- To remove everything, run `gitpersona uninstall`, remove the GitPersona lines from your shell startup file
-  (`~/.zshenv`, `~/.bashrc`, or `~/.config/fish/conf.d/gitpersona.fish`), then delete `~/.config/gitpersona` and the
-  binary.
+- To remove everything, run `gitpersona uninstall` (it also takes out the shell lines `install-shell` added), then
+  remove the two lines `install.sh` added to put the binary on your PATH: the line `# Added by the GitPersona
+  installer` and the `export PATH=…` line after it, in `.zshrc` (in `$ZDOTDIR` or `~`), `~/.bashrc` (Linux),
+  `~/.bash_profile` (macOS) or `~/.profile`; for fish, delete `~/.config/fish/conf.d/gitpersona-path.fish`. If you set
+  up the shell by hand or with fisher, remove those lines or `~/.config/fish/conf.d/gitpersona.fish` too. Then delete
+  `~/.config/gitpersona` and the binary (`~/.local/bin/gitpersona` with `install.sh`).
 
 ## Troubleshooting
 

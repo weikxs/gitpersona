@@ -53,6 +53,12 @@ type apiWorld struct {
 
 func newAPIWorld(t *testing.T) *apiWorld {
 	t.Helper()
+	return newAPIWorldWith(t, nil)
+}
+
+// newAPIWorldWith is newAPIWorld with the Env changed by adjust first.
+func newAPIWorldWith(t *testing.T, adjust func(*app.Env)) *apiWorld {
+	t.Helper()
 	root := t.TempDir()
 	home := filepath.Join(root, "home")
 	bin := filepath.Join(root, "bin")
@@ -87,6 +93,9 @@ func newAPIWorld(t *testing.T) *apiWorld {
 		Stdout: &bytes.Buffer{}, Stderr: &bytes.Buffer{},
 		Now: time.Now, LookPath: exec.LookPath, Run: provider.ExecRunner,
 	}
+	if adjust != nil {
+		adjust(&env)
+	}
 	ts := httptest.NewUnstartedServer(nil)
 	srv, err := New(ts.Listener.Addr().String(), Handlers{})
 	if err != nil {
@@ -108,6 +117,18 @@ func (w *apiWorld) call(t *testing.T, method, path string, body any) envelope {
 
 // callIn is call from a page that shows lang ("" sends no language).
 func (w *apiWorld) callIn(t *testing.T, lang, method, path string, body any) envelope {
+	t.Helper()
+	_, env := w.do(t, lang, method, path, body)
+	return env
+}
+
+// callStatus is call that also returns the HTTP status.
+func (w *apiWorld) callStatus(t *testing.T, method, path string, body any) (int, envelope) {
+	t.Helper()
+	return w.do(t, "", method, path, body)
+}
+
+func (w *apiWorld) do(t *testing.T, lang, method, path string, body any) (int, envelope) {
 	t.Helper()
 	var reader *bytes.Reader
 	if body != nil {
@@ -132,7 +153,7 @@ func (w *apiWorld) callIn(t *testing.T, lang, method, path string, body any) env
 	if err := json.NewDecoder(resp.Body).Decode(&env); err != nil {
 		t.Fatalf("%s %s: response is not JSON (status %d): %v", method, path, resp.StatusCode, err)
 	}
-	return env
+	return resp.StatusCode, env
 }
 
 func (w *apiWorld) session(t *testing.T) *http.Cookie {
@@ -157,18 +178,39 @@ func TestStateAndPreviewThenApply(t *testing.T) {
 	}
 
 	preview := w.call(t, "GET", "/api/preview", nil)
-	var changes []app.FileChange
-	decode(t, preview, &changes)
-	if len(changes) == 0 || changes[0].Diff == "" {
+	var plan app.Plan
+	decode(t, preview, &plan)
+	if len(plan.Changes) == 0 || plan.Changes[0].Diff == "" || plan.Hash == "" {
 		t.Fatalf("preview = %+v", preview)
 	}
 
-	applied := w.call(t, "POST", "/api/apply", map[string]bool{"yes": false})
+	applied := w.call(t, "POST", "/api/apply", map[string]any{"yes": false, "plan": plan.Hash})
 	if !applied.OK || !strings.Contains(applied.Log, "Backup saved") {
 		t.Fatalf("apply = %+v", applied)
 	}
 	if got := gitEmail(t, filepath.Join(w.home, "Projects", "personal", "blog")); got != "1000001+octo-alex@users.noreply.github.com" {
 		t.Fatalf("after apply through the page git uses %q", got)
+	}
+}
+
+func TestApplyRefusesChangesThePageDidNotShow(t *testing.T) {
+	w := newAPIWorld(t)
+	var plan app.Plan
+	decode(t, w.call(t, "GET", "/api/preview", nil), &plan)
+	// The command line changes the configuration while the page shows the preview.
+	cfgFile := filepath.Join(w.home, ".config", "gitpersona", "config.toml")
+	data, _ := os.ReadFile(cfgFile)
+	if err := os.WriteFile(cfgFile, []byte(strings.Replace(string(data), "Alex Octo", "Alex Changed", 1)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	status, applied := w.callStatus(t, "POST", "/api/apply", map[string]any{"yes": true, "plan": plan.Hash})
+
+	if status != http.StatusConflict || applied.OK || !strings.Contains(applied.Error, "review them again") {
+		t.Fatalf("apply of an outdated preview = %d %+v, want 409 and a message", status, applied)
+	}
+	if _, err := os.Stat(filepath.Join(w.home, ".gitconfig")); err == nil {
+		t.Fatal("the outdated plan was written")
 	}
 }
 

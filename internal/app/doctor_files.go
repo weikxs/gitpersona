@@ -236,7 +236,7 @@ func (e Env) checkSigning(ctx context.Context, cfg config.Config) []check {
 	if len(signers) == 0 {
 		return checks
 	}
-	opts, err := e.generateOptions(ctx)
+	opts, err := e.generateOptions(ctx, "") // only the fallback signing is read
 	if err != nil || opts.FallbackSigning.SigningKey != "" || opts.FallbackSigning.Format != "ssh" {
 		return checks
 	}

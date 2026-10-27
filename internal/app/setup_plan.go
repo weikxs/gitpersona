@@ -195,7 +195,7 @@ func (e Env) globalIdentity(ctx context.Context) GlobalIdentity {
 }
 
 func (e Env) signedInAccounts(ctx context.Context) (provider.GitHub, []provider.Account, error) {
-	gh, err := e.LookPath("gh")
+	gh, err := e.GHPath()
 	if err != nil {
 		return provider.GitHub{}, nil, e.trErr("setup needs the GitHub CLI: install it from https://cli.github.com and run `gh auth login` for each account")
 	}
@@ -272,6 +272,11 @@ func PreviewSetup(ctx context.Context, e Env, plan SetupPlan) ([]FileChange, err
 // ApplySetup writes the configuration of plan and the Git configuration
 // generated from it, in one backup.
 func ApplySetup(ctx context.Context, e Env, plan SetupPlan) error {
+	e, unlock, err := e.lockConfig()
+	if err != nil {
+		return err
+	}
+	defer unlock()
 	changes, err := e.setupChanges(ctx, plan)
 	if err != nil {
 		return err

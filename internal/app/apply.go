@@ -3,6 +3,8 @@ package app
 import (
 	"cmp"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
@@ -42,6 +44,9 @@ type ApplyOptions struct {
 	NoPrune bool
 	// Command names the change in the backup, for `gitpersona rollback`.
 	Command string
+	// Plan, when set, is the PlanHash of the changes the user reviewed;
+	// Apply refuses (ErrPlanChanged) when the changes are now different.
+	Plan string
 }
 
 // removedRulesFile, kept in a backup, holds the includeIf sections the change
@@ -96,11 +101,34 @@ const nextRuleMarker = "# gitpersona-next-rule: "
 // content changes are backed up and written, so running it twice is a no-op.
 // Removing files needs explicit consent.
 func Apply(ctx context.Context, e Env, opts ApplyOptions) error {
+	e, unlock, err := e.lockConfig()
+	if err != nil {
+		return err
+	}
+	defer unlock()
 	changes, err := planApply(ctx, e)
 	if err != nil {
 		return err
 	}
+	if opts.Plan != "" && planHash(changes) != opts.Plan {
+		return ErrPlanChanged
+	}
 	return e.applyChanges(changes, opts)
+}
+
+// ErrPlanChanged says the changes apply would make are not the ones the
+// user reviewed: something changed the files since the preview.
+var ErrPlanChanged = i18n.Errorf("the changes are no longer the ones you reviewed (a file changed since); " +
+	"nothing was written: review them again, then apply")
+
+// planHash identifies a set of changes: what each one does to which file.
+// It does not depend on the language of the page.
+func planHash(changes []change) string {
+	h := sha256.New()
+	for _, c := range changes {
+		fmt.Fprintf(h, "%s\x00%s\x00%t\x00%s\x00%d\x00%s\x00", c.path, c.verb(), c.remove, c.linkTo, len(c.content), c.content)
+	}
+	return hex.EncodeToString(h.Sum(nil))
 }
 
 // applyChanges backs up every target in one snapshot, so a later rollback
@@ -129,31 +157,68 @@ func (e Env) applyChanges(changes []change, opts ApplyOptions) error {
 		}
 	}
 
-	targets := make([]string, len(changes))
-	for i, c := range changes {
-		targets[i] = c.path
-	}
-	removed := e.removedSections(changes)
-	snapshot, err := backup.SnapshotFor(e.backupDir(), e.Now(), cmp.Or(opts.Command, "apply"), targets)
+	defer e.Writes.Writing()()
+	snapshot, err := e.writeChanges(changes, cmp.Or(opts.Command, "apply"))
 	if err != nil {
 		return err
-	}
-	if removed != "" {
-		if err := os.WriteFile(filepath.Join(snapshot, removedRulesFile), []byte(removed), fsutil.FilePerm); err != nil {
-			return e.trErr("record the removed rules in the backup: %w", err)
-		}
-	}
-	for _, c := range changes {
-		if err := c.write(); err != nil {
-			return e.trErr("%w (previous files are saved in %s)", err, snapshot)
-		}
-		fmt.Fprintln(e.Stdout, e.changeLine(c, false))
 	}
 	fmt.Fprintln(e.Stdout, e.tr("Backup saved in %s", e.display(snapshot)))
 	if opts.NoPrune {
 		return nil
 	}
-	return backup.Prune(e.backupDir(), backupsToKeep)
+	// A record of removed rules is what uninstall puts back: it is never
+	// pruned, however many changes follow.
+	return backup.PruneKeeping(e.backupDir(), backupsToKeep, func(dir string) bool {
+		return fileExists(filepath.Join(dir, removedRulesFile))
+	})
+}
+
+// writeChanges backs up every target in one snapshot and writes the
+// changes. When a write fails, every file goes back to its state in the
+// snapshot, so a failure never leaves the configuration half changed.
+func (e Env) writeChanges(changes []change, command string) (string, error) {
+	targets := make([]string, len(changes))
+	for i, c := range changes {
+		targets[i] = c.path
+	}
+	removed := e.removedSections(changes)
+	snapshot, err := backup.SnapshotFor(e.backupDir(), e.Now(), command, targets)
+	if err != nil {
+		return "", err
+	}
+	if removed != "" {
+		if err := os.WriteFile(filepath.Join(snapshot, removedRulesFile), []byte(removed), fsutil.FilePerm); err != nil {
+			return "", e.trErr("record the removed rules in the backup: %w", err)
+		}
+	}
+	write := e.write
+	if write == nil {
+		write = change.write
+	}
+	for i, c := range changes {
+		if err := write(c); err != nil {
+			return "", e.putBack(snapshot, changes[:i], c, err)
+		}
+		fmt.Fprintln(e.Stdout, e.changeLine(c, false))
+	}
+	return snapshot, nil
+}
+
+// putBack restores the files written before failed, and failed itself when
+// it is a link (replaced in two steps; a failed file write changes nothing).
+func (e Env) putBack(snapshot string, written []change, failed change, err error) error {
+	touched := []string{}
+	for _, c := range written {
+		touched = append(touched, c.path)
+	}
+	if failed.linkTo != "" {
+		touched = append(touched, failed.path)
+	}
+	if rerr := backup.RestorePaths(snapshot, touched); rerr != nil {
+		return e.trErr("%w; putting the previous files back also failed (%v): they are saved in %s",
+			err, rerr, e.display(snapshot))
+	}
+	return e.trErr("%w; nothing was changed: every file was put back as it was (backup in %s)", err, e.display(snapshot))
 }
 
 // changeLine says what apply does (or, for a dry run, would do) to one file.
@@ -203,7 +268,11 @@ func (e Env) planWith(ctx context.Context, cfg config.Config, edit func(string) 
 	if err != nil {
 		return nil, err
 	}
-	opts, err := e.generateOptions(ctx)
+	exe, err := e.executable()
+	if err != nil {
+		return nil, err
+	}
+	opts, err := e.generateOptions(ctx, exe)
 	if err != nil {
 		return nil, err
 	}
@@ -220,10 +289,10 @@ func (e Env) planWith(ctx context.Context, cfg config.Config, edit func(string) 
 	desired = append(desired, gitconfig)
 
 	var changes []change
-	if link, ok := e.ghEntryChange(cfg); ok {
+	if link, ok := e.ghEntryChange(cfg, exe); ok {
 		changes = append(changes, link)
 	}
-	if link, ok := e.glabEntryChange(cfg); ok {
+	if link, ok := e.glabEntryChange(cfg, exe); ok {
 		changes = append(changes, link)
 	}
 	for _, c := range desired {
@@ -240,36 +309,25 @@ func (e Env) planWith(ctx context.Context, cfg config.Config, edit func(string) 
 	return append(changes, e.staleGenerated(desired)...), nil
 }
 
-func (e Env) generateOptions(ctx context.Context) (generate.Options, error) {
-	sshCommand, err := e.gitConfigAll(ctx, "core.sshCommand")
+func (e Env) generateOptions(ctx context.Context, exe string) (generate.Options, error) {
+	settings, err := e.globalSettings(ctx)
 	if err != nil {
 		return generate.Options{}, err
 	}
-	opts := generate.Options{
-		Home:            e.Home,
-		ConfigDir:       e.ConfigDir,
-		Executable:      e.Executable,
-		CaseInsensitive: e.CaseInsensitive,
-		Canonicalize:    paths.ResolveSymlinks,
-	}
-	if len(sshCommand) > 0 {
-		opts.FallbackSSHCommand = sshCommand[len(sshCommand)-1]
-	}
-	for key, field := range map[string]*string{
-		"commit.gpgsign":  &opts.FallbackSigning.GPGSign,
-		"user.signingkey": &opts.FallbackSigning.SigningKey,
-		"gpg.format":      &opts.FallbackSigning.Format,
-		"tag.gpgsign":     &opts.FallbackSigning.TagSign,
-	} {
-		values, err := e.gitConfigAll(ctx, key)
-		if err != nil {
-			return generate.Options{}, err
-		}
-		if len(values) > 0 {
-			*field = values[len(values)-1]
-		}
-	}
-	return opts, nil
+	return generate.Options{
+		Home:               e.Home,
+		ConfigDir:          e.ConfigDir,
+		Executable:         exe,
+		CaseInsensitive:    e.CaseInsensitive,
+		Canonicalize:       paths.ResolveSymlinks,
+		FallbackSSHCommand: lastSetting(settings, "core.sshCommand"),
+		FallbackSigning: generate.Signing{
+			GPGSign:    lastSetting(settings, "commit.gpgsign"),
+			SigningKey: lastSetting(settings, "user.signingkey"),
+			Format:     lastSetting(settings, "gpg.format"),
+			TagSign:    lastSetting(settings, "tag.gpgsign"),
+		},
+	}, nil
 }
 
 // loadConfig reads the configuration and, when it is missing, says how to

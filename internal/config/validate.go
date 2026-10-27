@@ -12,13 +12,24 @@ import (
 	"github.com/weikxs/gitpersona/internal/paths"
 )
 
+// The patterns leave the lengths to the max… constants: a bounded repeat
+// such as {0,251} compiles into hundreds of states on every start, which
+// the shell prompt pays each time.
 var (
-	idPattern       = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,31}$`)
-	accountPattern  = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$`)
-	hostPattern     = regexp.MustCompile(`^[A-Za-z0-9]([A-Za-z0-9.-]{0,251}[A-Za-z0-9])?(:[0-9]{1,5})?$`)
+	idPattern       = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
+	accountPattern  = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
+	hostPattern     = regexp.MustCompile(`^[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?(:[0-9]{1,5})?$`)
 	validProviders  = []string{ProviderGitHub, ProviderGitLab, ProviderBitbucket, ProviderGeneric}
 	validSigningSet = []string{"", SigningNone, SigningSSH, SigningGPG}
 )
+
+const (
+	maxIDLength      = 32
+	maxAccountLength = 100
+	maxHostLength    = 253 // a DNS name; the port comes on top
+)
+
+func validID(s string) bool { return len(s) <= maxIDLength && idPattern.MatchString(s) }
 
 // Validate checks the whole configuration and reports every problem found,
 // joined into one error. home expands "~"; caseInsensitive controls whether
@@ -61,7 +72,7 @@ func validateProfile(p Profile, home string) []error {
 		errs = append(errs, i18n.Errorf("profile %q: %w", p.ID, err))
 	}
 
-	if !idPattern.MatchString(p.ID) {
+	if !validID(p.ID) {
 		add(i18n.Errorf("id must be 1-32 lowercase letters, digits or hyphens, starting with a letter or digit"))
 	}
 	if !slices.Contains(validProviders, p.Provider) {
@@ -70,13 +81,13 @@ func validateProfile(p Profile, home string) []error {
 	switch {
 	case p.Host == "":
 		add(i18n.Errorf("host is required"))
-	case !hostPattern.MatchString(p.Host):
+	case !ValidHost(p.Host):
 		add(i18n.Errorf("host %q is not a valid host name", p.Host))
 	}
 	switch {
 	case p.Account == "":
 		add(i18n.Errorf("account is required"))
-	case !accountPattern.MatchString(p.Account):
+	case !ValidAccount(p.Account):
 		add(i18n.Errorf("account %q may only contain letters, digits, '.', '_' and '-'", p.Account))
 	}
 	for _, f := range []struct{ name, value string }{
@@ -205,10 +216,15 @@ func LiteralSSHKey(key string) bool {
 }
 
 // ValidAccount reports whether s can be a profile's account.
-func ValidAccount(s string) bool { return accountPattern.MatchString(s) }
+func ValidAccount(s string) bool {
+	return len(s) <= maxAccountLength && accountPattern.MatchString(s)
+}
 
 // ValidHost reports whether s can be a profile's host (a name, and a port).
-func ValidHost(s string) bool { return hostPattern.MatchString(s) }
+func ValidHost(s string) bool {
+	name, _, _ := strings.Cut(s, ":")
+	return len(name) <= maxHostLength && hostPattern.MatchString(s)
+}
 
 // problems is the list of problems Validate found. Like errors.Join it shows
 // one problem per line and unwraps to each; unlike it, the page can show it

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -116,4 +117,22 @@ func TestALockThatCannotBeReadIsReplaced(t *testing.T) {
 		t.Fatalf("lockUI() = %v, want the unreadable lock replaced", err)
 	}
 	release()
+}
+
+func TestTheBrowserOpenerIsWaitedFor(t *testing.T) {
+	cmd := exec.Command("true")
+
+	reaped, err := startAndReap(cmd)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-reaped:
+	case <-time.After(uiWait):
+		t.Fatal("the opener was never waited for, so it stays a zombie")
+	}
+	if cmd.ProcessState == nil || !cmd.ProcessState.Exited() {
+		t.Fatal("the opener has no exit status after the wait")
+	}
 }

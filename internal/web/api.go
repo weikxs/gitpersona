@@ -43,6 +43,9 @@ type DiscoverReport struct {
 	Missing     []string              `json:"missing"` // chosen folders that do not exist
 	Existing    []discover.Identity   `json:"existing"`
 	Suggestions []discover.Suggestion `json:"suggestions"`
+	// AccountsError says why gh could not tell the signed-in accounts, so
+	// suggestions could not be matched to them.
+	AccountsError string `json:"accounts_error,omitempty"`
 }
 
 // BackupView is one backup on the page.
@@ -56,38 +59,54 @@ type BackupView struct {
 // API returns the page's API routes, running commands with env; stop ends
 // the server when the page closes.
 func API(env app.Env, stop func()) map[string]http.HandlerFunc {
-	a := api{env: env, stop: stop}
+	a := api{env: env, stop: stop, verified: &app.VerifyCache{TTL: verifyCacheTTL, Now: time.Now}}
 	return map[string]http.HandlerFunc{
 		"GET /api/state":            a.handle(a.state),
 		"GET /api/preview":          a.handle(a.preview),
-		"POST /api/apply":           a.handle(a.apply),
+		"POST /api/apply":           a.handle(a.changes(a.apply)),
 		"GET /api/setup":            a.handle(a.proposeSetup),
 		"POST /api/setup/preview":   a.handle(a.previewSetup),
-		"POST /api/setup":           a.handle(a.setup),
+		"POST /api/setup":           a.handle(a.changes(a.setup)),
 		"GET /api/discover":         a.handle(a.discover),
 		"GET /api/resolve":          a.handle(a.resolve),
 		"POST /api/verify":          a.handle(a.verify),
 		"POST /api/paths":           a.handle(a.normalizePaths),
-		"POST /api/profiles":        a.handle(a.addProfile),
-		"PATCH /api/profiles/{id}":  a.handle(a.updateProfile),
-		"DELETE /api/profiles/{id}": a.handle(a.removeProfile),
-		"POST /api/default":         a.handle(a.setDefault),
-		"POST /api/dirs":            a.handle(a.addDir),
-		"DELETE /api/dirs":          a.handle(a.removeDir),
-		"POST /api/pins":            a.handle(a.addPin),
-		"DELETE /api/pins":          a.handle(a.removePin),
+		"POST /api/profiles":        a.handle(a.changes(a.addProfile)),
+		"PATCH /api/profiles/{id}":  a.handle(a.changes(a.updateProfile)),
+		"DELETE /api/profiles/{id}": a.handle(a.changes(a.removeProfile)),
+		"POST /api/default":         a.handle(a.changes(a.setDefault)),
+		"POST /api/dirs":            a.handle(a.changes(a.addDir)),
+		"DELETE /api/dirs":          a.handle(a.changes(a.removeDir)),
+		"POST /api/pins":            a.handle(a.changes(a.addPin)),
+		"DELETE /api/pins":          a.handle(a.changes(a.removePin)),
 		"GET /api/backups":          a.handle(a.backups),
-		"POST /api/rollback":        a.handle(a.rollback),
-		"POST /api/shells":          a.handle(a.installShells),
+		"POST /api/rollback":        a.handle(a.changes(a.rollback)),
+		"POST /api/shells":          a.handle(a.changes(a.installShells)),
 		"POST /api/shells/preview":  a.handle(a.previewShells),
-		"POST /api/old-rules":       a.handle(a.removeOldRules),
+		"POST /api/old-rules":       a.handle(a.changes(a.removeOldRules)),
 		"POST /api/close":           a.handle(a.close),
 	}
 }
 
+// verifyCacheTTL bounds how long the overview reuses a repository check;
+// gh's accounts, which the check also reads, can change without a file
+// changing (as long as gitpersona reuses gh's answers).
+const verifyCacheTTL = 10 * time.Minute
+
 type api struct {
 	env  app.Env
 	stop func()
+	// verified keeps the overview's automatic repository checks.
+	verified *app.VerifyCache
+}
+
+// changes marks a request that may change files: the kept repository
+// checks are dropped, whether it succeeded or not.
+func (a api) changes(h handlerFunc) handlerFunc {
+	return func(c call) (any, error) {
+		defer a.verified.Forget()
+		return h(c)
+	}
 }
 
 // call is one API request with its own output buffer.
@@ -114,10 +133,19 @@ func (a api) handle(h handlerFunc) http.HandlerFunc {
 		w.Header().Set("Content-Type", "application/json")
 		if err != nil {
 			resp.Error = a.env.WithTilde(i18n.Text(env.Lang, err))
-			w.WriteHeader(http.StatusBadRequest)
+			w.WriteHeader(errorStatus(err))
 		}
 		_ = json.NewEncoder(w).Encode(resp)
 	}
+}
+
+// errorStatus is the HTTP status of a failed request: 409 when the files
+// changed since the page showed them, 400 otherwise.
+func errorStatus(err error) int {
+	if errors.Is(err, app.ErrPlanChanged) {
+		return http.StatusConflict
+	}
+	return http.StatusBadRequest
 }
 
 func (c call) decode(into any) error {
@@ -139,17 +167,28 @@ func (c call) at(dir string) (app.Env, error) {
 	return env, nil
 }
 
-func (a api) state(c call) (any, error)   { return app.State(c.ctx, c.env), nil }
-func (a api) preview(c call) (any, error) { return app.Preview(c.ctx, c.env) }
+// state answers from the remembered gh account queries; ?fresh=1, sent when
+// the page is opened or reloaded, asks the host again.
+func (a api) state(c call) (any, error) {
+	if c.r.URL.Query().Get("fresh") == "1" && c.env.ForgetQueries != nil {
+		c.env.ForgetQueries()
+	}
+	return app.State(c.ctx, c.env), nil
+}
+
+// preview returns the changes with the hash of the plan, which apply sends
+// back so the server writes only what the page showed.
+func (a api) preview(c call) (any, error) { return app.PreviewPlan(c.ctx, c.env) }
 
 func (a api) apply(c call) (any, error) {
 	var req struct {
-		Yes bool `json:"yes"`
+		Yes  bool   `json:"yes"`
+		Plan string `json:"plan"`
 	}
 	if err := c.decode(&req); err != nil {
 		return nil, err
 	}
-	return nil, app.Apply(c.ctx, c.env, app.ApplyOptions{Yes: req.Yes, Command: "apply (web)"})
+	return nil, app.Apply(c.ctx, c.env, app.ApplyOptions{Yes: req.Yes, Plan: req.Plan, Command: "apply (web)"})
 }
 
 func (a api) proposeSetup(c call) (any, error) { return app.ProposeSetup(c.ctx, c.env) }
@@ -193,8 +232,12 @@ func (a api) discover(c call) (any, error) {
 		}
 	}
 	var logins []string
-	if gh, err := c.env.LookPath("gh"); err == nil {
-		accounts, _ := provider.GitHub{GH: gh, Run: c.env.Run}.Accounts(c.ctx, config.DefaultGitHubHost)
+	if gh, err := c.env.GHPath(); err == nil {
+		accounts, err := provider.GitHub{GH: gh, Run: c.env.Run}.Accounts(c.ctx, config.DefaultGitHubHost)
+		if err != nil {
+			report.AccountsError = c.env.WithTilde(i18n.T(c.env.Lang,
+				"gh could not list the signed-in accounts (%v), so folders are not matched to them; run `gh auth status`", err))
+		}
 		for _, acc := range accounts {
 			logins = append(logins, acc.Login)
 		}
@@ -420,11 +463,18 @@ func (a api) close(_ call) (any, error) {
 // maxVerifyFolders bounds the extra folders one check may scan.
 const maxVerifyFolders = 32
 
+// maxAutoVerify bounds the repositories the overview checks by itself;
+// the page offers to check the rest.
+const maxAutoVerify = 200
+
 // verifyRequest asks to check the repositories; SSH connects to each SSH
 // host as a push would, so it is a POST the page sends only when asked.
+// Auto is the overview's own check: at most maxAutoVerify repositories,
+// and the last answer is reused while nothing it read has changed.
 type verifyRequest struct {
 	Dirs []string `json:"dirs"`
 	SSH  bool     `json:"ssh"`
+	Auto bool     `json:"auto"`
 }
 
 func (a api) verify(c call) (any, error) {
@@ -440,6 +490,9 @@ func (a api) verify(c call) (any, error) {
 		if d = strings.TrimSpace(d); d != "" {
 			dirs = append(dirs, d)
 		}
+	}
+	if req.Auto && !req.SSH {
+		return a.verified.Verify(c.ctx, c.env, dirs, maxAutoVerify)
 	}
 	return c.env.VerifyRepos(c.ctx, dirs, req.SSH)
 }

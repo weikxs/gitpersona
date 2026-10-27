@@ -6,6 +6,7 @@ package app
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"io/fs"
 	"os"
@@ -14,6 +15,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -25,10 +27,14 @@ import (
 
 // Env is the outside world as seen by the commands.
 type Env struct {
-	Home            string
-	ConfigDir       string
-	WorkDir         string
+	Home      string
+	ConfigDir string
+	WorkDir   string
+	// Executable is the path Git runs gitpersona by. Empty means
+	// FindExecutable finds it, on first use: only apply and setup need it,
+	// not the prompt, the shims or the credential helper.
 	Executable      string
+	FindExecutable  func() (string, error)
 	CaseInsensitive bool
 	// GlobalGitConfig is GIT_CONFIG_GLOBAL when set; empty means ~/.gitconfig.
 	GlobalGitConfig string
@@ -54,7 +60,49 @@ type Env struct {
 	InstalledShells func() []shell.Installed
 	// Exec replaces the process with another program (the real gh).
 	Exec func(path string, argv, env []string) error
+	// ForgetQueries drops the remembered answers of gh's account queries, so
+	// the next one asks the host again (nil: nothing is remembered).
+	ForgetQueries func()
+
+	// Writes keeps an interruption (Ctrl-C) from stopping gitpersona while
+	// it writes files; nil means no guard (tests).
+	Writes *WriteGuard
+	// configLocked is set while this command holds the configuration lock.
+	configLocked bool
+	// lockWait is how long to wait for the lock (0: defaultLockWait).
+	lockWait time.Duration
+	// write writes one change (nil: change.write); tests inject failures.
+	write func(change) error
+
+	// probes holds answers about the system kept for the whole process
+	// (nil: ask each time).
+	probes *probes
 }
+
+// ghAccountsStamp fingerprints gh's account file (hosts.yml) by its size and
+// modification time, which gh auth login, logout and switch change. Only the
+// file's metadata is read, never its content.
+func ghAccountsStamp(home string) string {
+	dir := os.Getenv("GH_CONFIG_DIR")
+	switch {
+	case dir != "":
+	case os.Getenv("XDG_CONFIG_HOME") != "":
+		dir = filepath.Join(os.Getenv("XDG_CONFIG_HOME"), "gh")
+	case runtime.GOOS == "windows" && os.Getenv("AppData") != "":
+		dir = filepath.Join(os.Getenv("AppData"), "GitHub CLI")
+	default:
+		dir = filepath.Join(home, ".config", "gh")
+	}
+	info, err := os.Stat(filepath.Join(dir, "hosts.yml"))
+	if err != nil {
+		return "none"
+	}
+	return fmt.Sprintf("%d:%d", info.Size(), info.ModTime().UnixNano())
+}
+
+// accountQueryTTL is how long the answers of gh's account queries, which
+// reach the host once per signed-in account, are reused (provider.CachingRunner).
+const accountQueryTTL = 10 * time.Minute
 
 // FromOS builds the Env of the running process.
 func FromOS(stdin io.Reader, stdout, stderr io.Writer) (Env, error) {
@@ -66,16 +114,13 @@ func FromOS(stdin io.Reader, stdout, stderr io.Writer) (Env, error) {
 	if err != nil {
 		return Env{}, i18n.Errorf("find current directory: %w", err)
 	}
-	exe, err := os.Executable()
-	if err != nil {
-		return Env{}, i18n.Errorf("find gitpersona executable: %w", err)
-	}
-	exe = stableExecutable(exe, exec.LookPath)
-	return Env{
+	queries := &provider.CachingRunner{Next: provider.ExecRunner, TTL: accountQueryTTL, Now: time.Now,
+		Dir: filepath.Join(configDir(home), "cache"), Stamp: func() string { return ghAccountsStamp(home) }}
+	env := Env{
 		Home:            home,
 		ConfigDir:       configDir(home),
 		WorkDir:         wd,
-		Executable:      exe,
+		FindExecutable:  sync.OnceValues(findExecutable),
 		CaseInsensitive: paths.CaseInsensitiveAt(home),
 		GlobalGitConfig: os.Getenv("GIT_CONFIG_GLOBAL"),
 		Stdin:           stdin,
@@ -83,23 +128,72 @@ func FromOS(stdin io.Reader, stdout, stderr io.Writer) (Env, error) {
 		Stderr:          stderr,
 		Now:             time.Now,
 		LookPath:        exec.LookPath,
-		Run:             provider.ExecRunner,
-		LoginShell: func(ctx context.Context) shell.Detected {
-			name := ""
+		Run:             queries.Run,
+		ForgetQueries:   queries.Forget,
+		Exec:            syscall.Exec,
+		Writes:          &WriteGuard{},
+	}
+	return env.withProbes(systemFacts{
+		goos: runtime.GOOS,
+		username: func() string {
 			if u, err := user.Current(); err == nil {
-				name = u.Username
+				return u.Username
 			}
-			return shell.LoginShell(ctx, runtime.GOOS, name, shell.Runner(provider.ExecRunner), os.Getenv)
+			return ""
 		},
-		CurrentShell: func(ctx context.Context) shell.Detected {
-			return shell.CurrentShell(ctx, os.Getpid(), shell.Runner(provider.ExecRunner))
-		},
-		Exec: syscall.Exec,
-		InstalledShells: func() []shell.Installed {
+		getenv: os.Getenv,
+		etcShells: func() string {
 			etc, _ := os.ReadFile("/etc/shells")
-			return shell.InstalledShells(string(etc), func(p string) bool { _, err := os.Stat(p); return err == nil })
+			return string(etc)
 		},
-	}, nil
+		pid: os.Getpid(),
+	}), nil
+}
+
+// WriteGuard lets files be written to the end before an interrupted
+// gitpersona exits: writing holds it shared, and Hold waits for every write
+// in progress and keeps new ones from starting.
+type WriteGuard struct{ mu sync.RWMutex }
+
+// Writing marks a write phase; call the returned function when it ends.
+func (g *WriteGuard) Writing() func() {
+	if g == nil {
+		return func() {}
+	}
+	g.mu.RLock()
+	return g.mu.RUnlock
+}
+
+// Hold waits until no files are being written and keeps them from being
+// written from then on; call it before exiting on a signal.
+func (g *WriteGuard) Hold() { g.mu.Lock() }
+
+// findExecutable returns the path of the running gitpersona as Git should
+// run it.
+func findExecutable() (string, error) {
+	exe, err := os.Executable()
+	if err != nil {
+		return "", i18n.Errorf("find gitpersona executable: %w", err)
+	}
+	return stableExecutable(exe, exec.LookPath), nil
+}
+
+// executable is Executable, found on first use when it is not set.
+func (e Env) executable() (string, error) {
+	if e.Executable != "" || e.FindExecutable == nil {
+		return e.Executable, nil
+	}
+	return e.FindExecutable()
+}
+
+// self is the running program's own file, for telling it apart from the
+// real gh or glab; cheaper than executable, which also searches PATH.
+func (e Env) self() string {
+	if e.Executable != "" {
+		return e.Executable
+	}
+	exe, _ := os.Executable()
+	return exe
 }
 
 // stableExecutable returns the path Git should use to run gitpersona as a
@@ -153,28 +247,38 @@ func (e Env) git(ctx context.Context, dir string, args ...string) (string, error
 // gitConfigMissing is the exit status of `git config --get` for an absent key.
 const gitConfigMissing = 1
 
-// gitConfigAll returns every value of a global Git setting, or nil when the
-// setting is absent: the user's own, from the global files and the files
-// they include (such as dotfiles), never from GitPersona's. Any other
-// failure (for example a broken configuration file) is an error, so callers
-// never act on a silently empty answer.
-func (e Env) gitConfigAll(ctx context.Context, key string) ([]string, error) {
-	var values []string
+// globalSettings reads the user's own global Git settings: the global files
+// and the files they include (such as dotfiles), never GitPersona's, with
+// one git process per file. It maps each key (as normalKey writes it) to its
+// values in the order Git reads them. Any failure (for example a broken
+// configuration file) is an error, so callers never act on a silently
+// empty answer.
+func (e Env) globalSettings(ctx context.Context) (map[string][]string, error) {
+	settings := map[string][]string{}
 	for _, file := range e.globalFiles() {
 		if _, err := os.Stat(file); err != nil {
 			continue
 		}
-		out, err := e.git(ctx, e.Home, "config", "--file", file, "--get-all", key)
-		var exit *exec.ExitError
-		switch {
-		case errors.As(err, &exit) && exit.ExitCode() == gitConfigMissing:
-		case err != nil:
-			return nil, e.trErr("read global Git setting %s from %s: %w", key, e.display(file), err)
-		case out != "":
-			values = append(values, strings.Split(out, "\n")...)
+		out, err := e.Run(ctx, "git", "-C", e.Home, "config", "--file", file, "--list", "-z")
+		if err != nil {
+			return nil, e.trErr("read global Git settings from %s: %w", e.display(file), err)
+		}
+		for _, entry := range strings.Split(string(out), "\x00") {
+			if key, value, _ := strings.Cut(entry, "\n"); key != "" {
+				settings[normalKey(key)] = append(settings[normalKey(key)], value)
+			}
 		}
 	}
-	return values, nil
+	return settings, nil
+}
+
+// lastSetting returns the value Git uses for key among settings, or "".
+func lastSetting(settings map[string][]string, key string) string {
+	values := settings[normalKey(key)]
+	if len(values) == 0 {
+		return ""
+	}
+	return values[len(values)-1]
 }
 
 // gitConfigRegexp returns the global settings whose names match pattern,

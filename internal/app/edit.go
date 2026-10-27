@@ -18,6 +18,11 @@ import (
 // Use assigns the current directory to a profile, moving it from another
 // profile if needed, and applies the change.
 func Use(ctx context.Context, e Env, profileID string) error {
+	e, unlock, err := e.lockConfig()
+	if err != nil {
+		return err
+	}
+	defer unlock()
 	text, cfg, err := e.readConfigText()
 	if err != nil {
 		return err
@@ -45,7 +50,7 @@ func Use(ctx context.Context, e Env, profileID string) error {
 		return err
 	}
 	want = withDir(want, profileID, dir)
-	if err := e.saveEdited(ctx, "use "+profileID, edited, want); err != nil {
+	if err := e.saveEdited(ctx, "use "+profileID, text, edited, want); err != nil {
 		return err
 	}
 	if from != "" {
@@ -73,6 +78,11 @@ func (e Env) warnAboutCoveredRules(ctx context.Context, place, profileID string)
 
 // Remove unassigns a directory (the current one when dir is empty).
 func Remove(ctx context.Context, e Env, dir string) error {
+	e, unlock, err := e.lockConfig()
+	if err != nil {
+		return err
+	}
+	defer unlock()
 	text, cfg, err := e.readConfigText()
 	if err != nil {
 		return err
@@ -89,7 +99,7 @@ func Remove(ctx context.Context, e Env, dir string) error {
 		}
 		return err
 	}
-	if err := e.saveEdited(ctx, "remove "+dir, edited, withoutDir(cfg, owner, dir, opts)); err != nil {
+	if err := e.saveEdited(ctx, "remove "+dir, text, edited, withoutDir(cfg, owner, dir, opts)); err != nil {
 		return err
 	}
 	shown := dir
@@ -102,6 +112,11 @@ func Remove(ctx context.Context, e Env, dir string) error {
 
 // Pin binds the current repository to a profile.
 func Pin(ctx context.Context, e Env, profileID string) error {
+	e, unlock, err := e.lockConfig()
+	if err != nil {
+		return err
+	}
+	defer unlock()
 	text, cfg, err := e.readConfigText()
 	if err != nil {
 		return err
@@ -118,7 +133,7 @@ func Pin(ctx context.Context, e Env, profileID string) error {
 	if err != nil {
 		return err
 	}
-	if err := e.saveEdited(ctx, "pin "+profileID, edited, withPin(cfg, repo, profileID, opts)); err != nil {
+	if err := e.saveEdited(ctx, "pin "+profileID, text, edited, withPin(cfg, repo, profileID, opts)); err != nil {
 		return err
 	}
 	fmt.Fprintln(e.Stdout, e.tr("%s is pinned to profile %s.", repo, profileID))
@@ -128,6 +143,11 @@ func Pin(ctx context.Context, e Env, profileID string) error {
 
 // Unpin removes the pin of the current repository.
 func Unpin(ctx context.Context, e Env) error {
+	e, unlock, err := e.lockConfig()
+	if err != nil {
+		return err
+	}
+	defer unlock()
 	text, cfg, err := e.readConfigText()
 	if err != nil {
 		return err
@@ -141,7 +161,7 @@ func Unpin(ctx context.Context, e Env) error {
 	if err != nil {
 		return err
 	}
-	if err := e.saveEdited(ctx, "unpin", edited, withoutPin(cfg, repo, opts)); err != nil {
+	if err := e.saveEdited(ctx, "unpin", text, edited, withoutPin(cfg, repo, opts)); err != nil {
 		return err
 	}
 	fmt.Fprintln(e.Stdout, e.tr("%s is no longer pinned.", repo))
@@ -180,10 +200,11 @@ func asWritten(workDir, root string) string {
 	}
 }
 
-// saveEdited checks that edited parses to exactly want, backs up the
+// saveEdited checks that edited parses to exactly want and that the file
+// still holds base (the text the edit started from), backs up the
 // configuration, writes the edit and applies it. The check guards against
 // text edits that an unusual layout could make go wrong.
-func (e Env) saveEdited(ctx context.Context, command, edited string, want config.Config) error {
+func (e Env) saveEdited(ctx context.Context, command, base, edited string, want config.Config) error {
 	got, err := config.Parse([]byte(edited))
 	if err != nil || !reflect.DeepEqual(got, want) {
 		return e.trErr("could not change %s safely; edit it by hand (nothing was written)", e.display(e.configFile()))
@@ -202,8 +223,13 @@ func (e Env) saveEdited(ctx context.Context, command, edited string, want config
 	// One snapshot covers the configuration and the generated files, so a
 	// rollback undoes the whole edit.
 	// An edit that changes nothing writes nothing and makes no backup.
+	// The edit holds the lock, but the file may still be saved by hand.
+	current, err := os.ReadFile(e.configFile())
+	if err != nil || string(current) != base {
+		return e.trErr("%s changed while this change was being prepared; nothing was written, try again", e.display(e.configFile()))
+	}
 	changes := generated
-	if current, err := os.ReadFile(e.configFile()); err != nil || string(current) != edited {
+	if string(current) != edited {
 		changes = append([]change{{path: e.configFile(), content: edited, perm: perm}}, generated...)
 	}
 	return e.applyChanges(changes, ApplyOptions{Yes: true, Command: command})

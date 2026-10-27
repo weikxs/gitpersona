@@ -56,6 +56,30 @@ func TestWriteAtomicFailsWhenParentIsAFile(t *testing.T) {
 	}
 }
 
+func TestWriteAtomicLeavesNoTemporaryFileWhenItFails(t *testing.T) {
+	dir := t.TempDir()
+	// A directory with content where the file should go: the rename fails.
+	target := filepath.Join(dir, "config.toml")
+	if err := os.MkdirAll(filepath.Join(target, "inside"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := WriteAtomic(target, []byte("new"), FilePerm); err == nil {
+		t.Fatal("WriteAtomic() onto a directory succeeded, want an error")
+	}
+
+	entries, _ := os.ReadDir(dir)
+	if len(entries) != 1 {
+		t.Fatalf("directory has %d entries, want no temporary file left", len(entries))
+	}
+}
+
+func TestSyncDirToleratesAMissingDirectory(t *testing.T) {
+	if err := syncDir(filepath.Join(t.TempDir(), "gone")); err != nil {
+		t.Fatalf("syncDir() = %v, want nil", err)
+	}
+}
+
 func assertMode(t *testing.T, path string, want os.FileMode) {
 	t.Helper()
 	info, err := os.Stat(path)

@@ -123,7 +123,9 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if err != nil {
 		return fail(stderr, err)
 	}
-	return runCmd(context.Background(), env, positional)
+	ctx, done := interruptible(env.Writes)
+	defer done()
+	return runCmd(ctx, env, positional)
 }
 
 // parseInterspersed parses flags anywhere among the arguments, so both

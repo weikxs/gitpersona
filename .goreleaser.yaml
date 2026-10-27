@@ -40,7 +40,7 @@ nfpms:
     maintainer: Weikxs <weikxs.dev@gmail.com>
     description: Git profiles that follow your directories
     license: MIT
-    formats: [deb, rpm, apk, archlinux]
+    formats: [deb, rpm]
     bindir: /usr/bin
     dependencies: [git]
     contents:

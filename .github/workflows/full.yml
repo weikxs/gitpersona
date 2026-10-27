@@ -1,0 +1,55 @@
+name: Full
+
+# The runs a pull request leaves out, on demand (Actions >
+# Full > Run workflow): the tests on both Mac families and Linux arm64, and
+# install.sh against the latest release on every system it supports. Nothing
+# requires these jobs to merge.
+on:
+  # The weekly run is off for now; only the Run workflow button starts it.
+  # To turn it back on, uncomment these two lines.
+  # schedule:
+  #   - cron: "23 4 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        # Both Mac families (Apple silicon and Intel) and Linux on both CPUs.
+        os: [macos-latest, macos-15-intel, ubuntu-latest, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.26.x"
+          check-latest: true
+      - name: Format, vet, privacy, tests with coverage
+        run: make check
+
+  # install.sh against the latest release, on each system it supports: it
+  # must pick the right build, check it and install a binary that runs.
+  install-script:
+    name: install.sh (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, macos-15-intel, ubuntu-latest, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install with the script
+        run: |
+          sh install.sh --dir "$RUNNER_TEMP/bin" --no-modify-path
+          "$RUNNER_TEMP/bin/gitpersona" version
+      - name: The build matches this CPU
+        run: |
+          case "$(uname -m)" in x86_64) want='x86-64|x86_64' ;; *) want='arm64|aarch64' ;; esac
+          file "$RUNNER_TEMP/bin/gitpersona" | grep -Eq "$want"

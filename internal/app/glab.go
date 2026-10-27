@@ -24,15 +24,15 @@ func (e Env) glabEntry() string { return filepath.Join(e.shimDir(), glabCommand)
 
 // glabEntryChange returns the change that makes the glab entry point at
 // gitpersona, when some profile is on GitLab and the entry is not current.
-func (e Env) glabEntryChange(cfg config.Config) (change, bool) {
+func (e Env) glabEntryChange(cfg config.Config, exe string) (change, bool) {
 	if !slices.ContainsFunc(cfg.Profiles, func(p config.Profile) bool { return p.Provider == config.ProviderGitLab }) {
 		return change{}, false
 	}
-	if target, err := os.Readlink(e.glabEntry()); err == nil && target == e.Executable {
+	if target, err := os.Readlink(e.glabEntry()); err == nil && target == exe {
 		return change{}, false
 	}
 	_, err := os.Lstat(e.glabEntry())
-	return change{path: e.glabEntry(), linkTo: e.Executable, create: os.IsNotExist(err)}, true
+	return change{path: e.glabEntry(), linkTo: exe, create: os.IsNotExist(err)}, true
 }
 
 // GlabShim runs the real glab as the account of the current directory's

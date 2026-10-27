@@ -34,26 +34,30 @@ type remote struct {
 	url  string
 }
 
-// remotesOf lists a repository's remotes with the URL a push goes to.
+// remotesOf lists a repository's remotes with the URL a push goes to, from
+// one `git remote -v`: its push lines are what `git remote get-url --push`
+// answers (pushurl and pushInsteadOf applied), the first one per remote.
 func (e Env) remotesOf(ctx context.Context, dir string) []remote {
-	names, err := e.git(ctx, dir, "remote")
-	if err != nil || names == "" {
+	lines, err := e.git(ctx, dir, "remote", "-v")
+	if err != nil || lines == "" {
 		return nil
 	}
 	var out []remote
-	for _, name := range strings.Fields(names) {
-		urls, err := e.git(ctx, dir, "remote", "get-url", "--push", name)
-		if err != nil || urls == "" {
+	seen := map[string]bool{}
+	for _, line := range strings.Split(lines, "\n") {
+		name, rest, ok := strings.Cut(line, "\t")
+		url, ok2 := strings.CutSuffix(strings.TrimSpace(rest), " (push)")
+		if !ok || !ok2 || seen[name] {
 			continue
 		}
-		first, _, _ := strings.Cut(urls, "\n")
-		out = append(out, remote{name: name, url: strings.TrimSpace(first)})
+		seen[name] = true
+		out = append(out, remote{name: name, url: strings.TrimSpace(url)})
 	}
 	return out
 }
 
 // checkRemote works out which account a push to one remote authenticates as.
-func (e Env) checkRemote(ctx context.Context, vc verifyContext, dir string, r remote) RemoteCheck {
+func (e Env) checkRemote(ctx context.Context, vc verifyContext, dir string, repo repoState, r remote) RemoteCheck {
 	host, owner, user := discover.RemoteParts(r.url)
 	rc := RemoteCheck{Name: r.name, Address: remoteAddress(r.url), Protocol: remoteProtocol(r.url), Host: host,
 		Owner: owner, Keys: []string{}}
@@ -64,7 +68,7 @@ func (e Env) checkRemote(ctx context.Context, vc verifyContext, dir string, r re
 	case "https", "http":
 		e.httpsPush(ctx, dir, r.url, user, &rc)
 	case "ssh":
-		e.sshPush(ctx, vc, dir, host, &rc)
+		e.sshPush(ctx, vc, repo, host, &rc)
 	}
 	return rc
 }
@@ -72,9 +76,8 @@ func (e Env) checkRemote(ctx context.Context, vc verifyContext, dir string, r re
 // httpsPush: the user name Git sends is the URL's, else credential.username;
 // GitPersona's helper answers for that account, or the profile's.
 func (e Env) httpsPush(ctx context.Context, dir, url, user string, rc *RemoteCheck) {
-	helper, _ := e.git(ctx, dir, "config", "--get-urlmatch", "credential.helper", url)
-	named, _ := e.git(ctx, dir, "config", "--get-urlmatch", "credential.username", url)
-	local, _ := e.git(ctx, dir, "config", "--local", "--get-urlmatch", "credential.username", url)
+	matched := e.credentialSettings(ctx, dir, url)
+	helper, named := matched["credential.helper"], matched["credential.username"]
 	account, provider, ours := gitPersonaHelper(helper)
 	if urlHasPassword(url) {
 		// Git sends the URL's password and asks no helper: the token decides.
@@ -86,7 +89,7 @@ func (e Env) httpsPush(ctx context.Context, dir, url, user string, rc *RemoteChe
 	switch {
 	case user != "":
 		rc.ChosenBy, rc.ChosenKind = e.tr("the remote URL names it"), ChosenURLUser
-	case local != "":
+	case named != "" && e.localCredentialUsername(ctx, dir, url) != "":
 		rc.ChosenBy, rc.ChosenKind = e.tr("credential.username in the repository"), ChosenRepoUsername
 	}
 	switch {
@@ -99,8 +102,28 @@ func (e Env) httpsPush(ctx context.Context, dir, url, user string, rc *RemoteChe
 	}
 }
 
+// credentialSettings returns the credential.* settings Git uses for url, from
+// one `git config --get-urlmatch credential <url>` (key → value).
+func (e Env) credentialSettings(ctx context.Context, dir, url string) map[string]string {
+	out, _ := e.git(ctx, dir, "config", "--get-urlmatch", "credential", url)
+	settings := map[string]string{}
+	for _, line := range strings.Split(out, "\n") {
+		if key, value, ok := strings.Cut(line, " "); ok {
+			settings[normalKey(key)] = value
+		}
+	}
+	return settings
+}
+
+// localCredentialUsername is credential.username for url from the
+// repository's own config file only.
+func (e Env) localCredentialUsername(ctx context.Context, dir, url string) string {
+	local, _ := e.git(ctx, dir, "config", "--local", "--get-urlmatch", "credential.username", url)
+	return local
+}
+
 // sshPush: the account is the one whose key ssh offers first.
-func (e Env) sshPush(ctx context.Context, vc verifyContext, dir, alias string, rc *RemoteCheck) {
+func (e Env) sshPush(ctx context.Context, vc verifyContext, repo repoState, alias string, rc *RemoteCheck) {
 	resolved := vc.ssh.resolve(ctx, alias)
 	rc.Host = resolved.hostname
 	command := os.Getenv("GIT_SSH_COMMAND")
@@ -108,8 +131,8 @@ func (e Env) sshPush(ctx context.Context, vc verifyContext, dir, alias string, r
 	case command != "":
 		rc.ChosenBy, rc.ChosenKind = "GIT_SSH_COMMAND", ChosenEnvSSHCommand
 	default:
-		command, _ = e.git(ctx, dir, "config", "core.sshCommand")
-		if local, _ := e.git(ctx, dir, "config", "--local", "core.sshCommand"); local != "" {
+		command = repo.config.get("core.sshCommand")
+		if local := repo.config.getLocal("core.sshCommand", repo.root, repo.gitDir); local != "" {
 			rc.ChosenBy, rc.ChosenKind = e.tr("core.sshCommand in the repository"), ChosenRepoSSHCommand
 		}
 	}

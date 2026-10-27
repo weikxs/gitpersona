@@ -19,6 +19,11 @@ import (
 // or a snapshot name). Restoring needs yes, and the current state is backed
 // up first so the rollback itself can be undone.
 func Rollback(ctx context.Context, e Env, which string, yes bool) error {
+	e, unlock, err := e.lockConfig()
+	if err != nil {
+		return err
+	}
+	defer unlock()
 	infos, err := backup.List(e.backupDir())
 	if err != nil {
 		return err
@@ -55,16 +60,32 @@ func Rollback(ctx context.Context, e Env, which string, yes bool) error {
 	for i, en := range chosen.Manifest.Entries {
 		paths[i] = en.Path
 	}
-	undo, err := backup.SnapshotFor(e.backupDir(), e.Now(), "rollback "+which, paths)
+	undo, err := e.restoreSnapshot(chosen.Dir, "rollback "+which, paths)
 	if err != nil {
-		return err
-	}
-	if err := backup.Restore(chosen.Dir); err != nil {
 		return err
 	}
 	fmt.Fprintln(e.Stdout, e.tr("Restored %s from %s.\nThe state before the rollback is saved in %s.",
 		strings.Join(names, ", "), filepath.Base(chosen.Dir), e.display(undo)))
 	return e.regenerateAfterRollback(ctx)
+}
+
+// restoreSnapshot backs up paths and then restores the snapshot in dir,
+// without being interrupted in between. It returns the new backup.
+func (e Env) restoreSnapshot(dir, command string, paths []string) (string, error) {
+	defer e.Writes.Writing()()
+	undo, err := backup.SnapshotFor(e.backupDir(), e.Now(), command, paths)
+	if err != nil {
+		return "", err
+	}
+	if err := backup.Restore(dir); err != nil {
+		// Restore reads every stored copy first; a failure while writing
+		// leaves files of both states, so the state before is put back.
+		if rerr := backup.Restore(undo); rerr != nil {
+			return "", e.trErr("%w; putting the previous files back also failed (%v): they are saved in %s", err, rerr, e.display(undo))
+		}
+		return "", e.trErr("%w; nothing was changed: every file was put back as it was (backup in %s)", err, e.display(undo))
+	}
+	return undo, nil
 }
 
 // regenerateAfterRollback makes the generated files match the restored
@@ -107,6 +128,11 @@ func (e Env) entryNames(m backup.Manifest) []string {
 // Uninstall removes the GitPersona block from the global Git configuration
 // and deletes the generated files. config.toml and the backups are kept.
 func Uninstall(_ context.Context, e Env, yes bool) error {
+	e, unlock, err := e.lockConfig()
+	if err != nil {
+		return err
+	}
+	defer unlock()
 	current, err := readOptional(e.resolvedUserGitConfig())
 	if err != nil {
 		return err

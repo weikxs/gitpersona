@@ -218,3 +218,48 @@ func TestInputPatternsAreValidInVMode(t *testing.T) {
 		}
 	}
 }
+
+func TestApplySendsThePlanThePageShowed(t *testing.T) {
+	files := staticFiles(t)
+	if !strings.Contains(files["api.js"], `request("POST", "/api/apply", { yes, plan })`) {
+		t.Error("api.apply must send the plan's hash with the request")
+	}
+	if !strings.Contains(files["views/apply.js"], "api.apply(true, plan)") {
+		t.Error("the apply view must send the hash of the preview it shows")
+	}
+}
+
+func TestThePageRefreshesWhenItsTabIsShownAgain(t *testing.T) {
+	app := staticFiles(t)["app.js"]
+	if !strings.Contains(app, `document.addEventListener("visibilitychange", refreshWhenVisible)`) {
+		t.Fatal("app.js must refresh the state when the tab becomes visible")
+	}
+	_, body, found := strings.Cut(app, "async function refreshWhenVisible")
+	if !found {
+		t.Fatal("app.js has no refreshWhenVisible function")
+	}
+	body, _, _ = strings.Cut(body, "\n}\n")
+	// No fresh=true: showing the tab again must not query gh's accounts.
+	if !strings.Contains(body, "await loadState();") || strings.Contains(body, "loadState(true)") {
+		t.Errorf("refreshWhenVisible must reuse gh's recent answer:\n%s", body)
+	}
+}
+
+func TestTheOverviewAsksForTheCappedReusableCheck(t *testing.T) {
+	overview := staticFiles(t)["views/overview.js"]
+	for _, want := range []string{"api.verify([], false, auto)", "if (!verified) check(true);", "check(false)"} {
+		if !strings.Contains(overview, want) {
+			t.Errorf("overview.js should contain %q", want)
+		}
+	}
+}
+
+func TestThePageSaysGoodbyeWhenItIsClosed(t *testing.T) {
+	files := staticFiles(t)
+	if !strings.Contains(files["app.js"], `window.addEventListener("pagehide"`) {
+		t.Error("app.js must tell the server when the page goes away")
+	}
+	if !strings.Contains(files["api.js"], `fetch("/api/bye"`) || !strings.Contains(files["api.js"], "keepalive: true") {
+		t.Error("bye must be a keepalive request to /api/bye")
+	}
+}

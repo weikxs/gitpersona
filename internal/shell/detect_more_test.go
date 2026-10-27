@@ -41,7 +41,8 @@ func TestCurrentShellGivesUpAfterTooManyNonShellAncestors(t *testing.T) {
 	if got.Kind != Unknown {
 		t.Fatalf("CurrentShell() = %+v, want unknown", got)
 	}
-	if want := 2 * maxAncestors; calls != want {
+	// One ps for the starting process, then one per ancestor.
+	if want := 1 + maxAncestors; calls != want {
 		t.Errorf("ps ran %d times, want %d: the walk must stop at maxAncestors", calls, want)
 	}
 }

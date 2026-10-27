@@ -74,7 +74,7 @@ GitPersona 会找出你的账户、已有的 `includeIf` 身份、SSH 别名和�
 
 ## 网页控制台
 
-`gitpersona ui` 会在浏览器里打开一个本地控制台（只监听 127.0.0.1；链接只能用一次，15 分钟不用会自动停止）。
+`gitpersona ui` 会在浏览器里打开一个本地控制台（只监听 127.0.0.1；链接只能用一次，关闭标签页大约 10 秒后，或 15 分钟不用，会自动停止）。
 命令行能做的事这里都能做，并且中英双语：默认跟随系统语言，其次是浏览器语言，都不是中英文时显示英文；
 侧栏底部的开关可以切换当前页面的语言。
 
@@ -219,17 +219,22 @@ flowchart LR
 `gitpersona credential` 要令牌，它借用 `gh` 为该账户保存的令牌。对其他主机，配置文件只指明账户，
 由你自己的凭据助手返回该账户的令牌。启用 shell 集成后，`gh` 和 `glab` 也遵循同样的规则。
 
+GitPersona 尽量少地访问 GitHub。只有 `gh auth status`（会逐个检查已登录的账户）和 setup 时读取公开资料这两种请求会到达
+服务器；它们的结果在 `~/.config/gitpersona/cache/` 中保留十分钟（只有本人可读；只有账户名和状态，从不含令牌），
+所有 `gitpersona` 命令和配置页面共用。执行 `gh auth login`、`logout` 或 `switch` 后，下一次检查会重新询问。
+GitPersona 从不切换 gh 的账户，也不执行 fetch 或列出远端；只有你主动要求时（`gitpersona check-ssh`，或页面上的
+“通过 SSH 让主机报出账户”）才会连接主机的 SSH。
+
 ## 支持的系统
 
 | 系统 | 芯片 | 状态 |
 |---|---|---|
-| macOS 12 Monterey 或更新版本 | Apple 芯片（M1 及以后） | 支持，每次改动都测试 |
-| macOS 12 Monterey 或更新版本 | Intel | 支持，每次改动都测试 |
+| macOS 12 Monterey 或更新版本 | Apple 芯片（M1 及以后） | 支持，每次发布前测试 |
+| macOS 12 Monterey 或更新版本 | Intel | 支持，每次发布前测试 |
 | Linux：Debian、Ubuntu、Fedora、Arch、Alpine 等（glibc 或 musl） | x86_64、arm64 | 支持，每次改动都测试 |
 | Windows | — | 计划中 |
 
-测试在 Apple 芯片和 Intel 芯片的 Mac、Linux x86_64 和 arm64 上运行，并在 Debian、Alpine、Fedora、
-Ubuntu 22.04 容器中运行（Ubuntu 22.04 带的 Git 2.34 是测试用到的最旧版本）。
+每个 PR 都会在 Linux x86_64 上运行测试；每次发布前还会在 Apple 芯片和 Intel 芯片的 Mac 以及 Linux arm64 上运行。
 
 **系统要求**
 
@@ -323,13 +328,12 @@ Homebrew 会自动选择适合你的 Mac 的版本（Apple 芯片或 Intel）。
 提供 x86_64（`amd64`）和 arm64 两种：
 
 ```sh
-sudo apt install ./gitpersona_<版本>_linux_amd64.deb        # Debian、Ubuntu
-sudo dnf install ./gitpersona_<版本>_linux_amd64.rpm        # Fedora、RHEL
-sudo apk add --allow-untrusted ./gitpersona_<版本>_linux_amd64.apk   # Alpine
-sudo pacman -U ./gitpersona_<版本>_linux_amd64.pkg.tar.zst  # Arch
+sudo apt install ./gitpersona_<版本>_linux_amd64.deb   # Debian、Ubuntu
+sudo dnf install ./gitpersona_<版本>_linux_amd64.rpm   # Fedora、RHEL
 ```
 
-各平台的压缩包（`.tar.gz`）也在那里，并附有用于校验的 `checksums.txt`。
+各平台的压缩包（`.tar.gz`）也在那里，并附有用于校验的 `checksums.txt`。Alpine、Arch 等其他系统请用上面的安装脚本或压缩包：
+程序除了 Git 没有其他依赖。
 
 ## 快速上手
 
@@ -425,7 +429,7 @@ profile = "globex"
 | 命令 | 作用 |
 |---|---|
 | `gitpersona setup [--yes] [--no-shell] [--keep-old-rules] [--default <profile> \| --no-default] [--print \| --web]` | 根据你已有的东西一步完成设置（账户、已有身份、仓库、SSH 别名、shell）；除非加 `--yes`，写入前会先询问；`--web` 在浏览器里展示，也可以逐步调整 |
-| `gitpersona ui [--no-open]` | 在浏览器里打开中英双语的网页控制台：总览、账户及其身份、目录和钉住、仓库核对、应用前的差异预览、体检、shell 和备份。只监听 127.0.0.1，链接只能用一次，闲置 15 分钟后自动退出 |
+| `gitpersona ui [--no-open]` | 在浏览器里打开中英双语的网页控制台：总览、账户及其身份、目录和钉住、仓库核对、应用前的差异预览、体检、shell 和备份。只监听 127.0.0.1，链接只能用一次，关闭标签页后不久或闲置 15 分钟后自动退出 |
 | `gitpersona apply [--dry-run] [--yes]` | 生成 Git 配置；`--dry-run` 只预览，`--yes` 允许删除已删除配置文件对应的文件 |
 | `gitpersona whoami [--json] [--check]` | 显示此处 Git 使用哪个配置文件及原因；`--check` 在 Git 实际结果不一致时报错 |
 | `gitpersona verify [--all] [--ssh] [--json] [<目录>...]` | 逐个核对配置文件目录和钉住的仓库（以及你指定的目录）：提交用的作者、每个远程推送用的账户，是否与配置文件一致；标出用错身份、远程地址里写有令牌、不同密钥共用 SSH 连接等问题。只读取配置；`--ssh` 会像推送一样登录每个 SSH 主机一次，由主机报出账户 |
@@ -472,13 +476,19 @@ profile = "globex"
   `gitpersona verify` 会给出警告。`gitpersona check-ssh` 和 `gitpersona verify --ssh` 只在你运行时用每把密钥连接一次，
   报告主机欢迎语里的账户；除此之外不会有任何操作启动 ssh。
 - **Shell：** 默认 shell 从系统用户记录中读取（而不是 `$SHELL`，终端、IDE 和各种工具经常会改它），当前正在用的 shell
-  从进程树中判断，已安装的 shell 从 `/etc/shells` 读取。fish 使用 `conf.d` 中单独的文件；zsh 使用 `~/.zshenv`；bash 使用 `~/.bashrc`。
+  从进程树中判断，已安装的 shell 从 `/etc/shells` 读取。fish 使用 `conf.d` 中单独的文件；zsh 使用 `$ZDOTDIR`（未设置时为 `~`）中的 `.zshenv` 和
+  `.zshrc`；bash 使用 `~/.bashrc`。
   tide 中添加 `gitpersona` 项；Powerlevel10k 中添加 `gitpersona` 段；其他情况调用 `gitpersona_prompt`。
-- **隐私：** GitPersona 从不打开、读取、列出或使用你的私钥，也从不打印或保存令牌。它唯一的联网行为是 setup 时向 `gh`
-  查询账户公开的名字和邮箱，以及你运行 `check-ssh`、`verify --ssh` 时发起的 ssh 连接。不加 `--ssh` 的 `verify`
-  只读取 Git 和 SSH 设置。路径都以 `~` 显示；网页控制台只监听 127.0.0.1，并通过一次性链接访问。
+  只要你还在同一个目录和仓库里，并且 GitPersona 没有保存新的改动，提示符函数就沿用上一次的结果，重画提示符不启动任何
+  进程（只用 shell 内置命令）。手动编辑 `config.toml` 后请运行 `gitpersona apply`，它也会刷新提示符。若写成
+  `$(gitpersona_prompt)`，它会在子 shell 中运行，每次都会调用 `gitpersona`。
+- **隐私：** GitPersona 从不打开、读取、列出或使用你的私钥，也从不打印或保存令牌。它只通过 `gh` 和 `ssh` 联网：`doctor`、`verify`、
+  setup 和配置页面用 `gh auth status` 检查已登录的账户（十分钟内最多一次，所有命令共用）；setup 时查询账户公开的名字和
+  邮箱；以及你运行 `check-ssh`、`verify --ssh` 时发起的 ssh 连接。除了这一结果，不加 `--ssh` 的 `verify` 只读取
+  Git 和 SSH 设置。路径都以 `~` 显示；网页控制台只监听 127.0.0.1，并通过一次性链接访问。
 - **你的文件：** 它只在全局 Git 配置中添加一个带标记的区块（会跟随符号链接的 `~/.gitconfig` 和 `GIT_CONFIG_GLOBAL`），
-  改动前备份所有被修改的文件，并在 `~/.config/gitpersona/backups/` 中保留最新的 20 份备份。
+  改动前备份所有被修改的文件，并在 `~/.config/gitpersona/backups/` 中保留最新的 20 份备份，另外始终保留第一份备份，
+  以及所有记录了被接管的 `includeIf` 规则的备份，这样 `gitpersona uninstall` 总能把这些规则放回去。
 
 ## 撤销与卸载
 
@@ -486,8 +496,12 @@ profile = "globex"
   所以一次回滚会撤销整个操作。
 - `gitpersona uninstall` 从你的 Git 配置中移除 GitPersona 的区块，并把 setup 接管的 `includeIf` 规则原样放回。
   `config.toml` 会保留，运行 `gitpersona apply` 即可恢复一切。
-- 要彻底删除：运行 `gitpersona uninstall`，从 shell 启动文件（`~/.zshenv`、`~/.bashrc` 或
-  `~/.config/fish/conf.d/gitpersona.fish`）中删除 GitPersona 的那几行，然后删除 `~/.config/gitpersona` 和程序本身。
+- 要彻底删除：运行 `gitpersona uninstall`（它也会删掉 `install-shell` 加的 shell 设置），然后删掉 `install.sh`
+  为了把程序加入 PATH 而加的两行：`# Added by the GitPersona installer` 这一行和它后面的 `export PATH=…` 行，位于
+  `.zshrc`（在 `$ZDOTDIR` 或 `~` 中）、`~/.bashrc`（Linux）、`~/.bash_profile`（macOS）或 `~/.profile` 中；fish 则删除
+  `~/.config/fish/conf.d/gitpersona-path.fish`。如果你是手动或用 fisher 设置的 shell，也要删掉那些行或
+  `~/.config/fish/conf.d/gitpersona.fish`。最后删除 `~/.config/gitpersona` 和程序本身（用 `install.sh` 安装的在
+  `~/.local/bin/gitpersona`）。
 
 ## 故障排查
 

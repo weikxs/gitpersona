@@ -10,6 +10,7 @@ import (
 
 	"github.com/weikxs/gitpersona/internal/discover"
 	"github.com/weikxs/gitpersona/internal/i18n"
+	"github.com/weikxs/gitpersona/internal/shell"
 )
 
 func TestSetupProposalIsShownInChinese(t *testing.T) {
@@ -118,7 +119,8 @@ func filesBelow(t *testing.T, home string) map[string]string {
 		if d.IsDir() && (d.Name() == ".git" || strings.Contains(rel, "backups")) {
 			return filepath.SkipDir
 		}
-		if !d.Type().IsRegular() {
+		// The generation is a time stamp for shell prompts, not content.
+		if !d.Type().IsRegular() || d.Name() == shell.GenerationFile {
 			return nil
 		}
 		data, err := os.ReadFile(path)

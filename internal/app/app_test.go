@@ -114,7 +114,8 @@ func newWorld(t *testing.T) world {
 	t.Setenv("GIT_CONFIG_GLOBAL", filepath.Join(home, ".gitconfig"))
 	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
 	// A token exported in the developer's shell must never reach the fake gh.
-	for _, name := range []string{"GH_TOKEN", "GITHUB_TOKEN"} {
+	// ZDOTDIR moves zsh's startup files; the demo home keeps them in ~.
+	for _, name := range []string{"GH_TOKEN", "GITHUB_TOKEN", "ZDOTDIR"} {
 		t.Setenv(name, "")
 		os.Unsetenv(name)
 	}

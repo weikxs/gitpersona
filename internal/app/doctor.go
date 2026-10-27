@@ -281,7 +281,7 @@ func (e Env) checkGitHubAccounts(ctx context.Context, cfg config.Config) []check
 	if len(profiles) == 0 {
 		return nil
 	}
-	gh, err := e.LookPath("gh")
+	gh, err := e.GHPath()
 	if err != nil {
 		return []check{{label: e.tr("GitHub CLI (gh) not found"), advice: e.tr("install it from https://cli.github.com and sign in with `gh auth login`")}}
 	}

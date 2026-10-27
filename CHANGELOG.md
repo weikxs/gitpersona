@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ## [Unreleased]
 
+### Changed
+
+- Linux packages are `.deb` and `.rpm` only, as for OTPKeep; Alpine, Arch and other systems use `install.sh` or the
+  `.tar.gz` archive, which work everywhere since the binary needs nothing but Git. CI tests every pull request on
+  Linux x86_64 and runs the Mac and Linux arm64 tests on demand, before each release; the Debian, Alpine, Fedora and
+  Ubuntu 22.04 container runs are gone.
+- GitPersona asks GitHub about your accounts far less often. `gh auth status` checks every signed-in account against
+  the API, and the configuration page used to run it up to three times after each change; the answer is now reused
+  for ten minutes and asked again when the page is opened or reloaded. The answers are kept in
+  `~/.config/gitpersona/cache/` (owner-only, no tokens), so every `gitpersona` command shares them too; signing in,
+  out or switching accounts with gh makes the next check ask again.
+- Faster checks: `verify` starts about 4 git processes per repository instead of 8 plus 4 per remote; preview, apply
+  and doctor read each global Git config file once instead of five times; the configuration page gathers the shells,
+  the doctor's checks and gh's accounts at the same time; the gh shim finds the real gh with one stat per PATH entry;
+  starting the binary no longer compiles large bounded regular expressions.
+- The shell prompt starts no process while you stay in the same directory: `gitpersona_prompt`, the tide item
+  and the Powerlevel10k segment keep their last answer until the directory, the repository around it or a change
+  GitPersona saves (the new `~/.config/gitpersona/generation` file) says it can differ.
+
 ### Security
 
 - Built with Go 1.26.10, which fixes 46 vulnerabilities in the Go standard library that v0.1.0 (built with Go 1.26.0)
@@ -34,6 +53,45 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
   security, install with a table of downloads by platform, compatibility. The release page shows that file instead
   of a list of commits with their hashes and author emails; a release stops when it is missing or unfinished.
   `scripts/release-notes.sh` drafts one from this changelog.
+
+### Fixed
+
+- A failed `gh auth status` (gh signed out for a moment, no network) is no longer remembered for ten minutes: the
+  next check asks gh again. Successful answers are still reused.
+- The configuration page asks about your login shell (`dscl` or `getent`), the shell you are in (`ps`), the installed
+  shells (`/etc/shells`) and Git's version once while it runs, instead of several times on every refresh; finding
+  the current shell runs `ps` once per parent process instead of twice.
+- `install-shell` and the shell checks follow `$ZDOTDIR`: zsh's `.zshrc` (and `.zshenv`, unless `~/.zshenv` is the
+  file that sets `ZDOTDIR`) are written and looked for there, as `install.sh` already did, instead of in `~`.
+- GitPersona's own gh queries (the page's accounts, `doctor`, `verify`, setup, the credential helper) use the real gh
+  instead of GitPersona's gh entry when the shell integration puts it first on PATH, and `doctor` names the real gh.
+  The gh shim waits at most 15 seconds for `gh auth token`.
+- The prompt, the gh and glab entries and the credential helper start faster: they no longer look for the
+  gitpersona binary on PATH, which only `apply` and setup need.
+- A change that fails halfway (a file that cannot be written) no longer leaves some files changed and others not:
+  every file already written is put back from the backup. Ctrl-C while files are being written waits until they
+  are all written; files are flushed to disk before they replace the old ones.
+- Two changes at the same time (two clicks on the configuration page, or the page and a command) no longer overwrite
+  each other: each change takes a lock on `~/.config/gitpersona/.lock` while it reads, plans and writes, and an edit
+  stops without writing when `config.toml` was saved by hand while it was being prepared.
+- `gitpersona uninstall` puts back the `includeIf` rules setup took over also after more than 20 later changes: the
+  backups that record them are never pruned. Pruning counts only real backups (folders with a manifest) and leaves
+  anything else in the backup folder alone.
+- Apply on the configuration page writes exactly the changes it showed: when the files changed after the preview (in
+  another tab or on the command line), it refuses and shows the new changes to review. The page also reads the state
+  again when its tab is shown, without asking gh about the accounts again.
+- Opening the overview again no longer checks every repository again: the server reuses the last check while no
+  repository's `.git/config`, global Git file or GitPersona file has changed (for up to ten minutes, and never after a
+  change made on the page). The overview checks at most 200 repositories by itself and offers a button to check all.
+  `verify --json` reports `total` (repositories found) and `limited`.
+- `gitpersona ui` stops about ten seconds after its tab is closed instead of running on for 15 minutes; a reload
+  keeps it running.
+- `gitpersona ui` waits for the program that opens the browser, so it no longer stays behind as a zombie process
+  while the page runs.
+- The glab entry waits at most 15 seconds for `git credential fill`. Setup's folder scan on the page says when gh
+  could not list the signed-in accounts instead of silently matching no folder to them. `whoami` (and `verify`) say
+  when Git could not read a repository's settings instead of showing no author. The README's steps to remove
+  everything name the PATH lines `install.sh` adds.
 
 ## [0.1.0] - 2026-10-24
 

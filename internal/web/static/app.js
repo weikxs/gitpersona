@@ -1,7 +1,7 @@
 // GitPersona configuration page: loads the state, routes between sections by
 // the URL hash and re-renders after every change or language switch.
 
-import { api, ApiError } from "./api.js";
+import { api, ApiError, bye } from "./api.js";
 import { h, replace, status, clearStatus } from "./dom.js";
 import { t, lang, setLang, applyDocumentLang, LANGUAGES } from "./i18n.js";
 import { icon } from "./icons.js";
@@ -37,8 +37,11 @@ function currentView() {
   return state && !state.config_exists ? "setup" : DEFAULT_VIEW;
 }
 
-async function loadState() {
-  const { data } = await api.state();
+// loadState reads the page's state. Opening or reloading the page asks gh
+// about the accounts again (fresh); after a change the server reuses its
+// recent answer, so a run of changes does not query the host each time.
+async function loadState(fresh = false) {
+  const { data } = await api.state(fresh);
   state = data;
 }
 
@@ -150,6 +153,21 @@ async function refreshAll() {
   }
 }
 
+// refreshWhenVisible reads the state again when the tab is shown, since
+// the command line or another tab may have changed things meanwhile. It
+// reuses gh's recent answer (no fresh query) and redraws only when
+// something changed, so nothing typed on the page is lost for nothing.
+async function refreshWhenVisible() {
+  if (closed || document.visibilityState !== "visible" || !state) return;
+  const before = JSON.stringify(state);
+  try {
+    await loadState();
+  } catch {
+    return; // the next action reports a stopped server
+  }
+  if (JSON.stringify(state) !== before) render();
+}
+
 async function closePage() {
   try {
     await api.close();
@@ -168,13 +186,17 @@ async function start() {
   applyDocumentLang();
   chrome(currentView());
   document.getElementById("close").addEventListener("click", closePage);
+  document.addEventListener("visibilitychange", refreshWhenVisible);
+  window.addEventListener("pagehide", () => {
+    if (!closed) bye();
+  });
   window.addEventListener("hashchange", () => {
     if (closed) return;
     clearStatus();
     render({ focus: true });
   });
   try {
-    await loadState();
+    await loadState(true);
     render();
   } catch (err) {
     replace(document.getElementById("view"), h("div", { class: "notice fail", role: "alert" }, err.message));

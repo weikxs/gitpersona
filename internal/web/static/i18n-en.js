@@ -196,6 +196,8 @@ export const en = {
   "nav.setup": "Set up GitPersona",
   "nav.shells": "Shells",
   "overview.accounts": "Accounts and their folders",
+  "overview.checkAll": "Check all {n}",
+  "overview.limited": "The overview checked {checked} of your {total} repositories by itself.",
   "overview.lead": "Who commits and who pushes in each of your folders, at a glance.",
   "overview.manageAccounts": "Manage accounts",
   "overview.tools": "Look up and health",

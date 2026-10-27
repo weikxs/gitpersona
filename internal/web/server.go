@@ -26,10 +26,14 @@ import (
 var static embed.FS
 
 const (
-	sessionCookie   = "gitpersona_session" // plus the port: see cookieName
-	csrfHeader      = "X-GitPersona-CSRF"
-	tokenBytes      = 32
-	defaultIdle     = 15 * time.Minute
+	sessionCookie = "gitpersona_session" // plus the port: see cookieName
+	csrfHeader    = "X-GitPersona-CSRF"
+	tokenBytes    = 32
+	defaultIdle   = 15 * time.Minute
+	// defaultByeGrace is how long the server waits after the page is closed
+	// (it says goodbye on pagehide) before it stops: a reload asks again
+	// within it and keeps the server running.
+	defaultByeGrace = 10 * time.Second
 	readTimeout     = 10 * time.Second
 	csrfPlaceholder = "{{CSRF}}"
 	langPlaceholder = "{{LANG}}"
@@ -54,11 +58,14 @@ type Server struct {
 	lang string
 	mux  *http.ServeMux
 	idle time.Duration
+	// byeGrace is how long the server lives after the page says goodbye.
+	byeGrace time.Duration
 
 	mu       sync.Mutex
 	keyUsed  bool
 	sessions []string
 	timer    *time.Timer
+	byeTimer *time.Timer // set after a goodbye, until the next request
 	done     chan struct{}
 	stopOnce sync.Once
 }
@@ -76,11 +83,12 @@ func New(addr string, h Handlers) (*Server, error) {
 		return nil, fmt.Errorf("unknown page language %q", h.SystemLang)
 	}
 	s := &Server{addr: addr, key: randomToken(), csrf: randomToken(), lang: h.SystemLang, mux: http.NewServeMux(),
-		idle: defaultIdle, done: make(chan struct{})}
+		idle: defaultIdle, byeGrace: defaultByeGrace, done: make(chan struct{})}
 	for pattern, handler := range h.API {
 		s.mux.HandleFunc(pattern, handler)
 	}
 	s.mux.HandleFunc("GET /{$}", s.index)
+	s.mux.HandleFunc("POST /api/bye", s.bye)
 	staticFS, _ := fs.Sub(static, "static")
 	files := http.StripPrefix("/static/", http.FileServerFS(staticFS))
 	s.mux.Handle("GET /static/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -225,6 +233,22 @@ func (s *Server) touch() {
 	if s.timer != nil {
 		s.timer.Reset(s.idle)
 	}
+	if s.byeTimer != nil {
+		s.byeTimer.Stop() // the page is back (a reload): keep running
+		s.byeTimer = nil
+	}
+}
+
+// bye answers the page's goodbye, sent when its tab closes or reloads:
+// the server stops after byeGrace unless another request arrives first.
+func (s *Server) bye(w http.ResponseWriter, _ *http.Request) {
+	s.mu.Lock()
+	if s.byeTimer != nil {
+		s.byeTimer.Stop()
+	}
+	s.byeTimer = time.AfterFunc(s.byeGrace, s.Stop)
+	s.mu.Unlock()
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func setSecurityHeaders(h http.Header) {
