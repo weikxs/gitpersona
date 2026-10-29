@@ -7,31 +7,7 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ## [Unreleased]
 
-### Changed
-
-- Linux packages are `.deb` and `.rpm` only, as for OTPKeep; Alpine, Arch and other systems use `install.sh` or the
-  `.tar.gz` archive, which work everywhere since the binary needs nothing but Git. CI tests every pull request on
-  Linux x86_64 and runs the Mac and Linux arm64 tests on demand, before each release; the Debian, Alpine, Fedora and
-  Ubuntu 22.04 container runs are gone.
-- GitPersona asks GitHub about your accounts far less often. `gh auth status` checks every signed-in account against
-  the API, and the configuration page used to run it up to three times after each change; the answer is now reused
-  for ten minutes and asked again when the page is opened or reloaded. The answers are kept in
-  `~/.config/gitpersona/cache/` (owner-only, no tokens), so every `gitpersona` command shares them too; signing in,
-  out or switching accounts with gh makes the next check ask again.
-- Faster checks: `verify` starts about 4 git processes per repository instead of 8 plus 4 per remote; preview, apply
-  and doctor read each global Git config file once instead of five times; the configuration page gathers the shells,
-  the doctor's checks and gh's accounts at the same time; the gh shim finds the real gh with one stat per PATH entry;
-  starting the binary no longer compiles large bounded regular expressions.
-- The shell prompt starts no process while you stay in the same directory: `gitpersona_prompt`, the tide item
-  and the Powerlevel10k segment keep their last answer until the directory, the repository around it or a change
-  GitPersona saves (the new `~/.config/gitpersona/generation` file) says it can differ.
-
-### Security
-
-- Built with Go 1.26.10, which fixes 46 vulnerabilities in the Go standard library that v0.1.0 (built with Go 1.26.0)
-  contained in code GitPersona can reach, mostly in `net/http`, `crypto/tls`, `crypto/x509` and `html/template`
-  (GO-2026-4599 to GO-2026-6809; `govulncheck` lists them). GitPersona's own code and its dependencies had none.
-  The web console only listens on 127.0.0.1, which limits the exposure, but every user should upgrade.
+## [0.2.0] - 2026-10-29
 
 ### Added
 
@@ -44,6 +20,18 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ### Changed
 
+- GitPersona asks GitHub about your accounts far less often. `gh auth status` checks every signed-in account against
+  the API, and the configuration page used to run it up to three times after each change; the answer is now reused
+  for ten minutes and asked again when the page is opened or reloaded. The answers are kept in
+  `~/.config/gitpersona/cache/` (owner-only, no tokens), so every `gitpersona` command shares them too; signing in,
+  out or switching accounts with gh makes the next check ask again.
+- Faster checks: `verify` starts about 4 git processes per repository instead of 8 plus 4 per remote; preview, apply
+  and doctor read each global Git config file once instead of five times; the configuration page gathers the shells,
+  the doctor's checks and gh's accounts at the same time; the gh shim finds the real gh with one stat per PATH entry;
+  starting the binary no longer compiles large bounded regular expressions.
+- The shell prompt starts no process while you stay in the same directory: `gitpersona_prompt`, the tide item
+  and the Powerlevel10k segment keep their last answer until the directory, the repository around it or a change
+  GitPersona saves (the new `~/.config/gitpersona/generation` file) says it can differ.
 - Release builds use the newest Go 1.26 patch release instead of Go 1.26.0, so Go's security fixes reach the
   binaries; v0.1.0 was built with Go 1.26.0.
 - Every release file carries signed build provenance: `gh attestation verify <file> --repo weikxs/gitpersona` shows
@@ -53,6 +41,13 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
   security, install with a table of downloads by platform, compatibility. The release page shows that file instead
   of a list of commits with their hashes and author emails; a release stops when it is missing or unfinished.
   `scripts/release-notes.sh` drafts one from this changelog.
+
+### Removed
+
+- The Alpine (`.apk`) and Arch (`.pkg.tar.zst`) packages. Linux packages are `.deb` and `.rpm` only; Alpine, Arch
+  and other systems use `install.sh` or the `.tar.gz` archive, which work everywhere since the binary needs nothing
+  but Git. CI tests every pull request on Linux x86_64 and runs the Mac and Linux arm64 tests on demand, before each
+  release; the Debian, Alpine, Fedora and Ubuntu 22.04 container runs are gone.
 
 ### Fixed
 
@@ -92,6 +87,13 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
   could not list the signed-in accounts instead of silently matching no folder to them. `whoami` (and `verify`) say
   when Git could not read a repository's settings instead of showing no author. The README's steps to remove
   everything name the PATH lines `install.sh` adds.
+
+### Security
+
+- Built with Go 1.26.10, which fixes 46 vulnerabilities in the Go standard library that v0.1.0 (built with Go 1.26.0)
+  contained in code GitPersona can reach, mostly in `net/http`, `crypto/tls`, `crypto/x509` and `html/template`
+  (GO-2026-4599 to GO-2026-6809; `govulncheck` lists them). GitPersona's own code and its dependencies had none.
+  The web console only listens on 127.0.0.1, which limits the exposure, but every user should upgrade.
 
 ## [0.1.0] - 2026-10-24
 
@@ -347,5 +349,6 @@ The first release: macOS (Apple silicon and Intel) and Linux (x86_64 and arm64).
 - Project scaffold: Go module, `gitpersona version` / `help` commands, Makefile, CI, release configuration,
   privacy check, contribution and development standards.
 
-[Unreleased]: https://github.com/weikxs/gitpersona/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/weikxs/gitpersona/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/weikxs/gitpersona/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/weikxs/gitpersona/releases/tag/v0.1.0
